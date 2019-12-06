@@ -18,11 +18,11 @@ package config
 
 import (
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 	"net/url"
 	"path"
 	"reflect"
@@ -66,7 +66,7 @@ func (t *EnrollmentClaims) EnrolmentUrl() string {
 	query.Add("method", t.EnrollmentMethod)
 	query.Add("token", t.Id)
 	enrollmentUrl.RawQuery = query.Encode()
-	
+
 	return enrollmentUrl.String()
 }
 
@@ -100,7 +100,7 @@ func (t *EnrollmentClaims) ToMapClaims() (jwt.MapClaims, error) {
 				}
 			}
 		} else {
-			return nil, errors.New("could not converted standard claims section to map")
+			return nil, errors.New("could not convert standard claims section to map")
 		}
 
 	}

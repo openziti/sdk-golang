@@ -27,8 +27,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
-	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/fullsailor/pkcs7"
 	"github.com/michaelquigley/pfxlog"
@@ -38,6 +36,7 @@ import (
 	"github.com/netfoundry/ziti-foundation/util/x509"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -73,27 +72,27 @@ func ParseToken(tokenStr string) (*config.EnrollmentClaims, *jwt.Token, error) {
 
 func ValidateToken(token *jwt.Token) (interface{}, error) {
 	if token == nil {
-		return nil, fmt.Errorf("could not validate token, token is nil")
+		return nil, errors.New("could not validate token, token is nil")
 	}
 
 	claims, ok := token.Claims.(*config.EnrollmentClaims)
 
 	if !ok {
-		return nil, fmt.Errorf("could not validate token, token is not EnrollmentClaims")
+		return nil, errors.New("could not validate token, token is not EnrollmentClaims")
 	}
 
 	if claims == nil {
-		return nil, fmt.Errorf("could not validate token, EnrollmentClaims are nil")
+		return nil, errors.New("could not validate token, EnrollmentClaims are nil")
 	}
 
 	if claims.Issuer == "" {
-		return nil, fmt.Errorf("could not validate token, issues is empty")
+		return nil, errors.New("could not validate token, issues is empty")
 	}
 
 	_, err := url.Parse(claims.Issuer)
 
 	if err != nil {
-		return nil, fmt.Errorf("could not validate token, issuer [%s] is not a valid url ", claims.Issuer)
+		return nil, errors.Errorf("could not validate token, issuer [%s] is not a valid url ", claims.Issuer)
 	}
 
 	cert, err := FetchServerCert(claims.Issuer)
@@ -101,7 +100,7 @@ func ValidateToken(token *jwt.Token) (interface{}, error) {
 	claims.SignatureCert = cert
 
 	if err != nil || cert == nil {
-		return nil, fmt.Errorf("could not retrieve token URL certificate: %s", err)
+		return nil, errors.Errorf("could not retrieve token URL certificate: %s", err)
 	}
 
 	return cert.PublicKey, nil
@@ -119,7 +118,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 
 		if !os.IsNotExist(err) {
 			if stat.IsDir() {
-				return nil, fmt.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
+				return nil, errors.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
 			}
 			if absPath, fileErr := filepath.Abs(enFlags.KeyFile); fileErr != nil {
 				return nil, fileErr
@@ -128,7 +127,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 			}
 		} else {
 			cfg.ID.Key = enFlags.KeyFile
-			fmt.Printf("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
+			pfxlog.Logger().Infof("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
 		}
 	} else {
 		key, err = generateKey()
@@ -174,7 +173,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 		case "ca":
 			enrollErr = enrollCAAuto(enFlags, cfg, caPool)
 		default:
-			enrollErr = fmt.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
+			enrollErr = errors.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
 			enrollmentComplete = true //no need to try again
 		}
 
@@ -222,7 +221,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 
 func generateKey() (crypto.PrivateKey, error) {
 	p384 := elliptic.P384()
-	fmt.Printf("generating %s key\n", p384.Params().Name)
+	pfxlog.Logger().Infof("generating %s key\n", p384.Params().Name)
 	return ecdsa.GenerateKey(p384, rand.Reader)
 }
 
@@ -241,7 +240,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 
 	pk, err := identity.LoadKey(cfg.ID.Key)
 	if err != nil {
-		return fmt.Errorf("failed to load private key '%s': %s", cfg.ID.Key, err.Error())
+		return errors.Errorf("failed to load private key '%s': %s", cfg.ID.Key, err.Error())
 	}
 
 	hostname, err := os.Hostname()
@@ -276,14 +275,14 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		jsonerr := json.Unmarshal(respBody, &edgeError)
 
 		if jsonerr != nil {
-			return fmt.Errorf("enroll error: %s. raw response: %s. ", resp.Status, respBody)
+			return errors.Errorf("enroll error: %s. raw response: %s. ", resp.Status, respBody)
 		}
 
 		//successfully parsed the json - make sure the code and cause message match and give a helpful message
 		if edgeError.Error.Cause.Message == "identity not found" && edgeError.Error.Code == "INVALID_FIELD" {
-			return fmt.Errorf("enroll error: %s. response: the provided token was invalid. either the token is not correct or it has already been used", resp.Status)
+			return errors.Errorf("enroll error: %s. response: the provided token was invalid. either the token is not correct or it has already been used", resp.Status)
 		} else {
-			return fmt.Errorf("enroll error: %s. response: %s. ", resp.Status, edgeError.Error.Cause.Message)
+			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, edgeError.Error.Cause.Message)
 		}
 	}
 	cfg.ID.Cert = "pem:" + string(respBody)
@@ -313,9 +312,9 @@ func enrollCA(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.C
 
 		if resp.StatusCode != http.StatusOK {
 			if resp.StatusCode == http.StatusConflict {
-				return fmt.Errorf("the provided identity has already been enrolled")
+				return errors.Errorf("the provided identity has already been enrolled")
 			} else {
-				return fmt.Errorf("enroll error: %s", resp.Status)
+				return errors.Errorf("enroll error: %s", resp.Status)
 			}
 		}
 		return nil
@@ -362,9 +361,9 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.Cert
 
 		if resp.StatusCode != http.StatusOK {
 			if resp.StatusCode == http.StatusConflict {
-				return fmt.Errorf("the provided identity has already been enrolled")
+				return errors.New("the provided identity has already been enrolled")
 			} else {
-				return fmt.Errorf("enroll error: %s", resp.Status)
+				return errors.Errorf("enroll error: %s", resp.Status)
 			}
 		}
 		return nil
@@ -380,7 +379,7 @@ func FetchServerCert(urlRoot string) (*x509.Certificate, error) {
 	resp, err := client.Get(urlRoot)
 
 	if err != nil {
-		return nil, fmt.Errorf("could not contact remote server [%s]: %s", urlRoot, err)
+		return nil, errors.Errorf("could not contact remote server [%s]: %s", urlRoot, err)
 	}
 
 	if resp.TLS == nil || len(resp.TLS.PeerCertificates) == 0 {

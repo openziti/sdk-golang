@@ -17,13 +17,13 @@
 package edge
 
 import (
+	"github.com/google/uuid"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/transport"
 	"github.com/netfoundry/ziti-foundation/transport/tls"
 	"github.com/netfoundry/ziti-foundation/util/sequence"
-	"errors"
-	"github.com/google/uuid"
-	"github.com/michaelquigley/pfxlog"
+	"github.com/pkg/errors"
 	"io"
 	"net"
 	"os"

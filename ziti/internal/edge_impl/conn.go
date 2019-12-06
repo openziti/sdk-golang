@@ -17,13 +17,13 @@
 package edge_impl
 
 import (
-	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/concurrenz"
 	"github.com/netfoundry/ziti-foundation/util/sequence"
 	"github.com/netfoundry/ziti-foundation/util/sequencer"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
+	"github.com/pkg/errors"
 	"io"
 	"net"
 	"sync"
@@ -125,11 +125,11 @@ func (conn *edgeConn) Connect(session *edge.NetworkSession) (net.Conn, error) {
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		return nil, fmt.Errorf("attempt to use closed connection: %v", string(replyMsg.Body))
+		return nil, errors.Errorf("attempt to use closed connection: %v", string(replyMsg.Body))
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
-		return nil, fmt.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
 	logger.Debug("connected")
@@ -155,12 +155,12 @@ func (conn *edgeConn) Listen(session *edge.NetworkSession, serviceName string) (
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
 		msg := string(replyMsg.Body)
 		logger.Debugf("bind request resulted in disconnect. msg: (%v)", msg)
-		return nil, fmt.Errorf("attempt to use closed connection: %v", msg)
+		return nil, errors.Errorf("attempt to use closed connection: %v", msg)
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
 		logger.Debugf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-		return nil, fmt.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
 	logger.Debug("connected")

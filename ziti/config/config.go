@@ -17,35 +17,34 @@
 package config
 
 import (
-	"github.com/netfoundry/ziti-foundation/identity/identity"
 	"encoding/json"
-	"errors"
-	"fmt"
+	"github.com/netfoundry/ziti-foundation/identity/identity"
+	"github.com/pkg/errors"
 	"io/ioutil"
 )
 
 type Config struct {
-	ZtAPI    string                  `json:"ztAPI"`
-	ID       identity.IdentityConfig `json:"id"`
+	ZtAPI string                  `json:"ztAPI"`
+	ID    identity.IdentityConfig `json:"id"`
 }
 
 func New(ztApi string, idConfig identity.IdentityConfig) *Config {
 	return &Config{
-		ZtAPI:    ztApi,
-		ID:       idConfig,
+		ZtAPI: ztApi,
+		ID:    idConfig,
 	}
 }
 
 func NewFromFile(confFile string) (*Config, error) {
 	conf, err := ioutil.ReadFile(confFile)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Config file (%s) is not found ", confFile))
+		return nil, errors.Errorf("config file (%s) is not found ", confFile)
 	}
 
 	c := Config{}
 	err = json.Unmarshal(conf, &c)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Failed to load ZT configuration (%s): %v", confFile, err))
+		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
 	}
 
 	return &c, nil

@@ -17,10 +17,10 @@
 package edge
 
 import (
+	"encoding/binary"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/uuidz"
-	"encoding/binary"
-	"fmt"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -86,7 +86,7 @@ func (event *MsgEvent) GetSequence() uint32 {
 func UnmarshalMsgEvent(msg *channel2.Message) (*MsgEvent, error) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
-		return nil, fmt.Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
+		return nil, errors.Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
 	}
 	seq, _ := msg.GetUint32Header(SeqHeader)
 
@@ -183,12 +183,12 @@ type DialResult struct {
 func UnmarshalDialResult(msg *channel2.Message) (*DialResult, error) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
-		return nil, fmt.Errorf("received edge message with no connection id header")
+		return nil, errors.Errorf("received edge message with no connection id header")
 	}
 
 	if msg.ContentType == ContentTypeDialSuccess {
 		if len(msg.Body) != 4 {
-			return nil, fmt.Errorf("dial success msg improperly formated. body len: %v", len(msg.Body))
+			return nil, errors.Errorf("dial success msg improperly formated. body len: %v", len(msg.Body))
 		}
 		newConnId := binary.LittleEndian.Uint32(msg.Body)
 		return &DialResult{
@@ -206,7 +206,7 @@ func UnmarshalDialResult(msg *channel2.Message) (*DialResult, error) {
 		}, nil
 	}
 
-	return nil, fmt.Errorf("unexpected response. received %v instead of dial result message", msg.ContentType)
+	return nil, errors.Errorf("unexpected response. received %v instead of dial result message", msg.ContentType)
 }
 
 func GetLoggerFields(msg *channel2.Message) logrus.Fields {

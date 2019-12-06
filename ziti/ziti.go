@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
@@ -31,6 +30,7 @@ import (
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
@@ -98,13 +98,13 @@ func (context *contextImpl) ensureConfigPresent() error {
 	confFile := os.Getenv(configEnvVarName)
 
 	if confFile == "" {
-		return fmt.Errorf("unable to configure ziti as config environment variable %v not populated", configEnvVarName)
+		return errors.Errorf("unable to configure ziti as config environment variable %v not populated", configEnvVarName)
 	}
 
 	logrus.Infof("loading Ziti configuration from %s", confFile)
 	cfg, err := config.NewFromFile(confFile)
 	if err != nil {
-		return fmt.Errorf("error loading config file specified by ${%s}: %v", configEnvVarName, err)
+		return errors.Errorf("error loading config file specified by ${%s}: %v", configEnvVarName, err)
 	}
 	context.config = cfg
 	return nil
@@ -188,11 +188,11 @@ func (context *contextImpl) Authenticate() error {
 
 func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 	if err := context.initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initilize context: (%v)", err)
+		return nil, errors.Errorf("failed to initilize context: (%v)", err)
 	}
 	id, ok := context.getServiceId(serviceName)
 	if !ok {
-		return nil, fmt.Errorf("service '%s' not found in ZT", serviceName)
+		return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 	}
 
 	var conn net.Conn
@@ -211,7 +211,7 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 		}
 		return conn, err
 	}
-	return nil, fmt.Errorf("unable to dial service '%s' (%v)", serviceName, err)
+	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
 }
 
 func (context *contextImpl) dialSession(service string, netSession *edge.NetworkSession) (net.Conn, error) {
@@ -225,7 +225,7 @@ func (context *contextImpl) dialSession(service string, netSession *edge.Network
 
 func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 	if err := context.initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initilize context: (%v)", err)
+		return nil, errors.Errorf("failed to initilize context: (%v)", err)
 	}
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
@@ -244,7 +244,7 @@ func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 			return listener, err
 		}
 	}
-	return nil, fmt.Errorf("service '%s' not found in ZT", serviceName)
+	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
 func (context *contextImpl) listenSession(netSession *edge.NetworkSession, serviceName string) (net.Listener, error) {
@@ -302,7 +302,7 @@ func (context *contextImpl) getGatewayConnFactory(netSession *edge.NetworkSessio
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
 	if err := context.initialize(); err != nil {
-		return "", false, fmt.Errorf("failed to initilize context: (%v)", err)
+		return "", false, errors.Errorf("failed to initilize context: (%v)", err)
 	}
 
 	id, found := context.getServiceId(name)
@@ -323,7 +323,7 @@ func (context *contextImpl) getServiceId(name string) (string, bool) {
 
 func (context *contextImpl) GetServices() ([]edge.Service, error) {
 	if err := context.initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initilize context: (%v)", err)
+		return nil, errors.Errorf("failed to initilize context: (%v)", err)
 	}
 	return context.getServices()
 }
@@ -401,7 +401,7 @@ func (context *contextImpl) GetNetworkHostSession(id string) (*edge.NetworkSessi
 
 func (context *contextImpl) getNetworkSession(id string, host bool) (*edge.NetworkSession, error) {
 	if err := context.initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initilize context: (%v)", err)
+		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 	val, ok := context.session.netSessions.Load(id)
 	if ok {
@@ -424,13 +424,13 @@ func (context *contextImpl) getNetworkSession(id string, host bool) (*edge.Netwo
 
 	if resp.StatusCode != 201 {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Failed to create network session: %s\n%s", resp.Status, string(respBody))
+		return nil, errors.Errorf("failed to create network session: %s\n%s", resp.Status, string(respBody))
 	}
 
 	netSession := new(edge.NetworkSession)
 	_, err = edge.ApiResponseDecode(netSession, resp.Body)
 	if err != nil {
-		pfxlog.Logger().Error("failed to decode net session response", err)
+		pfxlog.Logger().WithError(err).Error("failed to decode net session response")
 		return nil, err
 	}
 	context.session.netSessions.Store(id, netSession)

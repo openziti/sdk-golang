@@ -17,10 +17,10 @@
 package edge
 
 import (
+	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/concurrenz"
-	"fmt"
-	"github.com/michaelquigley/pfxlog"
+	"github.com/pkg/errors"
 	"io"
 	"time"
 )
@@ -53,7 +53,7 @@ func (mux *MsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *MsgMux) HandleReceive(msg *channel2.Message, ch channel2.Channel) {
+func (mux *MsgMux) HandleReceive(msg *channel2.Message, _ channel2.Channel) {
 	if event, err := UnmarshalMsgEvent(msg); err != nil {
 		pfxlog.Logger().WithError(err).Errorf("error unmarshaling edge message headers. content type: %v", msg.ContentType)
 	} else {
@@ -111,7 +111,7 @@ func (mux *MsgMux) IsClosed() bool {
 	return mux.closed.Get()
 }
 
-func (mux *MsgMux) HandleClose(ch channel2.Channel) {
+func (mux *MsgMux) HandleClose(_ channel2.Channel) {
 	mux.Close()
 }
 
@@ -160,7 +160,7 @@ type muxAddSinkEvent struct {
 func (event *muxAddSinkEvent) Handle(mux *MsgMux) {
 	defer close(event.doneC)
 	if _, found := mux.chanMap[event.sink.Id()]; found {
-		event.doneC <- fmt.Errorf("message sink with id %v already exists", event.sink.Id())
+		event.doneC <- errors.Errorf("message sink with id %v already exists", event.sink.Id())
 	} else {
 		mux.chanMap[event.sink.Id()] = event.sink
 		pfxlog.Logger().

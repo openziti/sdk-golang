@@ -17,9 +17,9 @@
 package edge_impl
 
 import (
-	"errors"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
+	"github.com/pkg/errors"
 	"net"
 	"time"
 )
