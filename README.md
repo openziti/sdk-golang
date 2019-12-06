@@ -22,7 +22,7 @@ are available to enroll with `ottCa` and `CA` methods
 
 SDK is using `ZITI_SDK_CONFIG` environment variable to load configuration file.
 
-# Using `ziti-proxy`
+# Using `ziti-proxy` (TODO: replace with ziti-tunnel doc)
 
 `ziti-proxy` opens up local tcp port for proxy-ing to the target service. 
 Services are identified by names in Ziti Controlller. It supports multiple services.
