@@ -55,6 +55,7 @@ func plain(listenAddr string) {
 func withZiti(service string) {
 	listener, err := ziti.NewContext().Listen(service)
 	if err != nil {
+		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)
 	}
 	serve(listener, "ziti")
