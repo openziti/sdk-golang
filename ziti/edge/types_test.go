@@ -26,27 +26,27 @@ func TestNetworkSessionDecode(t *testing.T) {
 	resp := `
 {"meta":{},
 "data":{"_links":{"self":{"href":"./network-sessions/a7dde565-dec8-4188-90e5-42f5d33bf5a6"}},
-"gateways":[
+"edgeRouters":[
 {"hostname":"hermes-host.ziti.netfoundry.io","name":"hermes","urls":{"tls":"tls://hermes-host.ziti.netfoundry.io:3022"}}],
 "id":"a7dde565-dec8-4188-90e5-42f5d33bf5a6","token":"75d9aa68-dde3-4243-a062-50fab347b781"}}
 `
-	ns := new(NetworkSession)
+	ns := new(Session)
 
 	_, err := ApiResponseDecode(ns, strings.NewReader(resp))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	gateways := make([]Gateway,1)
-	gateways[0].Name = "hermes"
-	gateways[0].Hostname = "hermes-host.ziti.netfoundry.io"
-	gateways[0].Urls = map[string]string{
+	edgeRouters := make([]EdgeRouter, 1)
+	edgeRouters[0].Name = "hermes"
+	edgeRouters[0].Hostname = "hermes-host.ziti.netfoundry.io"
+	edgeRouters[0].Urls = map[string]string{
 		"tls": "tls://hermes-host.ziti.netfoundry.io:3022",
 	}
-	expected := &NetworkSession{
-		Token: "75d9aa68-dde3-4243-a062-50fab347b781",
-		Id: "a7dde565-dec8-4188-90e5-42f5d33bf5a6",
-		Gateways: gateways,
+	expected := &Session{
+		Token:       "75d9aa68-dde3-4243-a062-50fab347b781",
+		Id:          "a7dde565-dec8-4188-90e5-42f5d33bf5a6",
+		EdgeRouters: edgeRouters,
 	}
 
 	if !reflect.DeepEqual(expected, ns) {

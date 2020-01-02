@@ -17,6 +17,12 @@
 package edge
 
 import (
+	"io"
+	"net"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
@@ -24,11 +30,6 @@ import (
 	"github.com/netfoundry/ziti-foundation/transport/tls"
 	"github.com/netfoundry/ziti-foundation/util/sequence"
 	"github.com/pkg/errors"
-	"io"
-	"net"
-	"os"
-	"strings"
-	"time"
 )
 
 type addrParser struct {
@@ -57,8 +58,8 @@ type Conn interface {
 	net.Conn
 	Identifiable
 	NewConn(service string) Conn
-	Connect(session *NetworkSession) (net.Conn, error)
-	Listen(session *NetworkSession, serviceName string) (net.Listener, error)
+	Connect(session *Session) (net.Conn, error)
+	Listen(session *Session, serviceName string) (net.Listener, error)
 	IsClosed() bool
 }
 

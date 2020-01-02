@@ -21,34 +21,34 @@ import (
 	"io"
 )
 
-type Session struct {
+type ApiSession struct {
 	Id    string `json:"id"`
 	Token string `json:"token"`
 	//Tags  []string `json:"tags"`
 }
 
-type Gateway struct {
+type EdgeRouter struct {
 	Name     string `json:"name"`
 	Hostname string `json:"hostname"`
 	Urls     map[string]string
 }
 
-type NetworkSession struct {
-	Id        string    `json:"id"`
-	Token     string    `json:"token"`
-	SessionId string    `json:"sessionId"`
-	Gateways  []Gateway `json:"gateways"`
+type Session struct {
+	Id           string       `json:"id"`
+	Token        string       `json:"token"`
+	ApiSessionId string       `json:"sessionId"`
+	EdgeRouters  []EdgeRouter `json:"edgeRouters"`
 }
 
 type Service struct {
-	Name string `json:"name"`
 	Id   string `json:"id"`
+	Name string `json:"name"`
 	Dns  struct {
 		Hostname string `json:"hostname"`
 		Port     int    `json:"port"`
 	} `json:"dns"`
-	Hostable bool              `json:"hostable"`
-	Tags     map[string]string `json:"tags"`
+	Permissions []string          `json:"permissions"`
+	Tags        map[string]string `json:"tags"`
 }
 
 type EdgeControllerApiError struct {

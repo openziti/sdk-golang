@@ -11,7 +11,7 @@ require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/netfoundry/ziti-foundation v0.0.0-20191213201903-e68267fe89e6
+	github.com/netfoundry/ziti-foundation v0.0.0-20200104011655-295bb307246b
 	github.com/pkg/errors v0.8.1
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0
