@@ -21,6 +21,16 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/common/constants"
@@ -32,15 +42,6 @@ import (
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"net/url"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Context interface {
@@ -49,42 +50,39 @@ type Context interface {
 	Listen(serviceName string) (net.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
-	GetNetworkSession(id string) (*edge.NetworkSession, error)
-	GetNetworkHostSession(id string) (*edge.NetworkSession, error)
+	GetSession(id string) (*edge.Session, error)
+	GetBindSession(id string) (*edge.Session, error)
 
-	// Close closes any connections open to gateways
+	// Close closes any connections open to edge routers
 	Close()
 }
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
 var servicesUrl, _ = url.Parse("/services")
-var networkSessionUrl, _ = url.Parse("/network-sessions")
+var sessionUrl, _ = url.Parse("/network-sessions")
 
 type contextImpl struct {
-	config          *config.Config
-	initDone        sync.Once
-	session         session
-	gwConnFactories map[string]edge.ConnFactory
-	connMutex       sync.Mutex
-}
+	config                  *config.Config
+	initDone                sync.Once
+	edgeRouterConnFactories map[string]edge.ConnFactory
+	connMutex               sync.Mutex
 
-type session struct {
 	id          identity.Identity
 	zitiUrl     *url.URL
 	tlsCtx      *tls.Config
 	clt         http.Client
-	session     *edge.Session
+	apiSession  *edge.ApiSession
 	servicesMtx sync.RWMutex
 	services    []edge.Service
-	netSessions sync.Map
+	sessions    sync.Map
 }
 
 func NewContext() Context {
-	return &contextImpl{gwConnFactories: make(map[string]edge.ConnFactory)}
+	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory)}
 }
 
 func NewContextWithConfig(config *config.Config) Context {
-	return &contextImpl{gwConnFactories: make(map[string]edge.ConnFactory), config: config}
+	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory), config: config}
 }
 
 func (context *contextImpl) ensureConfigPresent() error {
@@ -123,20 +121,18 @@ func (context *contextImpl) initializer() error {
 	if err != nil {
 		return err
 	}
-	session := &context.session
-
-	session.zitiUrl, _ = url.Parse(context.config.ZtAPI)
+	context.zitiUrl, _ = url.Parse(context.config.ZtAPI)
 
 	id, err := identity.LoadIdentity(context.config.ID)
 	if err != nil {
 		return err
 	}
 
-	session.id = id
-	session.tlsCtx = id.ClientTLSConfig()
-	session.clt = http.Client{
+	context.id = id
+	context.tlsCtx = id.ClientTLSConfig()
+	context.clt = http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: session.tlsCtx,
+			TLSClientConfig: context.tlsCtx,
 		},
 		Timeout: 30 * time.Second,
 	}
@@ -146,7 +142,7 @@ func (context *contextImpl) initializer() error {
 	}
 
 	// get services
-	if session.services, err = context.getServices(); err != nil {
+	if context.services, err = context.getServices(); err != nil {
 		return err
 	}
 
@@ -155,12 +151,11 @@ func (context *contextImpl) initializer() error {
 
 func (context *contextImpl) Authenticate() error {
 	logrus.Info("attempting to authenticate")
-	context.session.netSessions = sync.Map{}
-	session := &context.session
+	context.sessions = sync.Map{}
 
 	req := new(bytes.Buffer)
 	json.NewEncoder(req).Encode(info.GetSdkInfo())
-	resp, err := session.clt.Post(session.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
+	resp, err := context.clt.Post(context.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
 
 	if err != nil {
 		return err
@@ -171,7 +166,7 @@ func (context *contextImpl) Authenticate() error {
 		logrus.Fatal("failed to authenticate with ZT controller")
 	}
 
-	apiSessionResp := edge.Session{}
+	apiSessionResp := edge.ApiSession{}
 
 	_, err = edge.ApiResponseDecode(&apiSessionResp, resp.Body)
 	if err != nil {
@@ -180,8 +175,8 @@ func (context *contextImpl) Authenticate() error {
 	logrus.
 		WithField("token", apiSessionResp.Token).
 		WithField("id", apiSessionResp.Id).
-		Debugf("Got session: %v", apiSessionResp)
-	session.session = &apiSessionResp
+		Debugf("Got api session: %v", apiSessionResp)
+	context.apiSession = &apiSessionResp
 
 	return nil
 }
@@ -198,14 +193,14 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 	var conn net.Conn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
-		ns, err := context.GetNetworkSession(id)
+		ns, err := context.GetSession(id)
 		if err != nil {
 			return nil, err
 		}
 		conn, err = context.dialSession(serviceName, ns)
 		if err != nil && attempt == 0 {
 			if strings.Contains(err.Error(), "closed") {
-				context.deleteNetworkSession(id)
+				context.deleteSession(id)
 				continue
 			}
 		}
@@ -214,13 +209,13 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
 }
 
-func (context *contextImpl) dialSession(service string, netSession *edge.NetworkSession) (net.Conn, error) {
-	edgeConnFactory, err := context.getGatewayConnFactory(netSession)
+func (context *contextImpl) dialSession(service string, session *edge.Session) (net.Conn, error) {
+	edgeConnFactory, err := context.getEdgeRouterConnFactory(session)
 	if err != nil {
 		return nil, err
 	}
 	edgeConn := edgeConnFactory.NewConn(service)
-	return edgeConn.Connect(netSession)
+	return edgeConn.Connect(session)
 }
 
 func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
@@ -230,14 +225,14 @@ func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
 		for attempt := 0; attempt < 2; attempt++ {
-			ns, err := context.GetNetworkHostSession(id)
+			ns, err := context.GetBindSession(id)
 			if err != nil {
 				return nil, err
 			}
 			listener, err := context.listenSession(ns, serviceName)
 			if err != nil && attempt == 0 {
 				if strings.Contains(err.Error(), "closed") {
-					context.deleteNetworkSession(id)
+					context.deleteSession(id)
 					continue
 				}
 			}
@@ -247,35 +242,35 @@ func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(netSession *edge.NetworkSession, serviceName string) (net.Listener, error) {
-	edgeConnFactory, err := context.getGatewayConnFactory(netSession)
+func (context *contextImpl) listenSession(session *edge.Session, serviceName string) (net.Listener, error) {
+	edgeConnFactory, err := context.getEdgeRouterConnFactory(session)
 	if err != nil {
 		return nil, err
 	}
 	edgeConn := edgeConnFactory.NewConn(serviceName)
-	return edgeConn.Listen(netSession, serviceName)
+	return edgeConn.Listen(session, serviceName)
 }
 
-func (context *contextImpl) getGatewayConnFactory(netSession *edge.NetworkSession) (edge.ConnFactory, error) {
-	logger := pfxlog.Logger().WithField("ns", netSession.Token)
+func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edge.ConnFactory, error) {
+	logger := pfxlog.Logger().WithField("ns", session.Token)
 
-	if len(netSession.Gateways) == 0 {
+	if len(session.EdgeRouters) == 0 {
 		return nil, errors.New("no edge routers available")
 	}
-	gateway := netSession.Gateways[0]
-	ingressUrl := gateway.Urls["tls"]
+	edgeRouter := session.EdgeRouters[0]
+	ingressUrl := edgeRouter.Urls["tls"]
 
 	context.connMutex.Lock()
 	defer context.connMutex.Unlock()
 
 	// remove any closed connections
-	for key, val := range context.gwConnFactories {
+	for key, val := range context.edgeRouterConnFactories {
 		if val.IsClosed() {
-			delete(context.gwConnFactories, key)
+			delete(context.edgeRouterConnFactories, key)
 		}
 	}
 
-	if edgeConn, found := context.gwConnFactories[ingressUrl]; found {
+	if edgeConn, found := context.edgeRouterConnFactories[ingressUrl]; found {
 		return edgeConn, nil
 	}
 
@@ -284,9 +279,9 @@ func (context *contextImpl) getGatewayConnFactory(netSession *edge.NetworkSessio
 		return nil, err
 	}
 
-	id := context.session.id
+	id := context.id
 	dialer := channel2.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(context.session.session.Token),
+		edge.SessionTokenHeader: []byte(context.apiSession.Token),
 	})
 
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
@@ -296,7 +291,7 @@ func (context *contextImpl) getGatewayConnFactory(netSession *edge.NetworkSessio
 	}
 
 	edgeConn := edge_impl.NewEdgeConnFactory(ch)
-	context.gwConnFactories[ingressUrl] = edgeConn
+	context.edgeRouterConnFactories[ingressUrl] = edgeConn
 	return edgeConn, nil
 }
 
@@ -310,10 +305,10 @@ func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
 }
 
 func (context *contextImpl) getServiceId(name string) (string, bool) {
-	context.session.servicesMtx.RLock()
-	defer context.session.servicesMtx.RUnlock()
+	context.servicesMtx.RLock()
+	defer context.servicesMtx.RUnlock()
 
-	for _, s := range context.session.services {
+	for _, s := range context.services {
 		if s.Name == name {
 			return s.Id, true
 		}
@@ -330,12 +325,12 @@ func (context *contextImpl) GetServices() ([]edge.Service, error) {
 
 func (context *contextImpl) getServices() ([]edge.Service, error) {
 
-	servReq, _ := http.NewRequest("GET", context.session.zitiUrl.ResolveReference(servicesUrl).String(), nil)
+	servReq, _ := http.NewRequest("GET", context.zitiUrl.ResolveReference(servicesUrl).String(), nil)
 
-	if context.session.session.Token == "" {
-		return nil, errors.New("session token is empty")
+	if context.apiSession.Token == "" {
+		return nil, errors.New("api session token is empty")
 	}
-	servReq.Header.Set(constants.ZitiSession, context.session.session.Token)
+	servReq.Header.Set(constants.ZitiSession, context.apiSession.Token)
 	pgOffset := 0
 	pgLimit := 100
 	servicesMap := make(map[string]edge.Service)
@@ -345,7 +340,7 @@ func (context *contextImpl) getServices() ([]edge.Service, error) {
 		q.Set("limit", strconv.Itoa(pgLimit))
 		q.Set("offset", strconv.Itoa(pgOffset))
 		servReq.URL.RawQuery = q.Encode()
-		resp, err := context.session.clt.Do(servReq)
+		resp, err := context.clt.Do(servReq)
 
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 			return nil, errors.New("unauthorized")
@@ -385,37 +380,37 @@ func (context *contextImpl) getServices() ([]edge.Service, error) {
 		services[i] = s
 		i++
 	}
-	context.session.servicesMtx.Lock()
-	context.session.services = services
-	context.session.servicesMtx.Unlock()
+	context.servicesMtx.Lock()
+	context.services = services
+	context.servicesMtx.Unlock()
 	return services, nil
 }
 
-func (context *contextImpl) GetNetworkSession(id string) (*edge.NetworkSession, error) {
-	return context.getNetworkSession(id, false)
+func (context *contextImpl) GetSession(id string) (*edge.Session, error) {
+	return context.getSession(id, false)
 }
 
-func (context *contextImpl) GetNetworkHostSession(id string) (*edge.NetworkSession, error) {
-	return context.getNetworkSession(id, true)
+func (context *contextImpl) GetBindSession(id string) (*edge.Session, error) {
+	return context.getSession(id, true)
 }
 
-func (context *contextImpl) getNetworkSession(id string, host bool) (*edge.NetworkSession, error) {
+func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
-	val, ok := context.session.netSessions.Load(id)
+	val, ok := context.sessions.Load(id)
 	if ok {
-		return val.(*edge.NetworkSession), nil
+		return val.(*edge.Session), nil
 	}
-	body := fmt.Sprintf(`{"serviceId":"%s", "hosting": %s}`, id, strconv.FormatBool(host))
+	body := fmt.Sprintf(`{"serviceId":"%s", "hosting": %s}`, id, strconv.FormatBool(bind))
 	reqBody := bytes.NewBufferString(body)
 
-	req, _ := http.NewRequest("POST", context.session.zitiUrl.ResolveReference(networkSessionUrl).String(), reqBody)
-	req.Header.Set(constants.ZitiSession, context.session.session.Token)
+	req, _ := http.NewRequest("POST", context.zitiUrl.ResolveReference(sessionUrl).String(), reqBody)
+	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
 	req.Header.Set("Content-Type", "application/json")
 
-	logrus.WithField("service_id", id).Debug("requesting network session")
-	resp, err := context.session.clt.Do(req)
+	logrus.WithField("service_id", id).Debug("requesting session")
+	resp, err := context.clt.Do(req)
 
 	if err != nil {
 		return nil, err
@@ -424,22 +419,22 @@ func (context *contextImpl) getNetworkSession(id string, host bool) (*edge.Netwo
 
 	if resp.StatusCode != 201 {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return nil, errors.Errorf("failed to create network session: %s\n%s", resp.Status, string(respBody))
+		return nil, errors.Errorf("failed to create session: %s\n%s", resp.Status, string(respBody))
 	}
 
-	netSession := new(edge.NetworkSession)
-	_, err = edge.ApiResponseDecode(netSession, resp.Body)
+	session := new(edge.Session)
+	_, err = edge.ApiResponseDecode(session, resp.Body)
 	if err != nil {
-		pfxlog.Logger().WithError(err).Error("failed to decode net session response")
+		pfxlog.Logger().WithError(err).Error("failed to decode session response")
 		return nil, err
 	}
-	context.session.netSessions.Store(id, netSession)
+	context.sessions.Store(id, session)
 
-	return netSession, nil
+	return session, nil
 }
 
-func (context *contextImpl) deleteNetworkSession(id string) {
-	context.session.netSessions.Delete(id)
+func (context *contextImpl) deleteSession(id string) {
+	context.sessions.Delete(id)
 }
 
 func (context *contextImpl) Close() {
@@ -449,12 +444,12 @@ func (context *contextImpl) Close() {
 	defer context.connMutex.Unlock()
 
 	// remove any closed connections
-	for key, val := range context.gwConnFactories {
+	for key, val := range context.edgeRouterConnFactories {
 		if !val.IsClosed() {
 			if err := val.Close(); err != nil {
 				logger.WithError(err).Error("error while closing connection")
 			}
 		}
-		delete(context.gwConnFactories, key)
+		delete(context.edgeRouterConnFactories, key)
 	}
 }

@@ -17,6 +17,11 @@
 package edge_impl
 
 import (
+	"io"
+	"net"
+	"sync"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/concurrenz"
@@ -24,10 +29,6 @@ import (
 	"github.com/netfoundry/ziti-foundation/util/sequencer"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
-	"io"
-	"net"
-	"sync"
-	"time"
 )
 
 var connSeq *sequence.Sequence
@@ -113,7 +114,7 @@ func (conn *edgeConn) HandleClose(ch channel2.Channel) {
 	conn.closed.Set(true)
 }
 
-func (conn *edgeConn) Connect(session *edge.NetworkSession) (net.Conn, error) {
+func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 
 	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token)
@@ -137,13 +138,13 @@ func (conn *edgeConn) Connect(session *edge.NetworkSession) (net.Conn, error) {
 	return conn, nil
 }
 
-func (conn *edgeConn) Listen(session *edge.NetworkSession, serviceName string) (net.Listener, error) {
+func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
 		WithField("service", serviceName).
 		WithField("session", session.Token)
 
-	logger.Debug("sending bind request to gateway")
+	logger.Debug("sending bind request to edge router")
 	bindRequest := edge.NewBindMsg(conn.Id(), session.Token)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)

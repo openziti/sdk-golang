@@ -19,22 +19,14 @@ package config
 import (
 	"crypto/x509"
 	"fmt"
+	"net/url"
+	"path"
+	"reflect"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"net/url"
-	"path"
-	"reflect"
-)
-
-const (
-	IdentityTypeGateway    = "gateway"
-	IdentityTypeEndpoint   = "endpoint"
-	IdentityTypeCaEndpoint = "ca-endpoint"
-
-	AudienceGatewayEnroller  = "gateway-enroller"
-	AudienceEndpointEnroller = "endpoint-enroller"
 )
 
 type Versions struct {
