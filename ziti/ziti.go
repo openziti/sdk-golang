@@ -59,7 +59,7 @@ type Context interface {
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
 var servicesUrl, _ = url.Parse("/services")
-var sessionUrl, _ = url.Parse("/network-sessions")
+var sessionUrl, _ = url.Parse("/sessions")
 
 type contextImpl struct {
 	config                  *config.Config
@@ -156,8 +156,8 @@ func (context *contextImpl) Authenticate() error {
 	req := new(bytes.Buffer)
 	json.NewEncoder(req).Encode(info.GetSdkInfo())
 	resp, err := context.clt.Post(context.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
-
 	if err != nil {
+		pfxlog.Logger().Errorf("failure to post auth %+v", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -220,7 +220,7 @@ func (context *contextImpl) dialSession(service string, session *edge.Session) (
 
 func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initilize context: (%v)", err)
+		return nil, errors.Errorf("failed to initialize context: (%w)", err)
 	}
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
@@ -324,11 +324,12 @@ func (context *contextImpl) GetServices() ([]edge.Service, error) {
 }
 
 func (context *contextImpl) getServices() ([]edge.Service, error) {
-
 	servReq, _ := http.NewRequest("GET", context.zitiUrl.ResolveReference(servicesUrl).String(), nil)
 
 	if context.apiSession.Token == "" {
 		return nil, errors.New("api session token is empty")
+	} else {
+		pfxlog.Logger().Debugf("using api session token %v", context.apiSession.Token)
 	}
 	servReq.Header.Set(constants.ZitiSession, context.apiSession.Token)
 	pgOffset := 0
@@ -343,6 +344,9 @@ func (context *contextImpl) getServices() ([]edge.Service, error) {
 		resp, err := context.clt.Do(servReq)
 
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			if body, err := ioutil.ReadAll(resp.Body); err != nil {
+				pfxlog.Logger().Debugf("error response: %v", body)
+			}
 			return nil, errors.New("unauthorized")
 		}
 
@@ -405,7 +409,9 @@ func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, err
 	body := fmt.Sprintf(`{"serviceId":"%s", "hosting": %s}`, id, strconv.FormatBool(bind))
 	reqBody := bytes.NewBufferString(body)
 
-	req, _ := http.NewRequest("POST", context.zitiUrl.ResolveReference(sessionUrl).String(), reqBody)
+	url := context.zitiUrl.ResolveReference(sessionUrl).String()
+	pfxlog.Logger().Debugf("requesting session from %v", url)
+	req, _ := http.NewRequest("POST", url, reqBody)
 	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
 	req.Header.Set("Content-Type", "application/json")
 
