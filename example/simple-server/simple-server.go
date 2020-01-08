@@ -18,14 +18,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
+	"github.com/netfoundry/ziti-sdk-golang/ziti"
+	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"
-
-	"github.com/sirupsen/logrus"
-
-	"github.com/michaelquigley/pfxlog"
-	"github.com/netfoundry/ziti-sdk-golang/ziti"
 )
 
 type Greeter string
