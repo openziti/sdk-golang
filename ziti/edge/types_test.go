@@ -25,7 +25,7 @@ import (
 func TestNetworkSessionDecode(t *testing.T) {
 	resp := `
 {"meta":{},
-"data":{"_links":{"self":{"href":"./network-sessions/a7dde565-dec8-4188-90e5-42f5d33bf5a6"}},
+"data":{"_links":{"self":{"href":"./sessions/a7dde565-dec8-4188-90e5-42f5d33bf5a6"}},
 "edgeRouters":[
 {"hostname":"hermes-host.ziti.netfoundry.io","name":"hermes","urls":{"tls":"tls://hermes-host.ziti.netfoundry.io:3022"}}],
 "id":"a7dde565-dec8-4188-90e5-42f5d33bf5a6","token":"75d9aa68-dde3-4243-a062-50fab347b781"}}

@@ -18,7 +18,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-sdk-golang/ziti"
+	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"
@@ -62,6 +64,10 @@ func withZiti(service string) {
 }
 
 func main() {
+	if os.Getenv("DEBUG") == "true" {
+		pfxlog.Global(logrus.DebugLevel)
+		pfxlog.Logger().Debugf("debug enabled")
+	}
 	if len(os.Args) > 2 && os.Args[1] == "ziti" {
 		withZiti(os.Args[2])
 	} else {

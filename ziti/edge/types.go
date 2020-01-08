@@ -34,10 +34,9 @@ type EdgeRouter struct {
 }
 
 type Session struct {
-	Id           string       `json:"id"`
-	Token        string       `json:"token"`
-	ApiSessionId string       `json:"sessionId"`
-	EdgeRouters  []EdgeRouter `json:"edgeRouters"`
+	Id          string       `json:"id"`
+	Token       string       `json:"token"`
+	EdgeRouters []EdgeRouter `json:"edgeRouters"`
 }
 
 type Service struct {
