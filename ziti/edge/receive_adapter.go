@@ -29,6 +29,19 @@ func (adapter *FunctionReceiveAdapter) ContentType() int32 {
 	return adapter.Type
 }
 
-func (adapter FunctionReceiveAdapter) HandleReceive(m *channel2.Message, ch channel2.Channel) {
+func (adapter *FunctionReceiveAdapter) HandleReceive(m *channel2.Message, ch channel2.Channel) {
 	adapter.Handler(m, ch)
+}
+
+type AsyncFunctionReceiveAdapter struct {
+	Type    int32
+	Handler func(*channel2.Message, channel2.Channel)
+}
+
+func (adapter *AsyncFunctionReceiveAdapter) ContentType() int32 {
+	return adapter.Type
+}
+
+func (adapter *AsyncFunctionReceiveAdapter) HandleReceive(m *channel2.Message, ch channel2.Channel) {
+	go adapter.Handler(m, ch)
 }
