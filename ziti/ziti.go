@@ -410,7 +410,7 @@ func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, err
 		sessionType = "Bind"
 	}
 
-	body := fmt.Sprintf(`{"serviceId":"%s", "type": %s}`, id, sessionType)
+	body := fmt.Sprintf(`{"serviceId":"%s", "type": "%s"}`, id, sessionType)
 	reqBody := bytes.NewBufferString(body)
 
 	url := context.zitiUrl.ResolveReference(sessionUrl).String()
