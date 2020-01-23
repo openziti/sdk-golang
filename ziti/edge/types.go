@@ -40,14 +40,11 @@ type Session struct {
 }
 
 type Service struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
-	Dns  struct {
-		Hostname string `json:"hostname"`
-		Port     int    `json:"port"`
-	} `json:"dns"`
-	Permissions []string          `json:"permissions"`
-	Tags        map[string]string `json:"tags"`
+	Id          string                            `json:"id"`
+	Name        string                            `json:"name"`
+	Permissions []string                          `json:"permissions"`
+	Configs     map[string]map[string]interface{} `json:"config"`
+	Tags        map[string]string                 `json:"tags"`
 }
 
 type EdgeControllerApiError struct {
