@@ -18,6 +18,9 @@ package edge
 
 import (
 	"encoding/json"
+	"github.com/michaelquigley/pfxlog"
+	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 	"io"
 )
 
@@ -45,6 +48,23 @@ type Service struct {
 	Permissions []string                          `json:"permissions"`
 	Configs     map[string]map[string]interface{} `json:"config"`
 	Tags        map[string]string                 `json:"tags"`
+}
+
+func (service *Service) GetConfigOfType(configType string, target interface{}) (bool, error) {
+	if service.Configs == nil {
+		pfxlog.Logger().Debugf("no service configs defined for service %v", service.Name)
+		return false, nil
+	}
+	configMap, found := service.Configs[configType]
+	if !found {
+		pfxlog.Logger().Debugf("no service config of type %v defined for service %v", configType, service.Name)
+		return false, nil
+	}
+	if err := mapstructure.Decode(configMap, target); err != nil {
+		pfxlog.Logger().WithError(err).Debugf("unable to decode service configuration for of type %v defined for service %v", configType, service.Name)
+		return true, errors.Errorf("unable to decode service config structure: %w", err)
+	}
+	return true, nil
 }
 
 type EdgeControllerApiError struct {
