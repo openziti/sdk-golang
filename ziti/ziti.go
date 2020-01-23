@@ -153,7 +153,15 @@ func (context *contextImpl) Authenticate() error {
 	context.sessions = sync.Map{}
 
 	req := new(bytes.Buffer)
-	json.NewEncoder(req).Encode(info.GetSdkInfo())
+	sdkInfo := info.GetSdkInfo()
+	if len(context.config.ConfigTypes) > 0 {
+		if sdkInfoMap, ok := sdkInfo.(map[string]interface{}); ok {
+			sdkInfoMap["configTypes"] = context.config.ConfigTypes
+		} else {
+			return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
+		}
+	}
+	json.NewEncoder(req).Encode(sdkInfo)
 	resp, err := context.clt.Post(context.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
 	if err != nil {
 		pfxlog.Logger().Errorf("failure to post auth %+v", err)
