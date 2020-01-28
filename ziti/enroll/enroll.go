@@ -116,7 +116,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	if strings.TrimSpace(enFlags.KeyFile) != "" {
 		stat, err := os.Stat(enFlags.KeyFile)
 
-		if !os.IsNotExist(err) {
+		if stat != nil && !os.IsNotExist(err) {
 			if stat.IsDir() {
 				return nil, errors.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
 			}
