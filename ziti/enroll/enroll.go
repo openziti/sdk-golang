@@ -282,7 +282,14 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		if edgeError.Error.Cause.Message == "identity not found" && edgeError.Error.Code == "INVALID_FIELD" {
 			return errors.Errorf("enroll error: %s. response: the provided token was invalid. either the token is not correct or it has already been used", resp.Status)
 		} else {
-			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, edgeError.Error.Cause.Message)
+			cause := edgeError.Error.Cause.Message
+
+			if cause == "" {
+				//if Cause.Message is empty - try using CauseMessage instead
+				cause = edgeError.Error.CauseMessage
+			}
+
+			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, cause)
 		}
 	}
 	cfg.ID.Cert = "pem:" + string(respBody)
