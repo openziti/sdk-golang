@@ -1,4 +1,13 @@
-language: go
+version: "~> 1.0"
 
-go:
-  - "1.13"
+before_install:
+  - openssl aes-256-cbc -K $encrypted_266a043cabdc_key -iv $encrypted_266a043cabdc_iv -in github_deploy_key.enc -out github_deploy_key -d
+
+env:
+  global: VERSION_FILE=./version
+
+import:
+  - source: netfoundry/ziti-ci:go-defaults.yml@v1
+  - source: netfoundry/ziti-ci:git-setup.yml@v1
+  - source: netfoundry/ziti-ci:versioning.yml@v1
+    if: type != pull_request
