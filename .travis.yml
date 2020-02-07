@@ -1,8 +1,5 @@
 version: "~> 1.0"
 
-before_install:
-  - openssl aes-256-cbc -K $encrypted_266a043cabdc_key -iv $encrypted_266a043cabdc_iv -in github_deploy_key.enc -out github_deploy_key -d
-
 env:
   global: VERSION_FILE=./version
 
