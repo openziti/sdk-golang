@@ -6,5 +6,6 @@ import:
   - source: netfoundry/ziti-ci:versioning.yml@v1
     if: type = pull_request
 
+
 before_script:
   - ./tmp/ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
