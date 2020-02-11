@@ -294,7 +294,9 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		cause := "unspecified"
 		if jsonErr.Exists("error", "cause", "message") {
 			cause = jsonErr.Search("error", "cause", "message").Data().(string)
-		} else if jsonErr.Exists("error", "causeMessage") {
+		}
+
+		if cause == "" && jsonErr.Exists("error", "causeMessage") {
 			cause = jsonErr.Search("error", "causeMessage").Data().(string)
 		}
 
