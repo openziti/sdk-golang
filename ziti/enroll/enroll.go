@@ -291,7 +291,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		code := jsonErr.Search("error", "code").Data().(string)
 
 		//todo: remove causeMessage support when removed from API
-		cause := "unspecified"
+		cause := ""
 		if jsonErr.Exists("error", "cause", "message") {
 			cause = jsonErr.Search("error", "cause", "message").Data().(string)
 		}
