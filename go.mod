@@ -2,7 +2,7 @@ module github.com/netfoundry/ziti-sdk-golang
 
 go 1.13
 
-// replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
+//replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -12,9 +12,9 @@ require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/netfoundry/ziti-foundation v0.6.2-0.20200211140849-799ad8a0e0c3
+	github.com/netfoundry/ziti-foundation v0.6.2
 	github.com/pkg/errors v0.8.1
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0
-	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9 // indirect
+	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9
 )

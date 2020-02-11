@@ -26,10 +26,10 @@ import (
 	"github.com/netfoundry/ziti-foundation/common/constants"
 	"github.com/netfoundry/ziti-foundation/identity/identity"
 	"github.com/netfoundry/ziti-foundation/transport"
-	"github.com/netfoundry/ziti-foundation/util/info"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
+	"github.com/netfoundry/ziti-sdk-golang/ziti/sdkinfo"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -153,7 +153,7 @@ func (context *contextImpl) Authenticate() error {
 	context.sessions = sync.Map{}
 
 	req := new(bytes.Buffer)
-	sdkInfo := info.GetSdkInfo()
+	sdkInfo := sdkinfo.GetSdkInfo()
 	if len(context.config.ConfigTypes) > 0 {
 		if sdkInfoMap, ok := sdkInfo.(map[string]interface{}); ok {
 			sdkInfoMap["configTypes"] = context.config.ConfigTypes
