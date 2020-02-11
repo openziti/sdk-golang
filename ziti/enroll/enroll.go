@@ -27,6 +27,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"github.com/Jeffail/gabs"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/fullsailor/pkcs7"
 	"github.com/michaelquigley/pfxlog"
@@ -35,7 +36,6 @@ import (
 	nfpem "github.com/netfoundry/ziti-foundation/util/pem"
 	"github.com/netfoundry/ziti-foundation/util/x509"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
-	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
@@ -269,31 +269,31 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		return err
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK || err != nil {
-		var edgeError edge.EdgeControllerApiError
-		jsonerr := json.Unmarshal(respBody, &edgeError)
+	body, err := ioutil.ReadAll(resp.Body)
 
-		if jsonerr != nil {
-			return errors.Errorf("enroll error: %s. raw response: %s. ", resp.Status, respBody)
-		}
-
-		//successfully parsed the json - make sure the code and cause message match and give a helpful message
-		if edgeError.Error.Cause.Message == "identity not found" && edgeError.Error.Code == "INVALID_FIELD" {
-			return errors.Errorf("enroll error: %s. response: the provided token was invalid. either the token is not correct or it has already been used", resp.Status)
-		} else {
-			cause := edgeError.Error.Cause.Message
-
-			if cause == "" {
-				//if Cause.Message is empty - try using CauseMessage instead
-				cause = edgeError.Error.CauseMessage
-			}
-
-			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, cause)
-		}
+	if err != nil {
+		return errors.Errorf("enroll error: %s: could not read body: %s", resp.Status, body)
 	}
-	cfg.ID.Cert = "pem:" + string(respBody)
-	return nil
+
+	if resp.StatusCode == http.StatusOK {
+		cfg.ID.Cert = "pem:" + string(body)
+		return nil
+	}
+
+	jsonErr, err := gabs.ParseJSON(body)
+
+	if err != nil {
+		return errors.Errorf("enroll error: %s: could not parse body: %s", resp.Status, body)
+			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, cause)
+	}
+
+	if jsonErr.Exists("error", "message") {
+		message := jsonErr.Search("error", "message").Data().(string)
+		code := jsonErr.Search("error", "code").Data().(string)
+		return errors.Errorf("enroll error: %s - code: %s - message: %s", resp.Status, code, message)
+	}
+
+	return errors.Errorf("enroll error: %s: unrecognized response: %s", resp.Status, body)
 }
 
 func enrollCA(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.CertPool) error {
