@@ -145,8 +145,8 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 
 	if strings.TrimSpace(enFlags.AdditionalCAs) != "" {
 		pfxlog.Logger().Debug("adding certificates from the provided ca override file")
-		pem, _ := ioutil.ReadFile(enFlags.AdditionalCAs)
-		for _, xcert := range nfpem.PemToX509(string(pem)) {
+		caPEMs, _ := ioutil.ReadFile(enFlags.AdditionalCAs)
+		for _, xcert := range nfpem.PemToX509(string(caPEMs)) {
 			allowedCerts = append(allowedCerts, xcert)
 			caPool.AddCert(xcert)
 		}
@@ -284,13 +284,21 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 
 	if err != nil {
 		return errors.Errorf("enroll error: %s: could not parse body: %s", resp.Status, body)
-			return errors.Errorf("enroll error: %s. response: %s. ", resp.Status, cause)
 	}
 
 	if jsonErr.Exists("error", "message") {
 		message := jsonErr.Search("error", "message").Data().(string)
 		code := jsonErr.Search("error", "code").Data().(string)
-		return errors.Errorf("enroll error: %s - code: %s - message: %s", resp.Status, code, message)
+
+		//todo: remove causeMessage support when removed from API
+		cause := "unspecified"
+		if jsonErr.Exists("error", "cause", "message") {
+			cause = jsonErr.Search("error", "cause", "message").Data().(string)
+		} else if jsonErr.Exists("error", "causeMessage") {
+			cause = jsonErr.Search("error", "causeMessage").Data().(string)
+		}
+
+		return errors.Errorf("enroll error: %s - code: %s - message: %s - cause: %s", resp.Status, code, message, cause)
 	}
 
 	return errors.Errorf("enroll error: %s: unrecognized response: %s", resp.Status, body)
