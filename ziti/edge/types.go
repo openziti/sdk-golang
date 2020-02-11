@@ -67,28 +67,6 @@ func (service *Service) GetConfigOfType(configType string, target interface{}) (
 	return true, nil
 }
 
-type EdgeControllerApiError struct {
-	Error struct {
-		Args struct {
-			URLVars struct {
-			} `json:"urlVars"`
-		} `json:"args"`
-		Cause struct {
-			Message    string `json:"message"`
-			FieldName  string `json:"fieldName"`
-			FieldValue string `json:"fieldValue"`
-		} `json:"cause"`
-		CauseMessage string `json:"causeMessage"`
-		Code         string `json:"code"`
-		Message      string `json:"message"`
-		RequestID    string `json:"requestId"`
-	} `json:"error"`
-	Meta struct {
-		APIEnrolmentVersion string `json:"apiEnrolmentVersion"`
-		APIVersion          string `json:"apiVersion"`
-	} `json:"meta"`
-}
-
 type apiResponse struct {
 	Data interface{}          `json:"data"`
 	Meta *ApiResponseMetadata `json:"meta"`
