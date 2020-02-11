@@ -8,4 +8,4 @@ import:
     if: type != pull_request
 
 before_script:
-  - ./tmp/ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
+  - ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
