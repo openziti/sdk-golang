@@ -2,6 +2,6 @@ version: "~> 1.0"
 
 import:
   - source: netfoundry/ziti-ci:ziti-go-defaults.yml@v1
-  - source: buildinfo.go
+  - source: buildinfo.yml
     if: branch != update-dependency
 
