@@ -1,6 +1,5 @@
 version: "~> 1.0"
 
-
 import:
   - source: netfoundry/ziti-ci:ziti-go-defaults.yml@v1
 
