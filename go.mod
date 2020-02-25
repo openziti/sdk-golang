@@ -2,7 +2,7 @@ module github.com/netfoundry/ziti-sdk-golang
 
 go 1.13
 
-replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
+// replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
