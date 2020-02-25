@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 Netfoundry, Inc.
+	Copyright 2019 NetFoundry, Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -245,7 +245,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 
 	hostname, err := os.Hostname()
 	request, err := certtools.NewCertRequest(map[string]string{
-		"C": "US", "O": "Netfoundry", "CN": hostname,
+		"C": "US", "O": "NetFoundry", "CN": hostname,
 	}, nil)
 
 	csr, err := x509.CreateCertificateRequest(rand.Reader, request, pk)
