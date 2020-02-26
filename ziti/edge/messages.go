@@ -39,6 +39,7 @@ const (
 	ConnIdHeader       = 1000
 	SeqHeader          = 1001
 	SessionTokenHeader = 1002
+	PublicKeyHeader    = 1003
 
 	// Put this in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
@@ -134,8 +135,10 @@ func NewDataMsg(connId uint32, seq uint32, data []byte) *channel2.Message {
 	return newMsg(ContentTypeData, connId, seq, data)
 }
 
-func NewConnectMsg(connId uint32, token string) *channel2.Message {
-	return newMsg(ContentTypeConnect, connId, 0, []byte(token))
+func NewConnectMsg(connId uint32, token string, pubKey []byte) *channel2.Message {
+	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
+	msg.Headers[PublicKeyHeader] = pubKey
+	return msg
 }
 
 func NewStateConnectedMsg(connId uint32) *channel2.Message {
@@ -150,8 +153,12 @@ func NewDialMsg(connId uint32, token string) *channel2.Message {
 	return newMsg(ContentTypeDial, connId, 0, []byte(token))
 }
 
-func NewBindMsg(connId uint32, token string) *channel2.Message {
-	return newMsg(ContentTypeBind, connId, 0, []byte(token))
+func NewBindMsg(connId uint32, token string, pubKey []byte) *channel2.Message {
+	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
+	if pubKey != nil {
+		msg.Headers[PublicKeyHeader] = pubKey
+	}
+	return msg
 }
 
 func NewUnbindMsg(connId uint32, token string) *channel2.Message {

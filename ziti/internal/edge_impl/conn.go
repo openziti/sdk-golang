@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
+	"github.com/netfoundry/secretstream"
+	"github.com/netfoundry/secretstream/kx"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/concurrenz"
 	"github.com/netfoundry/ziti-foundation/util/sequence"
@@ -46,6 +48,10 @@ type edgeConn struct {
 	closed       concurrenz.AtomicBoolean
 	serviceId    string
 	readDeadline time.Time
+
+	keyPair      *kx.KeyPair
+	receiver     secretstream.Decryptor
+	sender       secretstream.Encryptor
 }
 
 func (conn *edgeConn) Accept(event *edge.MsgEvent) {
@@ -117,7 +123,7 @@ func (conn *edgeConn) HandleClose(ch channel2.Channel) {
 func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 
-	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token)
+	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, conn.keyPair.Public())
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(connectRequest, 5*time.Second)
 	if err != nil {
@@ -145,7 +151,7 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Lis
 		WithField("session", session.Token)
 
 	logger.Debug("sending bind request to edge router")
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token)
+	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public())
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {
