@@ -17,6 +17,8 @@
 package edge_impl
 
 import (
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -49,9 +51,24 @@ type edgeConn struct {
 	serviceId    string
 	readDeadline time.Time
 
-	keyPair      *kx.KeyPair
-	receiver     secretstream.Decryptor
-	sender       secretstream.Encryptor
+	keyPair  *kx.KeyPair
+	rxKey    []byte
+	receiver secretstream.Decryptor
+	sender   secretstream.Encryptor
+}
+
+func (conn *edgeConn) Write(data []byte) (int, error) {
+	if conn.sender != nil {
+		cipherData, err := conn.sender.Push(data, secretstream.TagMessage)
+		if err != nil {
+			return 0, err
+		}
+
+		_, err = conn.MsgChannel.Write(cipherData)
+		return len(data), err
+	} else {
+		return conn.MsgChannel.Write(data)
+	}
 }
 
 func (conn *edgeConn) Accept(event *edge.MsgEvent) {
@@ -139,9 +156,55 @@ func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
+	if session.Pubkey != "" {
+		peerKey, err := base64.StdEncoding.DecodeString(session.Pubkey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode service public key: %v", err)
+		}
+
+		logger.Debug("setting up end-to-end encryption")
+		if err = conn.establishCrypto(conn.keyPair, peerKey, false); err != nil {
+			logger.WithError(err).Error("crypto failure")
+			_ = conn.Close()
+			return nil, err
+		}
+
+	}
 	logger.Debug("connected")
 
 	return conn, nil
+}
+
+func (conn *edgeConn) establishCrypto(keypair *kx.KeyPair, peerKey []byte, server bool) error {
+
+	var err error
+	var rx, tx []byte
+
+	if server {
+		rx, tx, err = keypair.ServerSessionKeys(peerKey)
+		if err != nil {
+			return fmt.Errorf("failed key exchnge: %v", err)
+		}
+	} else {
+		rx, tx, err = keypair.ClientSessionKeys(peerKey)
+		if err != nil {
+			return fmt.Errorf("failed key exchnge: %v", err)
+		}
+	}
+	var txHeader []byte
+	conn.sender, txHeader, err = secretstream.NewEncryptor(tx)
+	if err != nil {
+		return fmt.Errorf("failed to enstablish crypto stream: %v", err)
+	}
+	_, err = conn.MsgChannel.Write(txHeader)
+	if err != nil {
+		return fmt.Errorf("failed to write crypto header: %v", err)
+	}
+
+	conn.rxKey = rx
+
+	pfxlog.Logger().Infof("crypto established with err[%v]", err)
+	return err
 }
 
 func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Listener, error) {
@@ -216,6 +279,25 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		case edge.ContentTypeData:
 			d := event.Msg.Body
 			log.Debugf("got buffer from queue %d bytes", len(d))
+
+			// first data message should contain crypto header
+			if conn.rxKey != nil {
+
+				if len(d) != secretstream.StreamHeaderBytes {
+					return 0, fmt.Errorf("failed to recieve crypto header bytes: read[%d]", len(d))
+				}
+				conn.receiver, err = secretstream.NewDecryptor(conn.rxKey, d)
+				conn.rxKey = nil
+				continue
+			}
+
+			if conn.receiver != nil {
+				d, _, err = conn.receiver.Pull(d)
+				if err != nil {
+					log.Errorf("crypto failed: %v", err)
+					return 0, err
+				}
+			}
 			if len(d) <= cap(p) {
 				return copy(p, d), nil
 			}
@@ -303,5 +385,13 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		listener.acceptC <- edgeCh
 	} else {
 		logger.Errorf("failed to receive start after dial. got %v", startMsg)
+	}
+
+	clientKey := message.Headers[edge.PublicKeyHeader]
+	if clientKey != nil {
+		err = edgeCh.establishCrypto(conn.keyPair, clientKey, true)
+		if err != nil {
+			logger.Errorf("failed to establish crypto session %v", err)
+		}
 	}
 }
