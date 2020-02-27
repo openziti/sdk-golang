@@ -17,6 +17,8 @@
 package edge_impl
 
 import (
+	"github.com/michaelquigley/pfxlog"
+	"github.com/netfoundry/secretstream/kx"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/util/sequencer"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
@@ -65,7 +67,15 @@ func (conn *connFactory) NewConn(service string) edge.Conn {
 		serviceId:  service,
 	}
 
-	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
+	var err error
+	if edgeCh.keyPair, err = kx.NewKeyPair(); err != nil {
+		pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", service, err)
+
+	}
+	err = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
+	if err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service, id, err)
+	}
 	return edgeCh
 }
 
