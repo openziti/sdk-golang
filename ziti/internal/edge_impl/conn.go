@@ -17,7 +17,6 @@
 package edge_impl
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -156,19 +155,16 @@ func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
-	if session.Pubkey != "" {
-		peerKey, err := base64.StdEncoding.DecodeString(session.Pubkey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode service public key: %v", err)
-		}
-
-		logger.Debug("setting up end-to-end encryption")
-		if err = conn.establishCrypto(conn.keyPair, peerKey, false); err != nil {
+	hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
+	if hostPubKey != nil {
+		logger.WithField("session", session.Id).Debug("setting up end-to-end encryption")
+		if err = conn.establishCrypto(conn.keyPair, hostPubKey, false); err != nil {
 			logger.WithError(err).Error("crypto failure")
 			_ = conn.Close()
 			return nil, err
 		}
-
+	} else {
+		logger.WithField("session", session.Id).Warnf("connection is not end-to-end-encrypted")
 	}
 	logger.Debug("connected")
 
@@ -393,5 +389,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		if err != nil {
 			logger.Errorf("failed to establish crypto session %v", err)
 		}
+	} else {
+		logger.Warnf("client did not send its key. connection is not end-to-end encrypted")
 	}
 }

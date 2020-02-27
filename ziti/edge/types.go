@@ -39,7 +39,6 @@ type EdgeRouter struct {
 type Session struct {
 	Id          string       `json:"id"`
 	Token       string       `json:"token"`
-	Pubkey      string       `json:"pubkey"`
 	EdgeRouters []EdgeRouter `json:"edgeRouters"`
 }
 
