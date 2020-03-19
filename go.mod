@@ -13,7 +13,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/netfoundry/secretstream v0.1.1
-	github.com/netfoundry/ziti-foundation v0.7.0
+	github.com/netfoundry/ziti-foundation v0.7.1
 	github.com/pkg/errors v0.8.1
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0
