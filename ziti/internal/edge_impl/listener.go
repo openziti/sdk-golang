@@ -18,6 +18,7 @@ package edge_impl
 
 import (
 	"github.com/michaelquigley/pfxlog"
+	"github.com/netfoundry/ziti-foundation/util/concurrenz"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"net"
@@ -29,6 +30,7 @@ type edgeListener struct {
 	token       string
 	edgeChan    *edgeConn
 	acceptC     chan net.Conn
+	closed      concurrenz.AtomicBoolean
 }
 
 func (listener *edgeListener) Network() string {
@@ -40,11 +42,20 @@ func (listener *edgeListener) String() string {
 }
 
 func (listener *edgeListener) Accept() (net.Conn, error) {
-	conn, ok := <-listener.acceptC
-	if !ok {
-		return nil, errors.New("listener is closed")
+	for {
+		select {
+		case conn, ok := <-listener.acceptC:
+			if !ok {
+				return nil, errors.New("listener is closed")
+			}
+			return conn, nil
+		case <-time.After(time.Second):
+			if listener.closed.Get() {
+				return nil, errors.New("listener is closed")
+			}
+		}
 	}
-	return conn, nil
+
 }
 
 func (listener *edgeListener) Addr() net.Addr {
@@ -52,8 +63,12 @@ func (listener *edgeListener) Addr() net.Addr {
 }
 
 func (listener *edgeListener) Close() error {
+	if !listener.closed.CompareAndSwap(false, true) {
+		// already closed
+		return nil
+	}
+
 	listener.edgeChan.hosting.Delete(listener.token)
-	close(listener.acceptC)
 
 	edgeChan := listener.edgeChan
 	defer edgeChan.Close()

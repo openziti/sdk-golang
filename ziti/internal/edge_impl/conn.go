@@ -233,7 +233,7 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Lis
 	listener := &edgeListener{
 		serviceName: serviceName,
 		token:       session.Token,
-		acceptC:     make(chan net.Conn),
+		acceptC:     make(chan net.Conn, 10),
 		edgeChan:    conn,
 	}
 	conn.hosting.Store(session.Token, listener)
