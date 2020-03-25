@@ -47,6 +47,7 @@ func init() {
 type ConnFactory interface {
 	io.Closer
 	IsClosed() bool
+	Key() string
 	NewConn(service string) Conn
 }
 

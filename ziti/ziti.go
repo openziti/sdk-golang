@@ -30,6 +30,7 @@ import (
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/sdkinfo"
+	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -63,8 +64,7 @@ var sessionUrl, _ = url.Parse("/sessions")
 type contextImpl struct {
 	config                  *config.Config
 	initDone                sync.Once
-	edgeRouterConnFactories map[string]edge.ConnFactory
-	connMutex               sync.Mutex
+	edgeRouterConnFactories cmap.ConcurrentMap
 
 	id          identity.Identity
 	zitiUrl     *url.URL
@@ -76,12 +76,17 @@ type contextImpl struct {
 	sessions    sync.Map
 }
 
+func (context *contextImpl) OnFactoryClosed(factory edge.ConnFactory) {
+	logrus.Debugf("edgeConnFactory[%s] was closed", factory.Key())
+	context.edgeRouterConnFactories.Remove(factory.Key())
+}
+
 func NewContext() Context {
-	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory)}
+	return &contextImpl{edgeRouterConnFactories: cmap.New()}
 }
 
 func NewContextWithConfig(config *config.Config) Context {
-	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory), config: config}
+	return &contextImpl{edgeRouterConnFactories: cmap.New(), config: config}
 }
 
 func (context *contextImpl) ensureConfigPresent() error {
@@ -264,26 +269,42 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 	if len(session.EdgeRouters) == 0 {
 		return nil, errors.New("no edge routers available")
 	}
-	edgeRouter := session.EdgeRouters[0]
-	ingressUrl := edgeRouter.Urls["tls"]
 
-	context.connMutex.Lock()
-	defer context.connMutex.Unlock()
+	ch := make(chan edge.ConnFactory)
+	defer func() {
+		close(ch)
+	}()
 
-	// remove any closed connections
-	for key, val := range context.edgeRouterConnFactories {
-		if val.IsClosed() {
-			delete(context.edgeRouterConnFactories, key)
+	for _, edgeRouter := range session.EdgeRouters {
+		for _, url := range edgeRouter.Urls {
+			go context.connectEdgeRouter(url, ch)
 		}
 	}
 
-	if edgeConn, found := context.edgeRouterConnFactories[ingressUrl]; found {
-		return edgeConn, nil
+	select {
+	case f := <- ch:
+		logger.Debugf("using edgeRouter[%s]", f.Key())
+		return f, nil
+	case <- time.After(5 * time.Second):
+		return nil, errors.New("no edge routers connected in time")
+	}
+}
+
+func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.ConnFactory) {
+	logger := pfxlog.Logger()//.WithField("ns", session.Token)
+
+	defer func() {
+		recover()
+	}()
+
+	if edgeConn, found := context.edgeRouterConnFactories.Get(ingressUrl); found {
+		ret <- edgeConn.(edge.ConnFactory)
+		return
 	}
 
 	ingAddr, err := transport.ParseAddress(ingressUrl)
 	if err != nil {
-		return nil, err
+		logger.WithError(err).Errorf("failed to parse url[%s]", ingressUrl)
 	}
 
 	id := context.id
@@ -294,12 +315,14 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
 	if err != nil {
 		logger.Error(err)
-		return nil, err
+		return
 	}
 
-	edgeConn := edge_impl.NewEdgeConnFactory(ch)
-	context.edgeRouterConnFactories[ingressUrl] = edgeConn
-	return edgeConn, nil
+	edgeConn := edge_impl.NewEdgeConnFactory(ingressUrl, ch, context)
+	logger.Debugf("connected to %s", ingressUrl)
+	context.edgeRouterConnFactories.Set(ingressUrl, edgeConn)
+
+	ret <- edgeConn
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
@@ -458,16 +481,14 @@ func (context *contextImpl) deleteSession(id string) {
 func (context *contextImpl) Close() {
 	logger := pfxlog.Logger()
 
-	context.connMutex.Lock()
-	defer context.connMutex.Unlock()
-
 	// remove any closed connections
-	for key, val := range context.edgeRouterConnFactories {
+	for entry := range context.edgeRouterConnFactories.IterBuffered() {
+		key, val := entry.Key, entry.Val.(edge.ConnFactory)
 		if !val.IsClosed() {
 			if err := val.Close(); err != nil {
 				logger.WithError(err).Error("error while closing connection")
 			}
 		}
-		delete(context.edgeRouterConnFactories, key)
+		context.edgeRouterConnFactories.Remove(key)
 	}
 }
