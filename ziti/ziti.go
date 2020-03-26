@@ -291,7 +291,7 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 }
 
 func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.ConnFactory) {
-	logger := pfxlog.Logger()//.WithField("ns", session.Token)
+	logger := pfxlog.Logger()
 
 	defer func() {
 		recover()
@@ -320,9 +320,16 @@ func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.C
 
 	edgeConn := edge_impl.NewEdgeConnFactory(ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
-	context.edgeRouterConnFactories.Set(ingressUrl, edgeConn)
 
-	ret <- edgeConn
+	useConn := context.edgeRouterConnFactories.Upsert(ingressUrl, edgeConn, func(exist bool, oldV interface{}, newV interface{}) interface{} {
+		if exist { // use the factory already in the map, close new one
+			go newV.(edge.ConnFactory).Close()
+			return oldV
+		}
+		return newV
+	})
+
+	ret <- useConn.(edge.ConnFactory)
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
