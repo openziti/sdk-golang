@@ -58,6 +58,7 @@ type Context interface {
 }
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
+var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 
@@ -82,11 +83,14 @@ func (context *contextImpl) OnFactoryClosed(factory edge.ConnFactory) {
 }
 
 func NewContext() Context {
-	return &contextImpl{edgeRouterConnFactories: cmap.New()}
+	return NewContextWithConfig(nil)
 }
 
 func NewContextWithConfig(config *config.Config) Context {
-	return &contextImpl{edgeRouterConnFactories: cmap.New(), config: config}
+	return &contextImpl{
+		edgeRouterConnFactories: cmap.New(),
+		config:                  config,
+	}
 }
 
 func (context *contextImpl) ensureConfigPresent() error {
@@ -144,6 +148,7 @@ func (context *contextImpl) initializer() error {
 	if err = context.Authenticate(); err != nil {
 		return err
 	}
+	go context.runSessionRefresh()
 
 	// get services
 	if context.services, err = context.getServices(); err != nil {
@@ -151,6 +156,40 @@ func (context *contextImpl) initializer() error {
 	}
 
 	return nil
+}
+
+func (context *contextImpl) runSessionRefresh() {
+	log := pfxlog.Logger()
+	for {
+		sleep := context.apiSession.Expires.Sub(time.Now()) - (10 * time.Second)
+		log.Debugf("sleeping %s before refreshing session", sleep)
+		select {
+		case <-time.After(sleep):
+			log.Debugf("refreshing api session")
+			req, err := http.NewRequest("GET", context.zitiUrl.ResolveReference(currSess).String(), nil)
+			req.Header.Set(constants.ZitiSession, context.apiSession.Token)
+			resp, err := context.clt.Do(req)
+			if err != nil || resp.StatusCode != 200 {
+				log.Errorf("failed to get current session %+v, trying to login again", err)
+				err = context.Authenticate()
+				if err != nil {
+					log.Fatalf("failed to login again")
+					return
+				}
+			} else {
+				defer resp.Body.Close()
+
+				apiSessionResp := &edge.ApiSession{}
+				_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
+				if err != nil {
+					log.Fatalf("failed to parse current session")
+					return
+				}
+				context.apiSession = apiSessionResp
+				log.Debugf("session refreshed, new expiration[%s]", context.apiSession.Expires)
+			}
+		}
+	}
 }
 
 func (context *contextImpl) Authenticate() error {
@@ -175,7 +214,7 @@ func (context *contextImpl) Authenticate() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		logrus.Fatal("failed to authenticate with ZT controller")
+		logrus.Fatal("failed to authenticate with Ziti controller")
 	}
 
 	apiSessionResp := edge.ApiSession{}
@@ -185,9 +224,8 @@ func (context *contextImpl) Authenticate() error {
 		return err
 	}
 	logrus.
-		WithField("token", apiSessionResp.Token).
-		WithField("id", apiSessionResp.Id).
-		Debugf("Got api session: %v", apiSessionResp)
+		WithField("session", apiSessionResp.Id).
+		Debugf("logged in as %s/%s", apiSessionResp.Identity.Name, apiSessionResp.Identity.Id)
 	context.apiSession = &apiSessionResp
 
 	return nil

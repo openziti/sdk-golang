@@ -22,11 +22,19 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"io"
+	"time"
 )
 
+type ApiIdentity struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type ApiSession struct {
-	Id    string `json:"id"`
-	Token string `json:"token"`
+	Id       string       `json:"id"`
+	Token    string       `json:"token"`
+	Identity *ApiIdentity `json:"identity"`
+	Expires  time.Time    `json:"expiresAt"`
 	//Tags  []string `json:"tags"`
 }
 
