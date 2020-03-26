@@ -282,10 +282,10 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 	}
 
 	select {
-	case f := <- ch:
+	case f := <-ch:
 		logger.Debugf("using edgeRouter[%s]", f.Key())
 		return f, nil
-	case <- time.After(5 * time.Second):
+	case <-time.After(5 * time.Second):
 		return nil, errors.New("no edge routers connected in time")
 	}
 }
@@ -321,13 +321,14 @@ func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.C
 	edgeConn := edge_impl.NewEdgeConnFactory(ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
 
-	useConn := context.edgeRouterConnFactories.Upsert(ingressUrl, edgeConn, func(exist bool, oldV interface{}, newV interface{}) interface{} {
-		if exist { // use the factory already in the map, close new one
-			go newV.(edge.ConnFactory).Close()
-			return oldV
-		}
-		return newV
-	})
+	useConn := context.edgeRouterConnFactories.Upsert(ingressUrl, edgeConn,
+		func(exist bool, oldV interface{}, newV interface{}) interface{} {
+			if exist { // use the factory already in the map, close new one
+				go newV.(edge.ConnFactory).Close()
+				return oldV
+			}
+			return newV
+		})
 
 	ret <- useConn.(edge.ConnFactory)
 }
