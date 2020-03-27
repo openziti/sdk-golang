@@ -35,6 +35,7 @@ const (
 	ContentTypeBind              = 60790
 	ContentTypeUnbind            = 60791
 	ContentTypeStateSessionEnded = 60792
+	ContentTypeProbe             = 60793
 
 	ConnIdHeader       = 1000
 	SeqHeader          = 1001
@@ -67,6 +68,7 @@ var ContentTypeNames = map[int32]string{
 	ContentTypeDialFailed:     "EdgeDialFailedType",
 	ContentTypeBind:           "EdgeBindType",
 	ContentTypeUnbind:         "EdgeUnbindType",
+	ContentTypeProbe:          "EdgeProbeType",
 }
 
 type Sequenced interface {
@@ -133,6 +135,10 @@ func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel2
 
 func NewDataMsg(connId uint32, seq uint32, data []byte) *channel2.Message {
 	return newMsg(ContentTypeData, connId, seq, data)
+}
+
+func NewProbeMsg() *channel2.Message {
+	return channel2.NewMessage(ContentTypeProbe, nil)
 }
 
 func NewConnectMsg(connId uint32, token string, pubKey []byte) *channel2.Message {
