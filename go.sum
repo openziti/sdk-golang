@@ -68,8 +68,8 @@ github.com/mitchellh/mapstructure v1.1.2 h1:fmNYVwqnSfB9mZU6OS2O6GsXM+wcskZDuKQz
 github.com/mitchellh/mapstructure v1.1.2/go.mod h1:FVVH3fgwuzCH5S8UJGiWEs2h04kUh9fWfEaFds41c1Y=
 github.com/netfoundry/secretstream v0.1.1 h1:z6T7B5DuOtr9O+SmKaS9DzwOoGLYtgvyTzuPuR5FO7I=
 github.com/netfoundry/secretstream v0.1.1/go.mod h1:uasYkYSp0MmNSlKOWJ2sVzxPms8e58TS4ENq4yro86k=
-github.com/netfoundry/ziti-foundation v0.8.1 h1:gB8N+ow4fFDxIJOkslfZ+opn2y2svWV0Un91SQZk2N4=
-github.com/netfoundry/ziti-foundation v0.8.1/go.mod h1:EhrF0tVGajmQYeCEz7BOHFK5D4alnoQsRz0HHTjNuvE=
+github.com/netfoundry/ziti-foundation v0.9.0 h1:VSNbgh0oA0L/Ovh+afldfB1u8IhfNL2KYErIdu7t7LI=
+github.com/netfoundry/ziti-foundation v0.9.0/go.mod h1:EhrF0tVGajmQYeCEz7BOHFK5D4alnoQsRz0HHTjNuvE=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.7.0 h1:WSHQ+IS43OoUrWtD1/bbclrwK8TTH5hzp+umCiuxHgs=
 github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
