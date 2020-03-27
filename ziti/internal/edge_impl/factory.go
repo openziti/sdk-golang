@@ -29,15 +29,33 @@ const (
 	DefaultMaxOutOfOrderMsgs = 5000
 )
 
-type connFactory struct {
-	ch     channel2.Channel
-	msgMux *edge.MsgMux
+type ConnFactoryOwner interface {
+	OnFactoryClosed(factory edge.ConnFactory)
 }
 
-func NewEdgeConnFactory(ch channel2.Channel) edge.ConnFactory {
+type connFactory struct {
+	key    string
+	ch     channel2.Channel
+	msgMux *edge.MsgMux
+	owner  ConnFactoryOwner
+}
+
+func (conn *connFactory) Key() string {
+	return conn.key
+}
+
+func (conn *connFactory) HandleClose(ch channel2.Channel) {
+	if conn.owner != nil {
+		conn.owner.OnFactoryClosed(conn)
+	}
+}
+
+func NewEdgeConnFactory(key string, ch channel2.Channel, owner ConnFactoryOwner) edge.ConnFactory {
 	connFactory := &connFactory{
+		key:    key,
 		ch:     ch,
 		msgMux: edge.NewMsgMux(),
+		owner:  owner,
 	}
 
 	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
@@ -53,6 +71,7 @@ func NewEdgeConnFactory(ch channel2.Channel) edge.ConnFactory {
 	// Since data is the common message type, it gets to be dispatched directly
 	ch.AddReceiveHandler(connFactory.msgMux)
 	ch.AddCloseHandler(connFactory.msgMux)
+	ch.AddCloseHandler(connFactory)
 
 	return connFactory
 }

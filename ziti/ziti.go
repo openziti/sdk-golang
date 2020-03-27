@@ -30,6 +30,7 @@ import (
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/sdkinfo"
+	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -57,14 +58,14 @@ type Context interface {
 }
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
+var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 
 type contextImpl struct {
 	config                  *config.Config
 	initDone                sync.Once
-	edgeRouterConnFactories map[string]edge.ConnFactory
-	connMutex               sync.Mutex
+	edgeRouterConnFactories cmap.ConcurrentMap
 
 	id          identity.Identity
 	zitiUrl     *url.URL
@@ -76,12 +77,20 @@ type contextImpl struct {
 	sessions    sync.Map
 }
 
+func (context *contextImpl) OnFactoryClosed(factory edge.ConnFactory) {
+	logrus.Debugf("edgeConnFactory[%s] was closed", factory.Key())
+	context.edgeRouterConnFactories.Remove(factory.Key())
+}
+
 func NewContext() Context {
-	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory)}
+	return NewContextWithConfig(nil)
 }
 
 func NewContextWithConfig(config *config.Config) Context {
-	return &contextImpl{edgeRouterConnFactories: make(map[string]edge.ConnFactory), config: config}
+	return &contextImpl{
+		edgeRouterConnFactories: cmap.New(),
+		config:                  config,
+	}
 }
 
 func (context *contextImpl) ensureConfigPresent() error {
@@ -139,6 +148,7 @@ func (context *contextImpl) initializer() error {
 	if err = context.Authenticate(); err != nil {
 		return err
 	}
+	go context.runSessionRefresh()
 
 	// get services
 	if context.services, err = context.getServices(); err != nil {
@@ -146,6 +156,40 @@ func (context *contextImpl) initializer() error {
 	}
 
 	return nil
+}
+
+func (context *contextImpl) runSessionRefresh() {
+	log := pfxlog.Logger()
+	for {
+		sleep := context.apiSession.Expires.Sub(time.Now()) - (10 * time.Second)
+		log.Debugf("sleeping %s before refreshing session", sleep)
+		select {
+		case <-time.After(sleep):
+			log.Debugf("refreshing api session")
+			req, err := http.NewRequest("GET", context.zitiUrl.ResolveReference(currSess).String(), nil)
+			req.Header.Set(constants.ZitiSession, context.apiSession.Token)
+			resp, err := context.clt.Do(req)
+			if err != nil || resp.StatusCode != 200 {
+				log.Errorf("failed to get current session %+v, trying to login again", err)
+				err = context.Authenticate()
+				if err != nil {
+					log.Fatalf("failed to login again")
+					return
+				}
+			} else {
+				defer resp.Body.Close()
+
+				apiSessionResp := &edge.ApiSession{}
+				_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
+				if err != nil {
+					log.Fatalf("failed to parse current session")
+					return
+				}
+				context.apiSession = apiSessionResp
+				log.Debugf("session refreshed, new expiration[%s]", context.apiSession.Expires)
+			}
+		}
+	}
 }
 
 func (context *contextImpl) Authenticate() error {
@@ -170,7 +214,7 @@ func (context *contextImpl) Authenticate() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		logrus.Fatal("failed to authenticate with ZT controller")
+		logrus.Fatal("failed to authenticate with Ziti controller")
 	}
 
 	apiSessionResp := edge.ApiSession{}
@@ -180,9 +224,8 @@ func (context *contextImpl) Authenticate() error {
 		return err
 	}
 	logrus.
-		WithField("token", apiSessionResp.Token).
-		WithField("id", apiSessionResp.Id).
-		Debugf("Got api session: %v", apiSessionResp)
+		WithField("session", apiSessionResp.Id).
+		Debugf("logged in as %s/%s", apiSessionResp.Identity.Name, apiSessionResp.Identity.Id)
 	context.apiSession = &apiSessionResp
 
 	return nil
@@ -264,26 +307,42 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 	if len(session.EdgeRouters) == 0 {
 		return nil, errors.New("no edge routers available")
 	}
-	edgeRouter := session.EdgeRouters[0]
-	ingressUrl := edgeRouter.Urls["tls"]
 
-	context.connMutex.Lock()
-	defer context.connMutex.Unlock()
+	ch := make(chan edge.ConnFactory)
+	defer func() {
+		close(ch)
+	}()
 
-	// remove any closed connections
-	for key, val := range context.edgeRouterConnFactories {
-		if val.IsClosed() {
-			delete(context.edgeRouterConnFactories, key)
+	for _, edgeRouter := range session.EdgeRouters {
+		for _, url := range edgeRouter.Urls {
+			go context.connectEdgeRouter(url, ch)
 		}
 	}
 
-	if edgeConn, found := context.edgeRouterConnFactories[ingressUrl]; found {
-		return edgeConn, nil
+	select {
+	case f := <-ch:
+		logger.Debugf("using edgeRouter[%s]", f.Key())
+		return f, nil
+	case <-time.After(5 * time.Second):
+		return nil, errors.New("no edge routers connected in time")
+	}
+}
+
+func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.ConnFactory) {
+	logger := pfxlog.Logger()
+
+	defer func() {
+		recover()
+	}()
+
+	if edgeConn, found := context.edgeRouterConnFactories.Get(ingressUrl); found {
+		ret <- edgeConn.(edge.ConnFactory)
+		return
 	}
 
 	ingAddr, err := transport.ParseAddress(ingressUrl)
 	if err != nil {
-		return nil, err
+		logger.WithError(err).Errorf("failed to parse url[%s]", ingressUrl)
 	}
 
 	id := context.id
@@ -294,12 +353,22 @@ func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edg
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
 	if err != nil {
 		logger.Error(err)
-		return nil, err
+		return
 	}
 
-	edgeConn := edge_impl.NewEdgeConnFactory(ch)
-	context.edgeRouterConnFactories[ingressUrl] = edgeConn
-	return edgeConn, nil
+	edgeConn := edge_impl.NewEdgeConnFactory(ingressUrl, ch, context)
+	logger.Debugf("connected to %s", ingressUrl)
+
+	useConn := context.edgeRouterConnFactories.Upsert(ingressUrl, edgeConn,
+		func(exist bool, oldV interface{}, newV interface{}) interface{} {
+			if exist { // use the factory already in the map, close new one
+				go newV.(edge.ConnFactory).Close()
+				return oldV
+			}
+			return newV
+		})
+
+	ret <- useConn.(edge.ConnFactory)
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
@@ -458,16 +527,14 @@ func (context *contextImpl) deleteSession(id string) {
 func (context *contextImpl) Close() {
 	logger := pfxlog.Logger()
 
-	context.connMutex.Lock()
-	defer context.connMutex.Unlock()
-
 	// remove any closed connections
-	for key, val := range context.edgeRouterConnFactories {
+	for entry := range context.edgeRouterConnFactories.IterBuffered() {
+		key, val := entry.Key, entry.Val.(edge.ConnFactory)
 		if !val.IsClosed() {
 			if err := val.Close(); err != nil {
 				logger.WithError(err).Error("error while closing connection")
 			}
 		}
-		delete(context.edgeRouterConnFactories, key)
+		context.edgeRouterConnFactories.Remove(key)
 	}
 }
