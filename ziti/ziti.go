@@ -25,6 +25,8 @@ import (
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/common/constants"
 	"github.com/netfoundry/ziti-foundation/identity/identity"
+	"github.com/netfoundry/ziti-foundation/metrics"
+	"github.com/netfoundry/ziti-foundation/metrics/metrics_pb"
 	"github.com/netfoundry/ziti-foundation/transport"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
@@ -44,15 +46,22 @@ import (
 	"time"
 )
 
+const (
+	LatencyCheckInterval     = 30 * time.Second
+)
+
 type Context interface {
 	Authenticate() error
 	Dial(serviceName string) (net.Conn, error)
 	Listen(serviceName string) (net.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
+	GetService(serviceName string) (*edge.Service, bool)
+
 	GetSession(id string) (*edge.Session, error)
 	GetBindSession(id string) (*edge.Session, error)
 
+	Metrics() metrics.Registry
 	// Close closes any connections open to edge routers
 	Close()
 }
@@ -75,6 +84,8 @@ type contextImpl struct {
 	servicesMtx sync.RWMutex
 	services    []edge.Service
 	sessions    sync.Map
+
+	metrics metrics.Registry
 }
 
 func (context *contextImpl) OnFactoryClosed(factory edge.ConnFactory) {
@@ -149,6 +160,12 @@ func (context *contextImpl) initializer() error {
 		return err
 	}
 	go context.runSessionRefresh()
+
+	metricsTags := map[string]string{
+		"srcId": context.apiSession.Identity.Id,
+	}
+	context.metrics = metrics.NewRegistry(metrics_pb.MetricsSourceType_Edge,
+		context.apiSession.Identity.Name, metricsTags, LatencyCheckInterval, nil)
 
 	// get services
 	if context.services, err = context.getServices(); err != nil {
@@ -237,7 +254,7 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 	}
 	id, ok := context.getServiceId(serviceName)
 	if !ok {
-		return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
+		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
 
 	var conn net.Conn
@@ -365,6 +382,7 @@ func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.C
 				go newV.(edge.ConnFactory).Close()
 				return oldV
 			}
+			go metrics.ProbeLatency(ch, context.metrics.Histogram("latency."+ingressUrl), LatencyCheckInterval)
 			return newV
 		})
 
@@ -380,15 +398,22 @@ func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
 	return id, found, nil
 }
 
-func (context *contextImpl) getServiceId(name string) (string, bool) {
+func (context *contextImpl) GetService(name string) (*edge.Service, bool) {
 	context.servicesMtx.RLock()
 	defer context.servicesMtx.RUnlock()
 
 	for _, s := range context.services {
 		if s.Name == name {
-			return s.Id, true
+			return &s, true
 		}
 	}
+	return nil, false
+}
+func (context *contextImpl) getServiceId(name string) (string, bool) {
+	if s, found := context.GetService(name); found {
+		return s.Id, true
+	}
+
 	return "", false
 }
 
@@ -537,4 +562,9 @@ func (context *contextImpl) Close() {
 		}
 		context.edgeRouterConnFactories.Remove(key)
 	}
+}
+
+func (c *contextImpl) Metrics() metrics.Registry {
+	c.initialize()
+	return c.metrics
 }
