@@ -70,7 +70,7 @@ func (service *Service) GetConfigOfType(configType string, target interface{}) (
 	}
 	if err := mapstructure.Decode(configMap, target); err != nil {
 		pfxlog.Logger().WithError(err).Debugf("unable to decode service configuration for of type %v defined for service %v", configType, service.Name)
-		return true, errors.Errorf("unable to decode service config structure: %w", err)
+		return true, errors.Errorf("unable to decode service config structure: %v", err)
 	}
 	return true, nil
 }
