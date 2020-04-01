@@ -287,7 +287,7 @@ func (context *contextImpl) dialSession(service string, session *edge.Session) (
 
 func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
 	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%w)", err)
+		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
