@@ -20,7 +20,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	errors2 "errors"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/channel2"
 	"github.com/netfoundry/ziti-foundation/common/constants"
@@ -31,6 +33,7 @@ import (
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/internal/edge_impl"
+
 	"github.com/netfoundry/ziti-sdk-golang/ziti/sdkinfo"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
@@ -47,13 +50,14 @@ import (
 )
 
 const (
-	LatencyCheckInterval     = 30 * time.Second
+	LatencyCheckInterval = 30 * time.Second
 )
 
 type Context interface {
 	Authenticate() error
 	Dial(serviceName string) (net.Conn, error)
 	Listen(serviceName string) (net.Listener, error)
+	ListenWithOptions(serviceName string, options *edge.ListenOptions) (net.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
@@ -66,15 +70,41 @@ type Context interface {
 	Close()
 }
 
+type AuthFailure struct {
+	httpCode int
+	msg      string
+}
+
+func (e AuthFailure) Error() string {
+	return fmt.Sprintf("authentication failed with http status code %v and msg: %v", e.httpCode, e.msg)
+}
+
+type notAuthorized struct{}
+
+func (e notAuthorized) Error() string {
+	return fmt.Sprintf("not authorized")
+}
+
+var NotAuthorized = notAuthorized{}
+
+type NotAccessible struct {
+	httpCode int
+	msg      string
+}
+
+func (e NotAccessible) Error() string {
+	return fmt.Sprintf("unable to create session. http status code: %v, msg: %v", e.httpCode, e.msg)
+}
+
 var authUrl, _ = url.Parse("/authenticate?method=cert")
 var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 
 type contextImpl struct {
-	config                  *config.Config
-	initDone                sync.Once
-	edgeRouterConnFactories cmap.ConcurrentMap
+	config            *config.Config
+	initDone          sync.Once
+	routerConnections cmap.ConcurrentMap
 
 	id          identity.Identity
 	zitiUrl     *url.URL
@@ -88,9 +118,9 @@ type contextImpl struct {
 	metrics metrics.Registry
 }
 
-func (context *contextImpl) OnFactoryClosed(factory edge.ConnFactory) {
-	logrus.Debugf("edgeConnFactory[%s] was closed", factory.Key())
-	context.edgeRouterConnFactories.Remove(factory.Key())
+func (context *contextImpl) OnClose(factory edge.RouterConn) {
+	logrus.Debugf("connection to router [%s] was closed", factory.Key())
+	context.routerConnections.Remove(factory.Key())
 }
 
 func NewContext() Context {
@@ -99,8 +129,8 @@ func NewContext() Context {
 
 func NewContextWithConfig(config *config.Config) Context {
 	return &contextImpl{
-		edgeRouterConnFactories: cmap.New(),
-		config:                  config,
+		routerConnections: cmap.New(),
+		config:            config,
 	}
 }
 
@@ -194,10 +224,9 @@ func (context *contextImpl) runSessionRefresh() {
 					return
 				}
 			} else {
-				defer resp.Body.Close()
-
 				apiSessionResp := &edge.ApiSession{}
 				_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
+				_ = resp.Body.Close()
 				if err != nil {
 					log.Fatalf("failed to parse current session")
 					return
@@ -207,6 +236,22 @@ func (context *contextImpl) runSessionRefresh() {
 			}
 		}
 	}
+}
+
+func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error {
+	operation := func() error {
+		pfxlog.Logger().Infof("attempting to establish new api session")
+		err := context.Authenticate()
+		if err != nil && errors2.As(err, &AuthFailure{}) {
+			return backoff.Permanent(err)
+		}
+		return err
+	}
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.MaxInterval = 10 * time.Second
+	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
+
+	return backoff.Retry(operation, expBackoff)
 }
 
 func (context *contextImpl) Authenticate() error {
@@ -222,16 +267,24 @@ func (context *contextImpl) Authenticate() error {
 			return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
 		}
 	}
-	json.NewEncoder(req).Encode(sdkInfo)
+	if err := json.NewEncoder(req).Encode(sdkInfo); err != nil {
+		return err
+	}
 	resp, err := context.clt.Post(context.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
 	if err != nil {
 		pfxlog.Logger().Errorf("failure to post auth %+v", err)
 		return err
 	}
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		logrus.Fatal("failed to authenticate with Ziti controller")
+		msg, _ := ioutil.ReadAll(resp.Body)
+		return AuthFailure{
+			httpCode: resp.StatusCode,
+			msg:      string(msg),
+		}
 	}
 
 	apiSessionResp := edge.ApiSession{}
@@ -277,7 +330,7 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 }
 
 func (context *contextImpl) dialSession(service string, session *edge.Session) (net.Conn, error) {
-	edgeConnFactory, err := context.getEdgeRouterConnFactory(session)
+	edgeConnFactory, err := context.getEdgeRouterConn(session, edge.DialConnOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -286,80 +339,67 @@ func (context *contextImpl) dialSession(service string, session *edge.Session) (
 }
 
 func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
+	return context.ListenWithOptions(serviceName, edge.DefaultListenOptions())
+}
+
+func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.ListenOptions) (net.Listener, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
-		for attempt := 0; attempt < 2; attempt++ {
-			ns, err := context.GetBindSession(id)
-			if err != nil {
-				return nil, err
-			}
-			listener, err := context.listenSession(ns, serviceName)
-			if err != nil && attempt == 0 {
-				if strings.Contains(err.Error(), "closed") {
-					context.deleteSession(id)
-					continue
-				}
-			}
-			return listener, err
-		}
+		return context.listenSession(id, serviceName, options), nil
 	}
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(session *edge.Session, serviceName string) (net.Listener, error) {
-	edgeConnFactory, err := context.getEdgeRouterConnFactory(session)
-	if err != nil {
-		return nil, err
-	}
-	edgeConn := edgeConnFactory.NewConn(serviceName)
-	return edgeConn.Listen(session, serviceName)
+func (context *contextImpl) listenSession(serviceId, serviceName string, options *edge.ListenOptions) net.Listener {
+	listenerMgr := newListenerManager(serviceId, serviceName, context, options)
+	return listenerMgr.listener
 }
 
-func (context *contextImpl) getEdgeRouterConnFactory(session *edge.Session) (edge.ConnFactory, error) {
+func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edge.ConnOptions) (edge.RouterConn, error) {
 	logger := pfxlog.Logger().WithField("ns", session.Token)
 
 	if len(session.EdgeRouters) == 0 {
 		return nil, errors.New("no edge routers available")
 	}
 
-	ch := make(chan edge.ConnFactory)
-	defer func() {
-		close(ch)
-	}()
+	ch := make(chan *edgeRouterConnResult)
 
 	for _, edgeRouter := range session.EdgeRouters {
-		for _, url := range edgeRouter.Urls {
-			go context.connectEdgeRouter(url, ch)
+		for _, routerUrl := range edgeRouter.Urls {
+			go context.connectEdgeRouter(edgeRouter.Name, routerUrl, ch)
 		}
 	}
 
-	select {
-	case f := <-ch:
-		logger.Debugf("using edgeRouter[%s]", f.Key())
-		return f, nil
-	case <-time.After(5 * time.Second):
-		return nil, errors.New("no edge routers connected in time")
+	timeout := time.After(options.GetConnectTimeout())
+	for {
+		select {
+		case f := <-ch:
+			if f.routerConnection != nil {
+				logger.Debugf("using edgeRouter[%s]", f.routerConnection.Key())
+				return f.routerConnection, nil
+			}
+		case <-timeout:
+			return nil, errors.New("no edge routers connected in time")
+		}
 	}
 }
 
-func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.ConnFactory) {
+func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
 	logger := pfxlog.Logger()
 
-	defer func() {
-		recover()
-	}()
-
-	if edgeConn, found := context.edgeRouterConnFactories.Get(ingressUrl); found {
-		ret <- edgeConn.(edge.ConnFactory)
+	if edgeConn, found := context.routerConnections.Get(ingressUrl); found {
+		ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: edgeConn.(edge.RouterConn)}
 		return
 	}
 
 	ingAddr, err := transport.ParseAddress(ingressUrl)
 	if err != nil {
 		logger.WithError(err).Errorf("failed to parse url[%s]", ingressUrl)
+		ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}
+		return
 	}
 
 	id := context.id
@@ -370,23 +410,34 @@ func (context *contextImpl) connectEdgeRouter(ingressUrl string, ret chan edge.C
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
 	if err != nil {
 		logger.Error(err)
+		select {
+		case ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}:
+		default:
+		}
 		return
 	}
 
-	edgeConn := edge_impl.NewEdgeConnFactory(ingressUrl, ch, context)
+	edgeConn := edge_impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
 
-	useConn := context.edgeRouterConnFactories.Upsert(ingressUrl, edgeConn,
+	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV interface{}, newV interface{}) interface{} {
-			if exist { // use the factory already in the map, close new one
-				go newV.(edge.ConnFactory).Close()
+			if exist { // use the routerConnection already in the map, close new one
+				go func() {
+					if err := newV.(edge.RouterConn).Close(); err != nil {
+						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
+					}
+				}()
 				return oldV
 			}
 			go metrics.ProbeLatency(ch, context.metrics.Histogram("latency."+ingressUrl), LatencyCheckInterval)
 			return newV
 		})
 
-	ret <- useConn.(edge.ConnFactory)
+	select {
+	case ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn.(edge.RouterConn)}:
+	default:
+	}
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
@@ -492,14 +543,14 @@ func (context *contextImpl) getServices() ([]edge.Service, error) {
 }
 
 func (context *contextImpl) GetSession(id string) (*edge.Session, error) {
-	return context.getSession(id, false)
+	return context.createSession(id, false)
 }
 
 func (context *contextImpl) GetBindSession(id string) (*edge.Session, error) {
-	return context.getSession(id, true)
+	return context.createSession(id, true)
 }
 
-func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, error) {
+func (context *contextImpl) createSession(id string, bind bool) (*edge.Session, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -515,9 +566,9 @@ func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, err
 	body := fmt.Sprintf(`{"serviceId":"%s", "type": "%s"}`, id, sessionType)
 	reqBody := bytes.NewBufferString(body)
 
-	url := context.zitiUrl.ResolveReference(sessionUrl).String()
-	pfxlog.Logger().Debugf("requesting session from %v", url)
-	req, _ := http.NewRequest("POST", url, reqBody)
+	fullSessionUrl := context.zitiUrl.ResolveReference(sessionUrl).String()
+	pfxlog.Logger().Debugf("requesting session from %v", fullSessionUrl)
+	req, _ := http.NewRequest("POST", fullSessionUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -527,20 +578,55 @@ func (context *contextImpl) getSession(id string, bind bool) (*edge.Session, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	return context.toSession("create", resp, 201)
+}
 
-	if resp.StatusCode != 201 {
+func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
+	if err := context.initialize(); err != nil {
+		return nil, errors.Errorf("failed to initialize context: (%v)", err)
+	}
+
+	sessionLookupUrl, _ := url.Parse(fmt.Sprintf("/sessions/%v", id))
+	sessionLookupUrlStr := context.zitiUrl.ResolveReference(sessionLookupUrl).String()
+	pfxlog.Logger().Debugf("requesting session from %v", sessionLookupUrlStr)
+	req, _ := http.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
+	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	logrus.WithField("sessionId", id).Debug("requesting session")
+	resp, err := context.clt.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+	return context.toSession("refresh", resp, 200)
+}
+
+func (context *contextImpl) toSession(op string, resp *http.Response, expectedStatus int) (*edge.Session, error) {
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != expectedStatus {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return nil, errors.Errorf("failed to create session: %s\n%s", resp.Status, string(respBody))
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, NotAuthorized
+		}
+		if resp.StatusCode == http.StatusBadRequest {
+			return nil, NotAccessible{
+				httpCode: resp.StatusCode,
+				msg:      string(respBody),
+			}
+		}
+		return nil, errors.Errorf("failed to %v session: %s\n%s", op, resp.Status, string(respBody))
 	}
 
 	session := new(edge.Session)
-	_, err = edge.ApiResponseDecode(session, resp.Body)
+	_, err := edge.ApiResponseDecode(session, resp.Body)
 	if err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to decode session response")
 		return nil, err
 	}
-	context.sessions.Store(id, session)
+
+	context.sessions.Store(session.Id, session)
 
 	return session, nil
 }
@@ -553,18 +639,261 @@ func (context *contextImpl) Close() {
 	logger := pfxlog.Logger()
 
 	// remove any closed connections
-	for entry := range context.edgeRouterConnFactories.IterBuffered() {
-		key, val := entry.Key, entry.Val.(edge.ConnFactory)
+	for entry := range context.routerConnections.IterBuffered() {
+		key, val := entry.Key, entry.Val.(edge.RouterConn)
 		if !val.IsClosed() {
 			if err := val.Close(); err != nil {
 				logger.WithError(err).Error("error while closing connection")
 			}
 		}
-		context.edgeRouterConnFactories.Remove(key)
+		context.routerConnections.Remove(key)
 	}
 }
 
-func (c *contextImpl) Metrics() metrics.Registry {
-	c.initialize()
-	return c.metrics
+func (context *contextImpl) Metrics() metrics.Registry {
+	_ = context.initialize()
+	return context.metrics
+}
+
+func newListenerManager(serviceId, serviceName string, context *contextImpl, options *edge.ListenOptions) *listenerManager {
+	now := time.Now()
+	listenerMgr := &listenerManager{
+		serviceId:         serviceId,
+		context:           context,
+		options:           options,
+		routerConnections: map[string]edge.RouterConn{},
+		connects:          map[string]time.Time{},
+		listener:          edge_impl.NewMultiListener(serviceName),
+		connectChan:       make(chan *edgeRouterConnResult, 3),
+		eventChan:         make(chan listenerEvent),
+		disconnectedTime:  &now,
+	}
+
+	go listenerMgr.run()
+
+	return listenerMgr
+}
+
+type listenerManager struct {
+	serviceId          string
+	context            *contextImpl
+	session            *edge.Session
+	options            *edge.ListenOptions
+	routerConnections  map[string]edge.RouterConn
+	connects           map[string]time.Time
+	listener           edge_impl.MultiListener
+	connectChan        chan *edgeRouterConnResult
+	eventChan          chan listenerEvent
+	sessionRefreshTime time.Time
+	disconnectedTime   *time.Time
+}
+
+func (mgr *listenerManager) run() {
+	mgr.createSessionWithBackoff()
+	mgr.makeMoreListeners()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	refreshTicker := time.NewTicker(30 * time.Second)
+
+	defer ticker.Stop()
+	defer refreshTicker.Stop()
+
+	for !mgr.listener.IsClosed() {
+		select {
+		case routerConnectionResult := <-mgr.connectChan:
+			mgr.handleRouterConnectResult(routerConnectionResult)
+		case event := <-mgr.eventChan:
+			event.handle(mgr)
+		case <-refreshTicker.C:
+			mgr.refreshSession()
+		case <-ticker.C:
+			mgr.makeMoreListeners()
+		}
+	}
+}
+
+func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResult) {
+	delete(mgr.connects, result.routerUrl)
+	routerConnection := result.routerConnection
+	if routerConnection == nil {
+		return
+	}
+
+	if len(mgr.routerConnections) < mgr.options.MaxConnections {
+		if _, ok := mgr.routerConnections[routerConnection.GetRouterName()]; !ok {
+			mgr.routerConnections[routerConnection.GetRouterName()] = routerConnection
+			go mgr.createListener(routerConnection, mgr.session)
+		}
+	}
+}
+
+func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *edge.Session) {
+	serviceName := mgr.listener.GetServiceName()
+	edgeConn := routerConnection.NewConn(serviceName)
+	listener, err := edgeConn.Listen(session, serviceName, mgr.options)
+	if err == nil {
+		mgr.listener.AddListener(listener, func() {
+			mgr.eventChan <- &routerConnectionListenFailedEvent{
+				router: routerConnection.GetRouterName(),
+			}
+		})
+		mgr.eventChan <- listenSuccessEvent{}
+	} else {
+		if err := edgeConn.Close(); err != nil {
+			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), serviceName, err)
+		}
+
+		mgr.eventChan <- &routerConnectionListenFailedEvent{
+			router: routerConnection.GetRouterName(),
+		}
+	}
+}
+
+func (mgr *listenerManager) makeMoreListeners() {
+	if mgr.listener.IsClosed() {
+		return
+	}
+
+	// If we don't have any connections and there are no available edge routers, refresh the session more often
+	if len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
+		now := time.Now()
+		if mgr.disconnectedTime.Add(mgr.options.ConnectTimeout).Before(now) {
+			err := errors.New("disconnected for longer than connect timeout. closing")
+			mgr.listener.CloseWithError(err)
+			return
+		}
+
+		if mgr.sessionRefreshTime.Add(time.Second).Before(now) {
+			pfxlog.Logger().Infof("no edge routers available, polling more frequently")
+			mgr.refreshSession()
+		}
+	}
+
+	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
+		return
+	}
+
+	for _, edgeRouter := range mgr.session.EdgeRouters {
+		if _, ok := mgr.routerConnections[edgeRouter.Name]; ok {
+			// already connected to this router
+			continue
+		}
+
+		for _, routerUrl := range edgeRouter.Urls {
+			if _, ok := mgr.connects[routerUrl]; ok {
+				// this url already has a connect in progress
+				continue
+			}
+
+			mgr.connects[routerUrl] = time.Now()
+			go mgr.context.connectEdgeRouter(edgeRouter.Name, routerUrl, mgr.connectChan)
+		}
+	}
+}
+
+func (mgr *listenerManager) refreshSession() {
+	session, err := mgr.context.refreshSession(mgr.session.Id)
+	if err != nil {
+		if errors2.Is(err, NotAuthorized) {
+			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
+			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
+				err := fmt.Errorf("unable to establish API session (%w)", err)
+				if len(mgr.routerConnections) == 0 {
+					mgr.listener.CloseWithError(err)
+				}
+				return
+			}
+		}
+
+		session, err = mgr.context.refreshSession(mgr.session.Id)
+		if err != nil {
+			if errors2.Is(err, NotAuthorized) {
+				pfxlog.Logger().Errorf("failure refreshing bind session even after reauthenticating api session. service %v (%v)", mgr.listener.GetServiceName(), err)
+				if len(mgr.routerConnections) == 0 {
+					mgr.listener.CloseWithError(err)
+				}
+				return
+			}
+
+			pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", mgr.session.Id, err)
+
+			// try to create new session
+			mgr.createSessionWithBackoff()
+		}
+	}
+
+	if session != nil {
+		// token only returned on created, so we have to backfill it on lookups
+		session.Token = mgr.session.Token
+		mgr.session = session
+		mgr.sessionRefreshTime = time.Now()
+	}
+}
+
+func (mgr *listenerManager) createSessionWithBackoff() {
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.InitialInterval = 50 * time.Millisecond
+	expBackoff.MaxInterval = 10 * time.Second
+	expBackoff.MaxElapsedTime = mgr.options.GetConnectTimeout()
+
+	_ = backoff.Retry(mgr.createSession, expBackoff)
+}
+
+func (mgr *listenerManager) createSession() error {
+	logger := pfxlog.Logger()
+	logger.Debugf("establishing bind session to service %v", mgr.listener.GetServiceName())
+	session, err := mgr.context.GetBindSession(mgr.serviceId)
+	if err != nil {
+		logger.Debugf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
+		if errors2.Is(err, NotAuthorized) {
+			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
+				err := fmt.Errorf("unable to establish API session (%w)", err)
+				if len(mgr.routerConnections) == 0 {
+					mgr.listener.CloseWithError(err)
+				}
+				return backoff.Permanent(err)
+			}
+		} else if errors2.As(err, &NotAccessible{}) {
+			logger.Debugf("session create failure not recoverable, not retrying")
+			if len(mgr.routerConnections) == 0 {
+				mgr.listener.CloseWithError(err)
+			}
+			return backoff.Permanent(err)
+		}
+		return err
+	}
+	logger.Debugf("successfully created bind session to service %v", mgr.listener.GetServiceName())
+	mgr.session = session
+	mgr.sessionRefreshTime = time.Now()
+	return nil
+}
+
+type listenerEvent interface {
+	handle(mgr *listenerManager)
+}
+
+type routerConnectionListenFailedEvent struct {
+	router string
+}
+
+func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
+	delete(mgr.routerConnections, event.router)
+	now := time.Now()
+	if len(mgr.routerConnections) == 0 {
+		mgr.disconnectedTime = &now
+	}
+	mgr.refreshSession()
+	mgr.makeMoreListeners()
+}
+
+type edgeRouterConnResult struct {
+	routerUrl        string
+	routerConnection edge.RouterConn
+	err              error
+}
+
+type listenSuccessEvent struct{}
+
+func (event listenSuccessEvent) handle(mgr *listenerManager) {
+	mgr.disconnectedTime = nil
 }

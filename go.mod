@@ -2,10 +2,11 @@ module github.com/netfoundry/ziti-sdk-golang
 
 go 1.14
 
-//replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
+// replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
 
 require (
 	github.com/Jeffail/gabs v1.4.0
+	github.com/cenkalti/backoff/v4 v4.0.2
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/google/uuid v1.1.1

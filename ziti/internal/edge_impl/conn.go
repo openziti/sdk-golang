@@ -76,7 +76,7 @@ func (conn *edgeConn) Accept(event *edge.MsgEvent) {
 		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).Info("received dial request")
 		go conn.newChildConnection(event)
 	} else if event.Msg.ContentType == edge.ContentTypeStateClosed && event.Seq == 0 {
-		_ = conn.Close()
+		_ = conn.close(true)
 	} else if err := conn.readQ.PutSequenced(event.Seq, event); err != nil {
 		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).WithError(err).
 			Error("error pushing edge message to sequencer")
@@ -129,7 +129,7 @@ func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (conn *edgeConn) HandleClose(ch channel2.Channel) {
+func (conn *edgeConn) HandleClose(channel2.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
 	conn.readQ.Close()
@@ -203,14 +203,14 @@ func (conn *edgeConn) establishCrypto(keypair *kx.KeyPair, peerKey []byte, serve
 	return err
 }
 
-func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Listener, error) {
+func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options *edge.ListenOptions) (net.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
 		WithField("service", serviceName).
 		WithField("session", session.Token)
 
 	logger.Debug("sending bind request to edge router")
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public())
+	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public(), options.Cost)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {
@@ -231,10 +231,13 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string) (net.Lis
 
 	logger.Debug("connected")
 	listener := &edgeListener{
-		serviceName: serviceName,
-		token:       session.Token,
-		acceptC:     make(chan net.Conn, 10),
-		edgeChan:    conn,
+		baseListener: baseListener{
+			serviceName: serviceName,
+			acceptC:     make(chan net.Conn, 10),
+			errorC:      make(chan error, 1),
+		},
+		token:    session.Token,
+		edgeChan: conn,
 	}
 	conn.hosting.Store(session.Token, listener)
 	return listener, nil
@@ -254,12 +257,12 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		return n, nil
 	}
 
-	for !conn.closed.Get() {
+	for {
 		next, err := conn.readQ.GetNextWithDeadline(conn.readDeadline)
 		if err == sequencer.ErrClosed {
 			log.Debug("sequencer closed, closing connection")
 			conn.closed.Set(true)
-			continue
+			return 0, io.EOF
 		} else if err != nil {
 			return 0, err
 		}
@@ -305,11 +308,13 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			log.WithField("type", event.Msg.ContentType).Error("unexpected message")
 		}
 	}
-	log.Debug("return EOF from closing/closed connection")
-	return 0, io.EOF
 }
 
 func (conn *edgeConn) Close() error {
+	return conn.close(false)
+}
+
+func (conn *edgeConn) close(closedByRemote bool) error {
 	if !conn.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -318,13 +323,24 @@ func (conn *edgeConn) Close() error {
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
-	msg := edge.NewStateClosedMsg(conn.Id(), "")
-	if err := conn.SendState(msg); err != nil {
-		log.WithError(err).Error("failed to send close message")
+	if !closedByRemote {
+		msg := edge.NewStateClosedMsg(conn.Id(), "")
+		if err := conn.SendState(msg); err != nil {
+			log.WithError(err).Error("failed to send close message")
+		}
 	}
 
 	conn.readQ.Close()
-	conn.msgMux.RemoveMsgSink(conn)
+	go conn.msgMux.RemoveMsgSink(conn) // needs to be done async, otherwise we may deadlock
+
+	conn.hosting.Range(func(key, value interface{}) bool {
+		listener := value.(*edgeListener)
+		if err := listener.Close(); err != nil {
+			log.WithError(err).Errorf("failed to close listener for service %v", listener.serviceName)
+		}
+		return true
+	})
+
 	return nil
 }
 
