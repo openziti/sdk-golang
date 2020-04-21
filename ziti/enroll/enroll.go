@@ -371,7 +371,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.Cert
 			postBody = pb
 		}
 
-		resp, postErr := client.Post(enFlags.Token.EnrolmentUrl(), "text/plain", bytes.NewReader(postBody))
+		resp, postErr := client.Post(enFlags.Token.EnrolmentUrl(), "application/json", bytes.NewReader(postBody))
 		if postErr != nil {
 			return postErr
 		}
@@ -380,7 +380,18 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.Cert
 			if resp.StatusCode == http.StatusConflict {
 				return errors.New("the provided identity has already been enrolled")
 			} else {
-				return errors.Errorf("enroll error: %s", resp.Status)
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					return errors.Errorf("enroll error: %s", resp.Status)
+				}
+
+				if respContainer, err := gabs.ParseJSON(body); err == nil {
+					code := respContainer.Path("error.code").Data().(string)
+					message := respContainer.Path("error.message").Data().(string)
+					return errors.Errorf("enroll error: %s: %s: %s", resp.Status, code, message)
+				} else {
+					return errors.Errorf("enroll error: %s", resp.Status)
+				}
 			}
 		}
 		return nil
