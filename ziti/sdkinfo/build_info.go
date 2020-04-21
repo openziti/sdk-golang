@@ -3,9 +3,9 @@
 package sdkinfo
 
 const (
-	Version   = "v0.9.0"
-	Revision  = "a8baa9923e52"
+	Version   = "v0.11.18"
+	Revision  = "6ab6c1661d2e"
 	Branch    = "master"
-	BuildUser = "Travis CI"
-	BuildDate = "2020-02-10 11:38:37"
+	BuildUser = "Travis CI User"
+	BuildDate = "2020-04-21 18:20:51"
 )
