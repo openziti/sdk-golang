@@ -183,10 +183,6 @@ func (options *ListenOptions) GetConnectTimeout() time.Duration {
 	return options.ConnectTimeout
 }
 
-func (options *ListenOptions) GetMaxConnections() int {
-	return options.MaxConnections
-}
-
 func (options *ListenOptions) String() string {
 	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxConnections)
 }
