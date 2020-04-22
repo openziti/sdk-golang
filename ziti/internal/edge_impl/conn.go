@@ -264,6 +264,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			conn.closed.Set(true)
 			return 0, io.EOF
 		} else if err != nil {
+			log.Debugf("unexepcted sequencer err (%v)", err)
 			return 0, err
 		}
 
@@ -271,7 +272,11 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		switch event.Msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
-			conn.closed.Set(true)
+			conn.msgMux.Event(&closeConnEvent{
+				conn:        conn,
+				remoteClose: true,
+				errorC:      make(chan error, 1),
+			})
 			log.Debug("received ConnState_CLOSED message, closing connection")
 			continue
 
@@ -311,7 +316,21 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 }
 
 func (conn *edgeConn) Close() error {
-	return conn.close(false)
+	event := &closeConnEvent{
+		conn:        conn,
+		remoteClose: false,
+		errorC:      make(chan error, 1),
+	}
+	conn.msgMux.Event(event)
+	select {
+	case err := <-event.errorC:
+		if err != nil {
+			return err
+		}
+	case <-time.After(time.Second):
+		return errors.New("close timed out")
+	}
+	return nil
 }
 
 func (conn *edgeConn) close(closedByRemote bool) error {
@@ -330,7 +349,7 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 		}
 	}
 
-	conn.readQ.Close()
+	conn.readQ.CloseByProducer()
 	go conn.msgMux.RemoveMsgSink(conn) // needs to be done async, otherwise we may deadlock
 
 	conn.hosting.Range(func(key, value interface{}) bool {
@@ -408,4 +427,18 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 	} else {
 		logger.Warnf("client did not send its key. connection is not end-to-end encrypted")
 	}
+}
+
+type closeConnEvent struct {
+	conn        *edgeConn
+	remoteClose bool
+	errorC      chan error
+}
+
+func (event *closeConnEvent) Handle(mux *edge.MsgMux) {
+	if err := event.conn.close(event.remoteClose); err != nil {
+		event.errorC <- err
+		pfxlog.Logger().Errorf("failure closing connection. connId = %v (%v)", event.conn.Id(), err)
+	}
+	close(event.errorC)
 }
