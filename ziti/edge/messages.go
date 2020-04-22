@@ -41,6 +41,7 @@ const (
 	SeqHeader          = 1001
 	SessionTokenHeader = 1002
 	PublicKeyHeader    = 1003
+	CostHeader         = 1004
 
 	// Put this in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
@@ -159,10 +160,15 @@ func NewDialMsg(connId uint32, token string) *channel2.Message {
 	return newMsg(ContentTypeDial, connId, 0, []byte(token))
 }
 
-func NewBindMsg(connId uint32, token string, pubKey []byte) *channel2.Message {
+func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16) *channel2.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
+	}
+	if cost > 0 {
+		costBytes := make([]byte, 2)
+		binary.LittleEndian.PutUint16(costBytes, cost)
+		msg.Headers[CostHeader] = costBytes
 	}
 	return msg
 }

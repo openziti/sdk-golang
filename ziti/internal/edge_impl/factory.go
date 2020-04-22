@@ -29,33 +29,39 @@ const (
 	DefaultMaxOutOfOrderMsgs = 5000
 )
 
-type ConnFactoryOwner interface {
-	OnFactoryClosed(factory edge.ConnFactory)
+type RouterConnOwner interface {
+	OnClose(factory edge.RouterConn)
 }
 
-type connFactory struct {
-	key    string
-	ch     channel2.Channel
-	msgMux *edge.MsgMux
-	owner  ConnFactoryOwner
+type routerConn struct {
+	routerName string
+	key        string
+	ch         channel2.Channel
+	msgMux     *edge.MsgMux
+	owner      RouterConnOwner
 }
 
-func (conn *connFactory) Key() string {
+func (conn *routerConn) Key() string {
 	return conn.key
 }
 
-func (conn *connFactory) HandleClose(ch channel2.Channel) {
+func (conn *routerConn) GetRouterName() string {
+	return conn.routerName
+}
+
+func (conn *routerConn) HandleClose(ch channel2.Channel) {
 	if conn.owner != nil {
-		conn.owner.OnFactoryClosed(conn)
+		conn.owner.OnClose(conn)
 	}
 }
 
-func NewEdgeConnFactory(key string, ch channel2.Channel, owner ConnFactoryOwner) edge.ConnFactory {
-	connFactory := &connFactory{
-		key:    key,
-		ch:     ch,
-		msgMux: edge.NewMsgMux(),
-		owner:  owner,
+func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner RouterConnOwner) edge.RouterConn {
+	connFactory := &routerConn{
+		key:        key,
+		routerName: routerName,
+		ch:         ch,
+		msgMux:     edge.NewMsgMux(),
+		owner:      owner,
 	}
 
 	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
@@ -76,7 +82,7 @@ func NewEdgeConnFactory(key string, ch channel2.Channel, owner ConnFactoryOwner)
 	return connFactory
 }
 
-func (conn *connFactory) NewConn(service string) edge.Conn {
+func (conn *routerConn) NewConn(service string) edge.Conn {
 	id := connSeq.Next()
 
 	edgeCh := &edgeConn{
@@ -89,8 +95,8 @@ func (conn *connFactory) NewConn(service string) edge.Conn {
 	var err error
 	if edgeCh.keyPair, err = kx.NewKeyPair(); err != nil {
 		pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", service, err)
-
 	}
+
 	err = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service, id, err)
@@ -98,10 +104,10 @@ func (conn *connFactory) NewConn(service string) edge.Conn {
 	return edgeCh
 }
 
-func (conn *connFactory) Close() error {
+func (conn *routerConn) Close() error {
 	return conn.ch.Close()
 }
 
-func (conn *connFactory) IsClosed() bool {
+func (conn *routerConn) IsClosed() bool {
 	return conn.ch.IsClosed()
 }

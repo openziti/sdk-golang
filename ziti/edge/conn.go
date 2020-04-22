@@ -17,6 +17,7 @@
 package edge
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -44,11 +45,12 @@ func init() {
 	transport.AddAddressParser(new(addrParser))
 }
 
-type ConnFactory interface {
+type RouterConn interface {
 	io.Closer
 	IsClosed() bool
 	Key() string
 	NewConn(service string) Conn
+	GetRouterName() string
 }
 
 type Identifiable interface {
@@ -60,7 +62,7 @@ type Conn interface {
 	Identifiable
 	NewConn(service string) Conn
 	Connect(session *Session) (net.Conn, error)
-	Listen(session *Session, serviceName string) (net.Listener, error)
+	Listen(session *Session, serviceName string, options *ListenOptions) (net.Listener, error)
 	IsClosed() bool
 }
 
@@ -158,5 +160,37 @@ func (ec *MsgChannel) TraceMsg(source string, msg *channel2.Message) {
 
 	if msgUUID != nil {
 		pfxlog.Logger().WithFields(GetLoggerFields(msg)).WithField("source", source).Debug("tracing message")
+	}
+}
+
+type ConnOptions interface {
+	GetConnectTimeout() time.Duration
+}
+
+type DialConnOptions struct{}
+
+func (d DialConnOptions) GetConnectTimeout() time.Duration {
+	return 5 * time.Second
+}
+
+type ListenOptions struct {
+	Cost           uint16
+	ConnectTimeout time.Duration
+	MaxConnections int
+}
+
+func (options *ListenOptions) GetConnectTimeout() time.Duration {
+	return options.ConnectTimeout
+}
+
+func (options *ListenOptions) String() string {
+	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxConnections)
+}
+
+func DefaultListenOptions() *ListenOptions {
+	return &ListenOptions{
+		Cost:           0,
+		ConnectTimeout: 5 * time.Second,
+		MaxConnections: 3,
 	}
 }

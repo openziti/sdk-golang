@@ -17,49 +17,64 @@
 package edge_impl
 
 import (
+	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/ziti-foundation/util/concurrenz"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"net"
+	"reflect"
 	"time"
 )
 
-type edgeListener struct {
+type baseListener struct {
 	serviceName string
-	token       string
-	edgeChan    *edgeConn
 	acceptC     chan net.Conn
+	errorC      chan error
 	closed      concurrenz.AtomicBoolean
 }
 
-func (listener *edgeListener) Network() string {
+func (listener *baseListener) Network() string {
 	return "ziti"
 }
 
-func (listener *edgeListener) String() string {
+func (listener *baseListener) String() string {
 	return listener.serviceName
 }
 
-func (listener *edgeListener) Accept() (net.Conn, error) {
-	for {
+func (listener *baseListener) Addr() net.Addr {
+	return listener
+}
+
+func (listener *baseListener) Accept() (net.Conn, error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for !listener.closed.Get() {
 		select {
 		case conn, ok := <-listener.acceptC:
-			if !ok {
-				return nil, errors.New("listener is closed")
+			if ok && conn != nil {
+				return conn, nil
+			} else {
+				listener.closed.Set(true)
 			}
-			return conn, nil
-		case <-time.After(time.Second):
-			if listener.closed.Get() {
-				return nil, errors.New("listener is closed")
-			}
+		case <-ticker.C:
 		}
 	}
 
+	select {
+	case err := <-listener.errorC:
+		return nil, fmt.Errorf("listener is closed (%w)", err)
+	default:
+	}
+
+	return nil, errors.New("listener is closed")
 }
 
-func (listener *edgeListener) Addr() net.Addr {
-	return listener
+type edgeListener struct {
+	baseListener
+	token    string
+	edgeChan *edgeConn
 }
 
 func (listener *edgeListener) Close() error {
@@ -71,7 +86,14 @@ func (listener *edgeListener) Close() error {
 	listener.edgeChan.hosting.Delete(listener.token)
 
 	edgeChan := listener.edgeChan
-	defer edgeChan.Close()
+	defer func() {
+		if err := edgeChan.Close(); err != nil {
+			pfxlog.Logger().Errorf("unable to close edgeConn with connId %v", edgeChan.Id())
+		}
+
+		listener.acceptC <- nil // signal listeners that listener is closed
+	}()
+
 	unbindRequest := edge.NewUnbindMsg(edgeChan.Id(), listener.token)
 	if err := edgeChan.SendWithTimeout(unbindRequest, time.Second*5); err != nil {
 		pfxlog.Logger().Errorf("unable to unbind session %v for connId %v", listener.token, edgeChan.Id())
@@ -79,4 +101,98 @@ func (listener *edgeListener) Close() error {
 	}
 
 	return nil
+}
+
+type MultiListener interface {
+	net.Listener
+	AddListener(netListener net.Listener, closeHandler func())
+	IsClosed() bool
+	GetServiceName() string
+	CloseWithError(err error)
+}
+
+func NewMultiListener(serviceName string) MultiListener {
+	return &multiListener{
+		baseListener: baseListener{
+			serviceName: serviceName,
+			acceptC:     make(chan net.Conn),
+			errorC:      make(chan error),
+		},
+	}
+}
+
+type multiListener struct {
+	baseListener
+}
+
+func (listener *multiListener) GetServiceName() string {
+	return listener.serviceName
+}
+
+func (listener *multiListener) IsClosed() bool {
+	return listener.closed.Get()
+}
+
+func (listener *multiListener) AddListener(netListener net.Listener, closeHandler func()) {
+	if listener.closed.Get() {
+		return
+	}
+
+	wrappedListener, ok := netListener.(*edgeListener)
+	if !ok {
+		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(listener))
+		return
+	}
+
+	go listener.forward(wrappedListener, closeHandler)
+}
+
+func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {
+	defer func() {
+		if err := edgeListener.Close(); err != nil {
+			pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)
+		}
+		closeHandler()
+	}()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for !listener.closed.Get() && !edgeListener.closed.Get() {
+		select {
+		case conn, ok := <-edgeListener.acceptC:
+			if !ok || conn == nil {
+				// closed, returning
+				return
+			}
+			listener.accept(conn, ticker)
+		case <-ticker.C:
+			// lets us check if the listener is closed, and exit if it has
+		}
+	}
+}
+
+func (listener *multiListener) accept(conn net.Conn, ticker *time.Ticker) {
+	for !listener.closed.Get() {
+		select {
+		case listener.acceptC <- conn:
+			return
+		case <-ticker.C:
+			// lets us check if the listener is closed, and exit if it has
+		}
+	}
+}
+
+func (listener *multiListener) Close() error {
+	listener.closed.Set(true)
+	return nil
+}
+
+func (listener *multiListener) CloseWithError(err error) {
+	select {
+	case listener.errorC <- err:
+	default:
+	}
+
+	listener.closed.Set(true)
 }
