@@ -390,7 +390,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.Cert
 					message := respContainer.Path("error.message").Data().(string)
 					return errors.Errorf("enroll error: %s: %s: %s", resp.Status, code, message)
 				} else {
-					return errors.Errorf("enroll error: %s", resp.Status)
+					return errors.Errorf("enroll error: %s: %s", resp.Status, body)
 				}
 			}
 		}
