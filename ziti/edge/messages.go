@@ -42,10 +42,17 @@ const (
 	SessionTokenHeader = 1002
 	PublicKeyHeader    = 1003
 	CostHeader         = 1004
+	PrecedenceHeader   = 1005
+
+	PrecedenceDefault  Precedence = 0
+	PrecedenceRequired            = 1
+	PrecedenceFailed              = 2
 
 	// Put this in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
 )
+
+type Precedence byte
 
 var ContentTypeValue = map[string]int32{
 	"EdgeConnectType":        ContentTypeConnect,
@@ -160,7 +167,7 @@ func NewDialMsg(connId uint32, token string) *channel2.Message {
 	return newMsg(ContentTypeDial, connId, 0, []byte(token))
 }
 
-func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16) *channel2.Message {
+func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16, precedence Precedence) *channel2.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
@@ -169,6 +176,9 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16) *channe
 		costBytes := make([]byte, 2)
 		binary.LittleEndian.PutUint16(costBytes, cost)
 		msg.Headers[CostHeader] = costBytes
+	}
+	if precedence != PrecedenceDefault {
+		msg.Headers[PrecedenceHeader] = []byte{byte(precedence)}
 	}
 	return msg
 }
