@@ -210,7 +210,7 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options 
 		WithField("session", session.Token)
 
 	logger.Debug("sending bind request to edge router")
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public(), options.Cost)
+	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public(), options.Cost, options.Precedence)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {

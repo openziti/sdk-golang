@@ -175,6 +175,7 @@ func (d DialConnOptions) GetConnectTimeout() time.Duration {
 
 type ListenOptions struct {
 	Cost           uint16
+	Precedence     Precedence
 	ConnectTimeout time.Duration
 	MaxConnections int
 }
@@ -190,6 +191,7 @@ func (options *ListenOptions) String() string {
 func DefaultListenOptions() *ListenOptions {
 	return &ListenOptions{
 		Cost:           0,
+		Precedence:     PrecedenceDefault,
 		ConnectTimeout: 5 * time.Second,
 		MaxConnections: 3,
 	}
