@@ -279,8 +279,8 @@ func (context *contextImpl) Authenticate() error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
-		logrus.Fatal("failed to authenticate with Ziti controller")
 		msg, _ := ioutil.ReadAll(resp.Body)
+		pfxlog.Logger().Errorf("failed to authenticate with Ziti controller, result status: %v, msg: %v", resp.StatusCode, msg)
 		return AuthFailure{
 			httpCode: resp.StatusCode,
 			msg:      string(msg),
