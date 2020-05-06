@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -156,34 +157,50 @@ type multiListener struct {
 func (listener *multiListener) UpdateCost(cost uint16) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
+
+	var errors []error
 	for child := range listener.listeners {
 		if err := child.UpdateCost(cost); err != nil {
-			return err
+			errors = append(errors, err)
 		}
 	}
-	return nil
+	return listener.condenseErrors(errors)
 }
 
 func (listener *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
+
+	var errors []error
 	for child := range listener.listeners {
 		if err := child.UpdatePrecedence(precedence); err != nil {
-			return err
+			errors = append(errors, err)
 		}
 	}
-	return nil
+	return listener.condenseErrors(errors)
 }
 
 func (listener *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
+
+	var errors []error
 	for child := range listener.listeners {
 		if err := child.UpdateCostAndPrecedence(cost, precedence); err != nil {
-			return err
+			errors = append(errors, err)
 		}
 	}
-	return nil
+	return listener.condenseErrors(errors)
+}
+
+func (listener *multiListener) condenseErrors(errors []error) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	if len(errors) == 1 {
+		return errors[0]
+	}
+	return MultipleErrors(errors)
 }
 
 func (listener *multiListener) GetServiceName() string {
@@ -268,4 +285,21 @@ func (listener *multiListener) CloseWithError(err error) {
 	}
 
 	listener.closed.Set(true)
+}
+
+type MultipleErrors []error
+
+func (e MultipleErrors) Error() string {
+	if len(e) == 0 {
+		return "no errors occurred"
+	}
+	if len(e) == 1 {
+		return e[0].Error()
+	}
+	buf := strings.Builder{}
+	buf.WriteString("multiple errors occurred")
+	for idx, err := range e {
+		buf.WriteString(fmt.Sprintf(" %v: %v", idx, err))
+	}
+	return buf.String()
 }
