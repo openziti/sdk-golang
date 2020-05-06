@@ -36,6 +36,7 @@ const (
 	ContentTypeUnbind            = 60791
 	ContentTypeStateSessionEnded = 60792
 	ContentTypeProbe             = 60793
+	ContentTypeUpdateBind        = 60794
 
 	ConnIdHeader       = 1000
 	SeqHeader          = 1001
@@ -185,6 +186,19 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16, precede
 
 func NewUnbindMsg(connId uint32, token string) *channel2.Message {
 	return newMsg(ContentTypeUnbind, connId, 0, []byte(token))
+}
+
+func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Precedence) *channel2.Message {
+	msg := newMsg(ContentTypeUpdateBind, connId, 0, []byte(token))
+	if cost != nil {
+		costBytes := make([]byte, 2)
+		binary.LittleEndian.PutUint16(costBytes, *cost)
+		msg.Headers[CostHeader] = costBytes
+	}
+	if precedence != nil {
+		msg.Headers[PrecedenceHeader] = []byte{byte(*precedence)}
+	}
+	return msg
 }
 
 func NewDialSuccessMsg(connId uint32, newConnId uint32) *channel2.Message {
