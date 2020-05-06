@@ -73,7 +73,7 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 func (conn *edgeConn) Accept(event *edge.MsgEvent) {
 	conn.TraceMsg("Accept", event.Msg)
 	if event.Msg.ContentType == edge.ContentTypeDial {
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).Info("received dial request")
+		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).Debug("received dial request")
 		go conn.newChildConnection(event)
 	} else if event.Msg.ContentType == edge.ContentTypeStateClosed && event.Seq == 0 {
 		_ = conn.close(true)
@@ -172,38 +172,33 @@ func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 }
 
 func (conn *edgeConn) establishCrypto(keypair *kx.KeyPair, peerKey []byte, server bool) error {
-
 	var err error
 	var rx, tx []byte
 
 	if server {
-		rx, tx, err = keypair.ServerSessionKeys(peerKey)
-		if err != nil {
+		if rx, tx, err = keypair.ServerSessionKeys(peerKey); err != nil {
 			return fmt.Errorf("failed key exchnge: %v", err)
 		}
 	} else {
-		rx, tx, err = keypair.ClientSessionKeys(peerKey)
-		if err != nil {
+		if rx, tx, err = keypair.ClientSessionKeys(peerKey); err != nil {
 			return fmt.Errorf("failed key exchnge: %v", err)
 		}
 	}
 	var txHeader []byte
-	conn.sender, txHeader, err = secretstream.NewEncryptor(tx)
-	if err != nil {
+	if conn.sender, txHeader, err = secretstream.NewEncryptor(tx); err != nil {
 		return fmt.Errorf("failed to enstablish crypto stream: %v", err)
 	}
-	_, err = conn.MsgChannel.Write(txHeader)
-	if err != nil {
+	if _, err = conn.MsgChannel.Write(txHeader); err != nil {
 		return fmt.Errorf("failed to write crypto header: %v", err)
 	}
 
 	conn.rxKey = rx
 
-	pfxlog.Logger().Infof("crypto established with err[%v]", err)
-	return err
+	pfxlog.Logger().WithField("connId", conn.Id()).Debug("crypto established")
+	return nil
 }
 
-func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options *edge.ListenOptions) (net.Listener, error) {
+func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options *edge.ListenOptions) (edge.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
 		WithField("service", serviceName).
@@ -214,18 +209,18 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options 
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {
-		logger.Error(err)
+		logger.WithError(err).Error("failed to bind")
 		return nil, err
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
 		msg := string(replyMsg.Body)
-		logger.Debugf("bind request resulted in disconnect. msg: (%v)", msg)
+		logger.Errorf("bind request resulted in disconnect. msg: (%v)", msg)
 		return nil, errors.Errorf("attempt to use closed connection: %v", msg)
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
-		logger.Debugf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+		logger.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 

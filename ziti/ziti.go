@@ -56,8 +56,8 @@ const (
 type Context interface {
 	Authenticate() error
 	Dial(serviceName string) (net.Conn, error)
-	Listen(serviceName string) (net.Listener, error)
-	ListenWithOptions(serviceName string, options *edge.ListenOptions) (net.Listener, error)
+	Listen(serviceName string) (edge.Listener, error)
+	ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
@@ -338,11 +338,11 @@ func (context *contextImpl) dialSession(service string, session *edge.Session) (
 	return edgeConn.Connect(session)
 }
 
-func (context *contextImpl) Listen(serviceName string) (net.Listener, error) {
+func (context *contextImpl) Listen(serviceName string) (edge.Listener, error) {
 	return context.ListenWithOptions(serviceName, edge.DefaultListenOptions())
 }
 
-func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.ListenOptions) (net.Listener, error) {
+func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -353,7 +353,7 @@ func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(serviceId, serviceName string, options *edge.ListenOptions) net.Listener {
+func (context *contextImpl) listenSession(serviceId, serviceName string, options *edge.ListenOptions) edge.Listener {
 	listenerMgr := newListenerManager(serviceId, serviceName, context, options)
 	return listenerMgr.listener
 }
@@ -724,10 +724,13 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 			mgr.routerConnections[routerConnection.GetRouterName()] = routerConnection
 			go mgr.createListener(routerConnection, mgr.session)
 		}
+	} else {
+		pfxlog.Logger().Debugf("ignoring connection to %v, already have max connections %v", result.routerUrl, len(mgr.routerConnections))
 	}
 }
 
 func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *edge.Session) {
+	logger := pfxlog.Logger()
 	serviceName := mgr.listener.GetServiceName()
 	edgeConn := routerConnection.NewConn(serviceName)
 	listener, err := edgeConn.Listen(session, serviceName, mgr.options)
@@ -739,13 +742,11 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 		})
 		mgr.eventChan <- listenSuccessEvent{}
 	} else {
+		logger.Errorf("creating listener failed: %v", err)
 		if err := edgeConn.Close(); err != nil {
 			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), serviceName, err)
 		}
-
-		mgr.eventChan <- &routerConnectionListenFailedEvent{
-			router: routerConnection.GetRouterName(),
-		}
+		mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}
 	}
 }
 
@@ -764,7 +765,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 		}
 
 		if mgr.sessionRefreshTime.Add(time.Second).Before(now) {
-			pfxlog.Logger().Infof("no edge routers available, polling more frequently")
+			pfxlog.Logger().Warnf("no edge routers available, polling more frequently")
 			mgr.refreshSession()
 		}
 	}
@@ -844,7 +845,7 @@ func (mgr *listenerManager) createSession() error {
 	logger.Debugf("establishing bind session to service %v", mgr.listener.GetServiceName())
 	session, err := mgr.context.GetBindSession(mgr.serviceId)
 	if err != nil {
-		logger.Debugf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
+		logger.Warnf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
 		if errors2.Is(err, NotAuthorized) {
 			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
 				err := fmt.Errorf("unable to establish API session (%w)", err)
@@ -854,7 +855,7 @@ func (mgr *listenerManager) createSession() error {
 				return backoff.Permanent(err)
 			}
 		} else if errors2.As(err, &NotAccessible{}) {
-			logger.Debugf("session create failure not recoverable, not retrying")
+			logger.Warnf("session create failure not recoverable, not retrying")
 			if len(mgr.routerConnections) == 0 {
 				mgr.listener.CloseWithError(err)
 			}

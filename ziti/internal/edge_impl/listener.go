@@ -24,6 +24,8 @@ import (
 	"github.com/pkg/errors"
 	"net"
 	"reflect"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -77,6 +79,30 @@ type edgeListener struct {
 	edgeChan *edgeConn
 }
 
+func (listener *edgeListener) UpdateCost(cost uint16) error {
+	return listener.updateCostAndPrecedence(&cost, nil)
+}
+
+func (listener *edgeListener) UpdatePrecedence(precedence edge.Precedence) error {
+	return listener.updateCostAndPrecedence(nil, &precedence)
+}
+
+func (listener *edgeListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
+	return listener.updateCostAndPrecedence(&cost, &precedence)
+}
+
+func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
+	logger := pfxlog.Logger().
+		WithField("connId", listener.edgeChan.Id()).
+		WithField("service", listener.edgeChan.serviceId).
+		WithField("session", listener.token)
+
+	logger.Debug("sending update bind request to edge router")
+	request := edge.NewUpdateBindMsg(listener.edgeChan.Id(), listener.token, cost, precedence)
+	listener.edgeChan.TraceMsg("updateCostAndPrecedence", request)
+	return listener.edgeChan.Send(request)
+}
+
 func (listener *edgeListener) Close() error {
 	if !listener.closed.CompareAndSwap(false, true) {
 		// already closed
@@ -104,8 +130,8 @@ func (listener *edgeListener) Close() error {
 }
 
 type MultiListener interface {
-	net.Listener
-	AddListener(netListener net.Listener, closeHandler func())
+	edge.Listener
+	AddListener(listener edge.Listener, closeHandler func())
 	IsClosed() bool
 	GetServiceName() string
 	CloseWithError(err error)
@@ -118,11 +144,63 @@ func NewMultiListener(serviceName string) MultiListener {
 			acceptC:     make(chan net.Conn),
 			errorC:      make(chan error),
 		},
+		listeners: map[edge.Listener]struct{}{},
 	}
 }
 
 type multiListener struct {
 	baseListener
+	listeners    map[edge.Listener]struct{}
+	listenerLock sync.Mutex
+}
+
+func (listener *multiListener) UpdateCost(cost uint16) error {
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+
+	var errors []error
+	for child := range listener.listeners {
+		if err := child.UpdateCost(cost); err != nil {
+			errors = append(errors, err)
+		}
+	}
+	return listener.condenseErrors(errors)
+}
+
+func (listener *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+
+	var errors []error
+	for child := range listener.listeners {
+		if err := child.UpdatePrecedence(precedence); err != nil {
+			errors = append(errors, err)
+		}
+	}
+	return listener.condenseErrors(errors)
+}
+
+func (listener *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+
+	var errors []error
+	for child := range listener.listeners {
+		if err := child.UpdateCostAndPrecedence(cost, precedence); err != nil {
+			errors = append(errors, err)
+		}
+	}
+	return listener.condenseErrors(errors)
+}
+
+func (listener *multiListener) condenseErrors(errors []error) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	if len(errors) == 1 {
+		return errors[0]
+	}
+	return MultipleErrors(errors)
 }
 
 func (listener *multiListener) GetServiceName() string {
@@ -133,7 +211,7 @@ func (listener *multiListener) IsClosed() bool {
 	return listener.closed.Get()
 }
 
-func (listener *multiListener) AddListener(netListener net.Listener, closeHandler func()) {
+func (listener *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
 	if listener.closed.Get() {
 		return
 	}
@@ -144,7 +222,19 @@ func (listener *multiListener) AddListener(netListener net.Listener, closeHandle
 		return
 	}
 
-	go listener.forward(wrappedListener, closeHandler)
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+	listener.listeners[wrappedListener] = struct{}{}
+
+	closer := func() {
+		listener.listenerLock.Lock()
+		defer listener.listenerLock.Unlock()
+		delete(listener.listeners, wrappedListener)
+
+		closeHandler()
+	}
+
+	go listener.forward(wrappedListener, closer)
 }
 
 func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {
@@ -195,4 +285,21 @@ func (listener *multiListener) CloseWithError(err error) {
 	}
 
 	listener.closed.Set(true)
+}
+
+type MultipleErrors []error
+
+func (e MultipleErrors) Error() string {
+	if len(e) == 0 {
+		return "no errors occurred"
+	}
+	if len(e) == 1 {
+		return e[0].Error()
+	}
+	buf := strings.Builder{}
+	buf.WriteString("multiple errors occurred")
+	for idx, err := range e {
+		buf.WriteString(fmt.Sprintf(" %v: %v", idx, err))
+	}
+	return buf.String()
 }
