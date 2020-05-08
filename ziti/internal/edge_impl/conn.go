@@ -222,6 +222,26 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options 
 		WithField("service", serviceName).
 		WithField("session", session.Token)
 
+	listener := &edgeListener{
+		baseListener: baseListener{
+			serviceName: serviceName,
+			acceptC:     make(chan net.Conn, 10),
+			errorC:      make(chan error, 1),
+		},
+		token:    session.Token,
+		edgeChan: conn,
+	}
+	logger.Debug("adding listener for session")
+	conn.hosting.Store(session.Token, listener)
+
+	success := false
+	defer func() {
+		if !success {
+			logger.Debug("removing listener for session")
+			conn.hosting.Delete(session.Token)
+		}
+	}()
+
 	logger.Debug("sending bind request to edge router")
 	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public(), options.Cost, options.Precedence)
 	conn.TraceMsg("listen", bindRequest)
@@ -242,17 +262,9 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options 
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
+	success = true
 	logger.Debug("connected")
-	listener := &edgeListener{
-		baseListener: baseListener{
-			serviceName: serviceName,
-			acceptC:     make(chan net.Conn, 10),
-			errorC:      make(chan error, 1),
-		},
-		token:    session.Token,
-		edgeChan: conn,
-	}
-	conn.hosting.Store(session.Token, listener)
+
 	return listener, nil
 }
 
@@ -295,7 +307,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 		case edge.ContentTypeData:
 			d := event.Msg.Body
-			log.Debugf("got buffer from queue %d bytes", len(d))
+			log.Debugf("got buffer from sequencer %d bytes", len(d))
 
 			// first data message should contain crypto header
 			if conn.rxKey != nil {
@@ -415,7 +427,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token)
-	newConnLogger.Info("new connection established")
+	newConnLogger.Debug("new connection established")
 
 	clientKey := message.Headers[edge.PublicKeyHeader]
 	var err error

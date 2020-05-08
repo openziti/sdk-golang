@@ -109,12 +109,18 @@ func (listener *edgeListener) Close() error {
 		return nil
 	}
 
-	listener.edgeChan.hosting.Delete(listener.token)
-
 	edgeChan := listener.edgeChan
+
+	logger := pfxlog.Logger().
+		WithField("connId", listener.edgeChan.Id()).
+		WithField("sessionId", listener.token)
+
+	logger.Debug("removing listener for session")
+	edgeChan.hosting.Delete(listener.token)
+
 	defer func() {
 		if err := edgeChan.Close(); err != nil {
-			pfxlog.Logger().Errorf("unable to close edgeConn with connId %v", edgeChan.Id())
+			logger.WithError(err).Error("unable to close conn")
 		}
 
 		listener.acceptC <- nil // signal listeners that listener is closed
@@ -122,7 +128,7 @@ func (listener *edgeListener) Close() error {
 
 	unbindRequest := edge.NewUnbindMsg(edgeChan.Id(), listener.token)
 	if err := edgeChan.SendWithTimeout(unbindRequest, time.Second*5); err != nil {
-		pfxlog.Logger().Errorf("unable to unbind session %v for connId %v", listener.token, edgeChan.Id())
+		logger.WithError(err).Error("unable to unbind session for conn")
 		return err
 	}
 
@@ -158,39 +164,39 @@ func (listener *multiListener) UpdateCost(cost uint16) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
 
-	var errors []error
+	var resultErrors []error
 	for child := range listener.listeners {
 		if err := child.UpdateCost(cost); err != nil {
-			errors = append(errors, err)
+			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(errors)
+	return listener.condenseErrors(resultErrors)
 }
 
 func (listener *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
 
-	var errors []error
+	var resultErrors []error
 	for child := range listener.listeners {
 		if err := child.UpdatePrecedence(precedence); err != nil {
-			errors = append(errors, err)
+			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(errors)
+	return listener.condenseErrors(resultErrors)
 }
 
 func (listener *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
 
-	var errors []error
+	var resultErrors []error
 	for child := range listener.listeners {
 		if err := child.UpdateCostAndPrecedence(cost, precedence); err != nil {
-			errors = append(errors, err)
+			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(errors)
+	return listener.condenseErrors(resultErrors)
 }
 
 func (listener *multiListener) condenseErrors(errors []error) error {
