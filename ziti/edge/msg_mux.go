@@ -192,12 +192,12 @@ func (event *MsgEvent) Handle(mux *MsgMux) {
 		WithField("seq", event.Seq).
 		WithField("connId", event.ConnId)
 
-	logger.Debugf("handling received %v", ContentTypeNames[event.Msg.ContentType])
+	logger.Debugf("dispatching %v", ContentTypeNames[event.Msg.ContentType])
 
 	if sink, found := mux.chanMap[event.ConnId]; found {
 		sink.Accept(event)
 	} else {
-		logger.Debug("msg received for unknown edge channel id")
+		logger.Debug("unable to dispatch msg received for unknown edge conn id")
 	}
 }
 
