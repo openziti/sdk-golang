@@ -155,8 +155,10 @@ func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
-	// Is there still a race condition where we can receive the other side crypto header
-	// before we have set rxkey?
+	// There is no race condition where we can receive the other side crypto header
+	// because the processing of the crypto header takes place in Conn.Read which
+	// can't happen until we return the conn to the user. So as long as we send
+	// the header and set rxkey before we return, we should be safe
 	hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
 	if hostPubKey != nil {
 		logger = logger.WithField("session", session.Id)
