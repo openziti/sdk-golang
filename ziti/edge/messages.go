@@ -191,9 +191,7 @@ func NewUnbindMsg(connId uint32, token string) *channel2.Message {
 func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Precedence) *channel2.Message {
 	msg := newMsg(ContentTypeUpdateBind, connId, 0, []byte(token))
 	if cost != nil {
-		costBytes := make([]byte, 2)
-		binary.LittleEndian.PutUint16(costBytes, *cost)
-		msg.Headers[CostHeader] = costBytes
+		msg.PutUint16Header(CostHeader, *cost)
 	}
 	if precedence != nil {
 		msg.Headers[PrecedenceHeader] = []byte{byte(*precedence)}
