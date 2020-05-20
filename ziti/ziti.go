@@ -28,7 +28,6 @@ import (
 	"github.com/netfoundry/ziti-foundation/common/constants"
 	"github.com/netfoundry/ziti-foundation/identity/identity"
 	"github.com/netfoundry/ziti-foundation/metrics"
-	"github.com/netfoundry/ziti-foundation/metrics/metrics_pb"
 	"github.com/netfoundry/ziti-foundation/transport"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/config"
 	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
@@ -194,8 +193,7 @@ func (context *contextImpl) initializer() error {
 	metricsTags := map[string]string{
 		"srcId": context.apiSession.Identity.Id,
 	}
-	context.metrics = metrics.NewRegistry(metrics_pb.MetricsSourceType_Edge,
-		context.apiSession.Identity.Name, metricsTags, LatencyCheckInterval, nil)
+	context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags, LatencyCheckInterval, nil)
 
 	// get services
 	if context.services, err = context.getServices(); err != nil {
