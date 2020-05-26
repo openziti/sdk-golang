@@ -61,6 +61,7 @@ func ParseToken(tokenStr string) (*config.EnrollmentClaims, *jwt.Token, error) {
 		SkipClaimsValidation: false,
 	}
 	enrollmentClaims := &config.EnrollmentClaims{}
+	tokenStr = strings.TrimSpace(tokenStr)
 	jwtToken, err := parser.ParseWithClaims(tokenStr, enrollmentClaims, ValidateToken)
 
 	if err != nil {
