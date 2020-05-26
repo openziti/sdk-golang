@@ -1,4 +1,4 @@
-module github.com/netfoundry/ziti-sdk-golang
+module github.com/openziti/sdk-golang
 
 go 1.14
 
@@ -13,7 +13,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/netfoundry/secretstream v0.1.1
-	github.com/netfoundry/ziti-foundation v0.10.2
+	github.com/openziti/foundation v0.10.3
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0

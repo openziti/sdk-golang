@@ -18,7 +18,7 @@ package config
 
 import (
 	"encoding/json"
-	"github.com/netfoundry/ziti-foundation/identity/identity"
+	"github.com/openziti/foundation/identity/identity"
 	"github.com/pkg/errors"
 	"io/ioutil"
 )

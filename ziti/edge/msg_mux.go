@@ -18,8 +18,8 @@ package edge
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/netfoundry/ziti-foundation/channel2"
-	"github.com/netfoundry/ziti-foundation/util/concurrenz"
+	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
 	"io"
 	"time"

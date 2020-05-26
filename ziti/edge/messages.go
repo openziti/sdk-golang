@@ -18,8 +18,8 @@ package edge
 
 import (
 	"encoding/binary"
-	"github.com/netfoundry/ziti-foundation/channel2"
-	"github.com/netfoundry/ziti-foundation/util/uuidz"
+	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/util/uuidz"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )

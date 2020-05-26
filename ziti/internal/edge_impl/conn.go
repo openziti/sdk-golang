@@ -26,11 +26,11 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream"
 	"github.com/netfoundry/secretstream/kx"
-	"github.com/netfoundry/ziti-foundation/channel2"
-	"github.com/netfoundry/ziti-foundation/util/concurrenz"
-	"github.com/netfoundry/ziti-foundation/util/sequence"
-	"github.com/netfoundry/ziti-foundation/util/sequencer"
-	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
+	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/openziti/foundation/util/sequence"
+	"github.com/openziti/foundation/util/sequencer"
+	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 )
 

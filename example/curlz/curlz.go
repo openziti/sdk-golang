@@ -18,7 +18,7 @@ package main
 
 import (
 	"context"
-	"github.com/netfoundry/ziti-sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti"
 	"io"
 	"net"
 	"net/http"
