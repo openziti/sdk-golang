@@ -18,7 +18,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/netfoundry/ziti-sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti"
 	"log"
 	"os"
 )

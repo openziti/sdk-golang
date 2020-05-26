@@ -19,9 +19,9 @@ package edge_impl
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream/kx"
-	"github.com/netfoundry/ziti-foundation/channel2"
-	"github.com/netfoundry/ziti-foundation/util/sequencer"
-	"github.com/netfoundry/ziti-sdk-golang/ziti/edge"
+	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/util/sequencer"
+	"github.com/openziti/sdk-golang/ziti/edge"
 )
 
 const (

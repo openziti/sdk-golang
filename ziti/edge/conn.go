@@ -26,10 +26,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/netfoundry/ziti-foundation/channel2"
-	"github.com/netfoundry/ziti-foundation/transport"
-	"github.com/netfoundry/ziti-foundation/transport/tls"
-	"github.com/netfoundry/ziti-foundation/util/sequence"
+	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/transport"
+	"github.com/openziti/foundation/transport/tls"
+	"github.com/openziti/foundation/util/sequence"
 	"github.com/pkg/errors"
 )
 
