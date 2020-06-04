@@ -93,6 +93,7 @@ func ApiResponseDecode(data interface{}, resp io.Reader) (*ApiResponseMetadata, 
 	apiR := &apiResponse{
 		Data: data,
 	}
+
 	if err := json.NewDecoder(resp).Decode(apiR); err != nil {
 		return nil, err
 	}

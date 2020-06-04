@@ -27,6 +27,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"github.com/Jeffail/gabs"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/fullsailor/pkcs7"
@@ -265,7 +266,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 			},
 		},
 	}
-	resp, err := client.Post(token.EnrolmentUrl(), "text/plain", bytes.NewReader(csrPem))
+	resp, err := client.Post(token.EnrolmentUrl(), "application/x-pem-file", bytes.NewReader(csrPem))
 	if err != nil {
 		return err
 	}
@@ -277,7 +278,23 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		cfg.ID.Cert = "pem:" + string(body)
+		if strings.Split(resp.Header.Get("content-type"), ";")[0] == "application/json" {
+			container, err := gabs.ParseJSON(body)
+			if err != nil {
+				return fmt.Errorf("could not parse json enrollment response: %v", err)
+			}
+			certPem, ok := container.Path("data.cert").Data().(string)
+
+			if !ok {
+				return errors.New("could not find data.cert in enrollment response")
+			}
+
+			cfg.ID.Cert = "pem:" + certPem
+			return nil
+		} else {
+			cfg.ID.Cert = "pem:" + string(body)
+		}
+
 		return nil
 	}
 

@@ -568,7 +568,7 @@ func (context *contextImpl) createSession(id string, bind bool) (*edge.Session, 
 	pfxlog.Logger().Debugf("requesting session from %v", fullSessionUrl)
 	req, _ := http.NewRequest("POST", fullSessionUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("content-type", "application/json")
 
 	logrus.WithField("service_id", id).Debug("requesting session")
 	resp, err := context.clt.Do(req)
@@ -589,7 +589,7 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 	pfxlog.Logger().Debugf("requesting session from %v", sessionLookupUrlStr)
 	req, _ := http.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
 	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("content-type", "application/json")
 
 	logrus.WithField("sessionId", id).Debug("requesting session")
 	resp, err := context.clt.Do(req)
