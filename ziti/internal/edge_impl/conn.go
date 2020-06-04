@@ -129,6 +129,10 @@ func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
+func (conn *edgeConn) HandleMuxClose() error {
+	return conn.close(true)
+}
+
 func (conn *edgeConn) HandleClose(channel2.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")

@@ -222,7 +222,7 @@ func (listener *multiListener) AddListener(netListener edge.Listener, closeHandl
 		return
 	}
 
-	wrappedListener, ok := netListener.(*edgeListener)
+	edgeListener, ok := netListener.(*edgeListener)
 	if !ok {
 		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(listener))
 		return
@@ -230,17 +230,17 @@ func (listener *multiListener) AddListener(netListener edge.Listener, closeHandl
 
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
-	listener.listeners[wrappedListener] = struct{}{}
+	listener.listeners[edgeListener] = struct{}{}
 
 	closer := func() {
 		listener.listenerLock.Lock()
 		defer listener.listenerLock.Unlock()
-		delete(listener.listeners, wrappedListener)
+		delete(listener.listeners, edgeListener)
 
 		closeHandler()
 	}
 
-	go listener.forward(wrappedListener, closer)
+	go listener.forward(edgeListener, closer)
 }
 
 func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {

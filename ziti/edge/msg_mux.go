@@ -21,12 +21,11 @@ import (
 	"github.com/openziti/foundation/channel2"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
-	"io"
 	"time"
 )
 
 type MsgSink interface {
-	io.Closer
+	HandleMuxClose() error
 	Id() uint32
 	Accept(event *MsgEvent)
 }
@@ -128,7 +127,7 @@ func (mux *MsgMux) handleEvents() {
 func (mux *MsgMux) ExecuteClose() {
 	mux.closed.Set(true)
 	for _, val := range mux.chanMap {
-		if err := val.Close(); err != nil {
+		if err := val.HandleMuxClose(); err != nil {
 			pfxlog.Logger().
 				WithField("sinkId", val.Id()).
 				WithError(err).

@@ -757,6 +757,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 	if len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
 		now := time.Now()
 		if mgr.disconnectedTime.Add(mgr.options.ConnectTimeout).Before(now) {
+			pfxlog.Logger().Warn("disconnected for longer than configured connect timeout. closing")
 			err := errors.New("disconnected for longer than connect timeout. closing")
 			mgr.listener.CloseWithError(err)
 			return
@@ -876,6 +877,7 @@ type routerConnectionListenFailedEvent struct {
 }
 
 func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
+	pfxlog.Logger().Warnf("listener connection failed")
 	delete(mgr.routerConnections, event.router)
 	now := time.Now()
 	if len(mgr.routerConnections) == 0 {
