@@ -140,7 +140,7 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 	conn.closed.Set(true)
 }
 
-func (conn *edgeConn) Connect(session *edge.Session) (net.Conn, error) {
+func (conn *edgeConn) Connect(session *edge.Session) (edge.ServiceConn, error) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 
 	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, conn.keyPair.Public())
@@ -486,7 +486,7 @@ type closeConnEvent struct {
 	errorC      chan error
 }
 
-func (event *closeConnEvent) Handle(mux *edge.MsgMux) {
+func (event *closeConnEvent) Handle(*edge.MsgMux) {
 	if err := event.conn.close(event.remoteClose); err != nil {
 		event.errorC <- err
 		pfxlog.Logger().Errorf("failure closing connection. connId = %v (%v)", event.conn.Id(), err)

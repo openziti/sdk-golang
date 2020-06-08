@@ -48,6 +48,10 @@ func (listener *baseListener) Addr() net.Addr {
 	return listener
 }
 
+func (listener *baseListener) IsClosed() bool {
+	return listener.closed.Get()
+}
+
 func (listener *baseListener) Accept() (net.Conn, error) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -127,6 +131,7 @@ func (listener *edgeListener) Close() error {
 	}()
 
 	unbindRequest := edge.NewUnbindMsg(edgeChan.Id(), listener.token)
+	listener.edgeChan.TraceMsg("close", unbindRequest)
 	if err := edgeChan.SendWithTimeout(unbindRequest, time.Second*5); err != nil {
 		logger.WithError(err).Error("unable to unbind session for conn")
 		return err
@@ -138,7 +143,6 @@ func (listener *edgeListener) Close() error {
 type MultiListener interface {
 	edge.Listener
 	AddListener(listener edge.Listener, closeHandler func())
-	IsClosed() bool
 	GetServiceName() string
 	CloseWithError(err error)
 }
@@ -213,10 +217,6 @@ func (listener *multiListener) GetServiceName() string {
 	return listener.serviceName
 }
 
-func (listener *multiListener) IsClosed() bool {
-	return listener.closed.Get()
-}
-
 func (listener *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
 	if listener.closed.Get() {
 		return
@@ -281,7 +281,27 @@ func (listener *multiListener) accept(conn net.Conn, ticker *time.Ticker) {
 
 func (listener *multiListener) Close() error {
 	listener.closed.Set(true)
-	return nil
+
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+
+	var resultErrors []error
+	for child := range listener.listeners {
+		if err := child.Close(); err != nil {
+			resultErrors = append(resultErrors, err)
+		}
+	}
+
+	listener.listeners = nil
+
+	select {
+	case listener.acceptC <- nil:
+	default:
+		// If the queue is full, bail out, we're just popping a nil on the
+		// accept queue to let it return from accept more quickly
+	}
+
+	return listener.condenseErrors(resultErrors)
 }
 
 func (listener *multiListener) CloseWithError(err error) {

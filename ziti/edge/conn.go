@@ -59,16 +59,22 @@ type Identifiable interface {
 
 type Listener interface {
 	net.Listener
+	IsClosed() bool
 	UpdateCost(cost uint16) error
 	UpdatePrecedence(precedence Precedence) error
 	UpdateCostAndPrecedence(cost uint16, precedence Precedence) error
+}
+
+type ServiceConn interface {
+	net.Conn
+	IsClosed() bool
 }
 
 type Conn interface {
 	net.Conn
 	Identifiable
 	NewConn(service string) Conn
-	Connect(session *Session) (net.Conn, error)
+	Connect(session *Session) (ServiceConn, error)
 	Listen(session *Session, serviceName string, options *ListenOptions) (Listener, error)
 	IsClosed() bool
 }
