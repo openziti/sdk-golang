@@ -38,7 +38,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -54,7 +53,7 @@ const (
 
 type Context interface {
 	Authenticate() error
-	Dial(serviceName string) (net.Conn, error)
+	Dial(serviceName string) (edge.ServiceConn, error)
 	Listen(serviceName string) (edge.Listener, error)
 	ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
@@ -299,7 +298,7 @@ func (context *contextImpl) Authenticate() error {
 	return nil
 }
 
-func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
+func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initilize context: (%v)", err)
 	}
@@ -308,7 +307,7 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
 
-	var conn net.Conn
+	var conn edge.ServiceConn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		ns, err := context.GetSession(id)
@@ -327,7 +326,7 @@ func (context *contextImpl) Dial(serviceName string) (net.Conn, error) {
 	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
 }
 
-func (context *contextImpl) dialSession(service string, session *edge.Session) (net.Conn, error) {
+func (context *contextImpl) dialSession(service string, session *edge.Session) (edge.ServiceConn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, edge.DialConnOptions{})
 	if err != nil {
 		return nil, err
@@ -757,6 +756,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 	if len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
 		now := time.Now()
 		if mgr.disconnectedTime.Add(mgr.options.ConnectTimeout).Before(now) {
+			pfxlog.Logger().Warn("disconnected for longer than configured connect timeout. closing")
 			err := errors.New("disconnected for longer than connect timeout. closing")
 			mgr.listener.CloseWithError(err)
 			return
@@ -876,6 +876,7 @@ type routerConnectionListenFailedEvent struct {
 }
 
 func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
+	pfxlog.Logger().Warnf("listener connection failed")
 	delete(mgr.routerConnections, event.router)
 	now := time.Now()
 	if len(mgr.routerConnections) == 0 {

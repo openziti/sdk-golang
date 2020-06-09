@@ -21,12 +21,11 @@ import (
 	"github.com/openziti/foundation/channel2"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
-	"io"
 	"time"
 )
 
 type MsgSink interface {
-	io.Closer
+	HandleMuxClose() error
 	Id() uint32
 	Accept(event *MsgEvent)
 }
@@ -78,21 +77,15 @@ func (mux *MsgMux) RemoveMsgSink(sink MsgSink) {
 	mux.RemoveMsgSinkById(sink.Id())
 }
 
-func (mux *MsgMux) RemoveMsgSinkById(sinkId uint32) (MsgSink, bool) {
-	if !mux.closed.Get() {
-		event := &muxRemoveSinkEvent{
-			sinkId: sinkId,
-			doneC:  make(chan MsgSink),
-		}
+func (mux *MsgMux) RemoveMsgSinkById(sinkId uint32) {
+	log := pfxlog.Logger().WithField("connId", sinkId)
+	if mux.closed.Get() {
+		log.Debug("mux closed, sink already removed or being removed")
+	} else {
+		log.Debug("queuing sink for removal from message mux")
+		event := &muxRemoveSinkEvent{sinkId: sinkId}
 		mux.eventC <- event
-		sink, ok := <-event.doneC
-		if ok && sink != nil {
-			pfxlog.Logger().WithField("connId", sinkId).Debug("removed from msg mux")
-			return sink, true
-		}
 	}
-	pfxlog.Logger().WithField("connId", sinkId).Debug("sink not found in msg mux")
-	return nil, false
 }
 
 func (mux *MsgMux) Close() {
@@ -128,7 +121,7 @@ func (mux *MsgMux) handleEvents() {
 func (mux *MsgMux) ExecuteClose() {
 	mux.closed.Set(true)
 	for _, val := range mux.chanMap {
-		if err := val.Close(); err != nil {
+		if err := val.HandleMuxClose(); err != nil {
 			pfxlog.Logger().
 				WithField("sinkId", val.Id()).
 				WithError(err).
@@ -172,19 +165,11 @@ func (event *muxAddSinkEvent) Handle(mux *MsgMux) {
 // muxRemoveSinkEvent handles removing a closed message sink from the mux
 type muxRemoveSinkEvent struct {
 	sinkId uint32
-	doneC  chan MsgSink
 }
 
 func (event *muxRemoveSinkEvent) Handle(mux *MsgMux) {
-	defer close(event.doneC)
-	sink, found := mux.chanMap[event.sinkId]
 	delete(mux.chanMap, event.sinkId)
-	if found {
-		event.doneC <- sink
-	}
-	pfxlog.Logger().
-		WithField("connId", event.sinkId).
-		Debugf("Removed sink from mux. Current sink count: %v", len(mux.chanMap))
+	pfxlog.Logger().WithField("connId", event.sinkId).Debug("removed from msg mux")
 }
 
 func (event *MsgEvent) Handle(mux *MsgMux) {

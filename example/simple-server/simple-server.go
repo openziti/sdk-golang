@@ -20,10 +20,12 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"
+	"time"
 )
 
 type Greeter string
@@ -55,7 +57,11 @@ func plain(listenAddr string) {
 }
 
 func withZiti(service string) {
-	listener, err := ziti.NewContext().Listen(service)
+	options := edge.ListenOptions{
+		ConnectTimeout: 5 * time.Minute,
+		MaxConnections: 3,
+	}
+	listener, err := ziti.NewContext().ListenWithOptions(service, &options)
 	if err != nil {
 		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)
