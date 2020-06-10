@@ -14,7 +14,7 @@
 	limitations under the License.
 */
 
-package edge_impl
+package impl
 
 import (
 	"github.com/michaelquigley/pfxlog"

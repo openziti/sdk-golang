@@ -31,8 +31,7 @@ import (
 	"github.com/openziti/foundation/transport"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/internal/edge_impl"
-
+	"github.com/openziti/sdk-golang/ziti/edge/impl"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
@@ -414,7 +413,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	edgeConn := edge_impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
+	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
@@ -660,7 +659,7 @@ func newListenerManager(serviceId, serviceName string, context *contextImpl, opt
 		options:           options,
 		routerConnections: map[string]edge.RouterConn{},
 		connects:          map[string]time.Time{},
-		listener:          edge_impl.NewMultiListener(serviceName),
+		listener:          impl.NewMultiListener(serviceName),
 		connectChan:       make(chan *edgeRouterConnResult, 3),
 		eventChan:         make(chan listenerEvent),
 		disconnectedTime:  &now,
@@ -678,7 +677,7 @@ type listenerManager struct {
 	options            *edge.ListenOptions
 	routerConnections  map[string]edge.RouterConn
 	connects           map[string]time.Time
-	listener           edge_impl.MultiListener
+	listener           impl.MultiListener
 	connectChan        chan *edgeRouterConnResult
 	eventChan          chan listenerEvent
 	sessionRefreshTime time.Time
