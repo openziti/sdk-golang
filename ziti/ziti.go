@@ -110,7 +110,6 @@ type contextImpl struct {
 	tlsCtx      *tls.Config
 	clt         http.Client
 	apiSession  *edge.ApiSession
-	servicesMtx sync.RWMutex
 
 	services sync.Map // name -> Service
 	sessions sync.Map // svcID:type -> Session
