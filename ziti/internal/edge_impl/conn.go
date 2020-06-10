@@ -380,7 +380,7 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 		}
 	}
 
-	conn.readQ.CloseByProducer()
+	conn.readQ.Close()
 	go conn.msgMux.RemoveMsgSink(conn) // needs to be done async, otherwise we may deadlock
 
 	conn.hosting.Range(func(key, value interface{}) bool {
