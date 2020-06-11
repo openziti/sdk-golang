@@ -105,11 +105,11 @@ type contextImpl struct {
 	initDone          sync.Once
 	routerConnections cmap.ConcurrentMap
 
-	id          identity.Identity
-	zitiUrl     *url.URL
-	tlsCtx      *tls.Config
-	clt         http.Client
-	apiSession  *edge.ApiSession
+	id         identity.Identity
+	zitiUrl    *url.URL
+	tlsCtx     *tls.Config
+	clt        http.Client
+	apiSession *edge.ApiSession
 
 	services sync.Map // name -> Service
 	sessions sync.Map // svcID:type -> Session
@@ -257,16 +257,28 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 
 func (context *contextImpl) refreshSessions() {
 	log := pfxlog.Logger()
+	edgeRouters := make(map[string]string)
 	context.sessions.Range(func(key, value interface{}) bool {
 		log.Debugf("refreshing session for %s", key)
 
 		session := value.(*edge.Session)
-		if _, err := context.refreshSession(session.Id); err != nil {
+		if s, err := context.refreshSession(session.Id); err != nil {
 			log.WithError(err).Errorf("failed to refresh session for %s", key)
+		} else {
+			for _, er := range s.EdgeRouters {
+				for _, u := range er.Urls {
+					edgeRouters[u] = er.Name
+				}
+			}
 		}
 
 		return true
 	})
+
+	for u, name := range edgeRouters {
+		go context.connectEdgeRouter(name, u, nil)
+	}
+
 }
 
 func (context *contextImpl) runSessionRefresh() {
@@ -440,7 +452,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 		return nil, errors.New("no edge routers available")
 	}
 
-	ch := make(chan *edgeRouterConnResult)
+	ch := make(chan *edgeRouterConnResult, 1)
 
 	for _, edgeRouter := range session.EdgeRouters {
 		for _, routerUrl := range edgeRouter.Urls {
