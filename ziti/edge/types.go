@@ -44,9 +44,18 @@ type EdgeRouter struct {
 	Urls     map[string]string
 }
 
+type SessionType string
+
+const (
+	SessionDial SessionType = "Dial"
+	SessionBind SessionType = "Bind"
+)
+
 type Session struct {
 	Id          string       `json:"id"`
+	Service     ApiIdentity  `json:"service"`
 	Token       string       `json:"token"`
+	Type        SessionType  `json:"type"`
 	EdgeRouters []EdgeRouter `json:"edgeRouters"`
 }
 
