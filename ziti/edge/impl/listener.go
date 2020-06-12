@@ -104,7 +104,7 @@ func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *
 	logger.Debug("sending update bind request to edge router")
 	request := edge.NewUpdateBindMsg(listener.edgeChan.Id(), listener.token, cost, precedence)
 	listener.edgeChan.TraceMsg("updateCostAndPrecedence", request)
-	return listener.edgeChan.Send(request)
+	return listener.edgeChan.SendWithTimeout(request, 5*time.Second)
 }
 
 func (listener *edgeListener) Close() error {
@@ -147,14 +147,15 @@ type MultiListener interface {
 	CloseWithError(err error)
 }
 
-func NewMultiListener(serviceName string) MultiListener {
+func NewMultiListener(serviceName string, getSessionF func() *edge.Session) MultiListener {
 	return &multiListener{
 		baseListener: baseListener{
 			serviceName: serviceName,
 			acceptC:     make(chan net.Conn),
 			errorC:      make(chan error),
 		},
-		listeners: map[edge.Listener]struct{}{},
+		listeners:   map[edge.Listener]struct{}{},
+		getSessionF: getSessionF,
 	}
 }
 
@@ -162,6 +163,11 @@ type multiListener struct {
 	baseListener
 	listeners    map[edge.Listener]struct{}
 	listenerLock sync.Mutex
+	getSessionF  func() *edge.Session
+}
+
+func (listener *multiListener) GetCurrentSession() *edge.Session {
+	return listener.getSessionF()
 }
 
 func (listener *multiListener) UpdateCost(cost uint16) error {
