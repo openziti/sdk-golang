@@ -17,31 +17,26 @@
 package ziti
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	errors2 "errors"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
-	"github.com/openziti/foundation/common/constants"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
 	"github.com/openziti/foundation/transport"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/impl"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net/http"
 	"net/url"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,37 +63,6 @@ type Context interface {
 	Close()
 }
 
-type AuthFailure struct {
-	httpCode int
-	msg      string
-}
-
-func (e AuthFailure) Error() string {
-	return fmt.Sprintf("authentication failed with http status code %v and msg: %v", e.httpCode, e.msg)
-}
-
-type notAuthorized struct{}
-
-func (e notAuthorized) Error() string {
-	return fmt.Sprintf("not authorized")
-}
-
-var NotAuthorized = notAuthorized{}
-
-type NotAccessible struct {
-	httpCode int
-	msg      string
-}
-
-func (e NotAccessible) Error() string {
-	return fmt.Sprintf("unable to create session. http status code: %v, msg: %v", e.httpCode, e.msg)
-}
-
-var authUrl, _ = url.Parse("/authenticate?method=cert")
-var currSess, _ = url.Parse("/current-api-session")
-var servicesUrl, _ = url.Parse("/services")
-var sessionUrl, _ = url.Parse("/sessions")
-
 type contextImpl struct {
 	config            *config.Config
 	options           *config.Options
@@ -108,7 +72,7 @@ type contextImpl struct {
 	id         identity.Identity
 	zitiUrl    *url.URL
 	tlsCtx     *tls.Config
-	clt        http.Client
+	ctrlClt    api.Client
 	apiSession *edge.ApiSession
 
 	services sync.Map // name -> Service
@@ -186,13 +150,7 @@ func (context *contextImpl) initializer() error {
 	}
 
 	context.id = id
-	context.tlsCtx = id.ClientTLSConfig()
-	context.clt = http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: context.tlsCtx,
-		},
-		Timeout: 30 * time.Second,
-	}
+	context.ctrlClt, err = api.NewClient(context.zitiUrl, id.ClientTLSConfig())
 
 	if err = context.Authenticate(); err != nil {
 		return err
@@ -284,31 +242,17 @@ func (context *contextImpl) refreshSessions() {
 func (context *contextImpl) runSessionRefresh() {
 	log := pfxlog.Logger()
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
+	expireTime := context.apiSession.Expires
 	for {
-		sleep := context.apiSession.Expires.Sub(time.Now()) - (10 * time.Second)
+		sleep := expireTime.Sub(time.Now()) - (10 * time.Second)
 		select {
 		case <-time.After(sleep):
-			log.Debugf("refreshing api session")
-			req, err := http.NewRequest("GET", context.zitiUrl.ResolveReference(currSess).String(), nil)
-			req.Header.Set(constants.ZitiSession, context.apiSession.Token)
-			resp, err := context.clt.Do(req)
-			if err != nil || resp.StatusCode != 200 {
-				log.Errorf("failed to get current session %+v, trying to login again", err)
-				err = context.Authenticate()
-				if err != nil {
-					log.Fatalf("failed to login again")
-					return
-				}
+			exp, err := context.ctrlClt.Refresh()
+			if err != nil {
+				log.Fatal(err)
 			} else {
-				apiSessionResp := &edge.ApiSession{}
-				_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
-				_ = resp.Body.Close()
-				if err != nil {
-					log.Fatalf("failed to parse current session")
-					return
-				}
-				context.apiSession = apiSessionResp
-				log.Debugf("session refreshed, new expiration[%s]", context.apiSession.Expires)
+				expireTime = *exp
+				log.Debugf("session refreshed, new expiration[%s]", expireTime)
 			}
 
 		case <-svcUpdateTick.C:
@@ -328,7 +272,7 @@ func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error 
 	operation := func() error {
 		pfxlog.Logger().Infof("attempting to establish new api session")
 		err := context.Authenticate()
-		if err != nil && errors2.As(err, &AuthFailure{}) {
+		if err != nil && errors2.As(err, &api.AuthFailure{}) {
 			return backoff.Permanent(err)
 		}
 		return err
@@ -345,47 +289,13 @@ func (context *contextImpl) Authenticate() error {
 	context.services = sync.Map{}
 	context.sessions = sync.Map{}
 
-	req := new(bytes.Buffer)
-	sdkInfo := sdkinfo.GetSdkInfo()
-	if len(context.config.ConfigTypes) > 0 {
-		if sdkInfoMap, ok := sdkInfo.(map[string]interface{}); ok {
-			sdkInfoMap["configTypes"] = context.config.ConfigTypes
-		} else {
-			return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
-		}
+	info, ok := sdkinfo.GetSdkInfo().(map[string]interface{})
+	if !ok {
+		return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
 	}
-	if err := json.NewEncoder(req).Encode(sdkInfo); err != nil {
-		return err
-	}
-	resp, err := context.clt.Post(context.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
-	if err != nil {
-		pfxlog.Logger().Errorf("failure to post auth %+v", err)
-		return err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != 200 {
-		msg, _ := ioutil.ReadAll(resp.Body)
-		pfxlog.Logger().Errorf("failed to authenticate with Ziti controller, result status: %v, msg: %v", resp.StatusCode, msg)
-		return AuthFailure{
-			httpCode: resp.StatusCode,
-			msg:      string(msg),
-		}
-	}
-
-	apiSessionResp := edge.ApiSession{}
-
-	_, err = edge.ApiResponseDecode(&apiSessionResp, resp.Body)
-	if err != nil {
-		return err
-	}
-	logrus.
-		WithField("session", apiSessionResp.Id).
-		Debugf("logged in as %s/%s", apiSessionResp.Identity.Name, apiSessionResp.Identity.Id)
-	context.apiSession = &apiSessionResp
-
-	return nil
+	var err error
+	context.apiSession, err = context.ctrlClt.Login(info, context.config.ConfigTypes)
+	return err
 }
 
 func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
@@ -564,66 +474,7 @@ func (context *contextImpl) GetServices() ([]edge.Service, error) {
 }
 
 func (context *contextImpl) getServices() ([]*edge.Service, error) {
-	servReq, _ := http.NewRequest("GET", context.zitiUrl.ResolveReference(servicesUrl).String(), nil)
-
-	if context.apiSession.Token == "" {
-		return nil, errors.New("api session token is empty")
-	} else {
-		pfxlog.Logger().Debugf("using api session token %v", context.apiSession.Token)
-	}
-	servReq.Header.Set(constants.ZitiSession, context.apiSession.Token)
-	pgOffset := 0
-	pgLimit := 100
-
-	var services []*edge.Service
-	for {
-		q := servReq.URL.Query()
-		q.Set("limit", strconv.Itoa(pgLimit))
-		q.Set("offset", strconv.Itoa(pgOffset))
-		servReq.URL.RawQuery = q.Encode()
-		resp, err := context.clt.Do(servReq)
-
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			if body, err := ioutil.ReadAll(resp.Body); err != nil {
-				pfxlog.Logger().Debugf("error response: %v", body)
-			}
-			return nil, errors.New("unauthorized")
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		s := &[]*edge.Service{}
-		meta, err := edge.ApiResponseDecode(s, resp.Body)
-
-		_ = resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-		if meta == nil {
-			// shouldn't happen
-			return nil, errors.New("nil metadata in response to GET /services")
-		}
-		if meta.Pagination == nil {
-			return nil, errors.New("nil pagination in response to GET /services")
-		}
-
-		if services == nil {
-			services = make([]*edge.Service, 0, meta.Pagination.TotalCount)
-		}
-
-		for _, svc := range *s {
-			services = append(services, svc)
-		}
-
-		pgOffset += pgLimit
-		if pgOffset >= meta.Pagination.TotalCount {
-			break
-		}
-	}
-
-	return services, nil
+	return context.ctrlClt.GetServices()
 }
 
 func (context *contextImpl) GetSession(id string) (*edge.Session, error) {
@@ -644,22 +495,12 @@ func (context *contextImpl) createSession(id string, sessionType edge.SessionTyp
 		return val.(*edge.Session), nil
 	}
 
-	body := fmt.Sprintf(`{"serviceId":"%s", "type": "%s"}`, id, sessionType)
-	reqBody := bytes.NewBufferString(body)
-
-	fullSessionUrl := context.zitiUrl.ResolveReference(sessionUrl).String()
-	pfxlog.Logger().Debugf("requesting session from %v", fullSessionUrl)
-	req, _ := http.NewRequest("POST", fullSessionUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
-
-	logrus.WithField("service_id", id).Debug("requesting session")
-	resp, err := context.clt.Do(req)
+	session, err := context.ctrlClt.CreateSession(id, sessionType)
 
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("create", resp, 201)
+	return context.toSession("create", session)
 }
 
 func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
@@ -667,45 +508,14 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 
-	sessionLookupUrl, _ := url.Parse(fmt.Sprintf("/sessions/%v", id))
-	sessionLookupUrlStr := context.zitiUrl.ResolveReference(sessionLookupUrl).String()
-	pfxlog.Logger().Debugf("requesting session from %v", sessionLookupUrlStr)
-	req, _ := http.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
-	req.Header.Set(constants.ZitiSession, context.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
-
-	logrus.WithField("sessionId", id).Debug("requesting session")
-	resp, err := context.clt.Do(req)
-
+	session, err := context.ctrlClt.RefreshSession(id)
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("refresh", resp, 200)
+	return context.toSession("refresh", session)
 }
 
-func (context *contextImpl) toSession(op string, resp *http.Response, expectedStatus int) (*edge.Session, error) {
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != expectedStatus {
-		respBody, _ := ioutil.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, NotAuthorized
-		}
-		if resp.StatusCode == http.StatusBadRequest {
-			return nil, NotAccessible{
-				httpCode: resp.StatusCode,
-				msg:      string(respBody),
-			}
-		}
-		return nil, errors.Errorf("failed to %v session: %s\n%s", op, resp.Status, string(respBody))
-	}
-
-	session := new(edge.Session)
-	_, err := edge.ApiResponseDecode(session, resp.Body)
-	if err != nil {
-		pfxlog.Logger().WithError(err).Error("failed to decode session response")
-		return nil, err
-	}
+func (context *contextImpl) toSession(op string, session *edge.Session) (*edge.Session, error) {
 
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
@@ -889,7 +699,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 func (mgr *listenerManager) refreshSession() {
 	session, err := mgr.context.refreshSession(mgr.session.Id)
 	if err != nil {
-		if errors2.Is(err, NotAuthorized) {
+		if errors2.Is(err, api.NotAuthorized) {
 			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
 			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
 				err := fmt.Errorf("unable to establish API session (%w)", err)
@@ -902,7 +712,7 @@ func (mgr *listenerManager) refreshSession() {
 
 		session, err = mgr.context.refreshSession(mgr.session.Id)
 		if err != nil {
-			if errors2.Is(err, NotAuthorized) {
+			if errors2.Is(err, api.NotAuthorized) {
 				pfxlog.Logger().Errorf(
 					"failure refreshing bind session even after re-authenticating api session. service %v (%v)",
 					mgr.listener.GetServiceName(), err)
@@ -942,7 +752,7 @@ func (mgr *listenerManager) createSession() error {
 	session, err := mgr.context.GetBindSession(mgr.serviceId)
 	if err != nil {
 		logger.Warnf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
-		if errors2.Is(err, NotAuthorized) {
+		if errors2.Is(err, api.NotAuthorized) {
 			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
 				err := fmt.Errorf("unable to establish API session (%w)", err)
 				if len(mgr.routerConnections) == 0 {
@@ -950,7 +760,7 @@ func (mgr *listenerManager) createSession() error {
 				}
 				return backoff.Permanent(err)
 			}
-		} else if errors2.As(err, &NotAccessible{}) {
+		} else if errors2.As(err, &api.NotAccessible{}) {
 			logger.Warnf("session create failure not recoverable, not retrying")
 			if len(mgr.routerConnections) == 0 {
 				mgr.listener.CloseWithError(err)
