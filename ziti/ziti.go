@@ -262,7 +262,7 @@ func (context *contextImpl) refreshSessions() {
 		log.Debugf("refreshing session for %s", key)
 
 		session := value.(*edge.Session)
-		if s, err := context.refreshSession(session.Id, true); err != nil {
+		if s, err := context.refreshSession(session.Id); err != nil {
 			log.WithError(err).Errorf("failed to refresh session for %s", key)
 		} else {
 			for _, er := range s.EdgeRouters {
@@ -666,10 +666,10 @@ func (context *contextImpl) createSession(id string, sessionType edge.SessionTyp
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("create", resp, 201, cache)
+	return context.toSession("create", resp, 201)
 }
 
-func (context *contextImpl) refreshSession(id string, cache bool) (*edge.Session, error) {
+func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -687,10 +687,10 @@ func (context *contextImpl) refreshSession(id string, cache bool) (*edge.Session
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("refresh", resp, 200, cache)
+	return context.toSession("refresh", resp, 200)
 }
 
-func (context *contextImpl) toSession(op string, resp *http.Response, expectedStatus int, cache bool) (*edge.Session, error) {
+func (context *contextImpl) toSession(op string, resp *http.Response, expectedStatus int) (*edge.Session, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != expectedStatus {
@@ -716,7 +716,7 @@ func (context *contextImpl) toSession(op string, resp *http.Response, expectedSt
 
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
-	if cache {
+	if session.Type == edge.SessionDial {
 		if op == "create" {
 			context.sessions.Store(sessionKey, session)
 		} else if op == "refresh" {
@@ -897,7 +897,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 }
 
 func (mgr *listenerManager) refreshSession() {
-	session, err := mgr.context.refreshSession(mgr.session.Id, false)
+	session, err := mgr.context.refreshSession(mgr.session.Id)
 	if err != nil {
 		if errors2.Is(err, NotAuthorized) {
 			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
@@ -910,7 +910,7 @@ func (mgr *listenerManager) refreshSession() {
 			}
 		}
 
-		session, err = mgr.context.refreshSession(mgr.session.Id, false)
+		session, err = mgr.context.refreshSession(mgr.session.Id)
 		if err != nil {
 			if errors2.Is(err, NotAuthorized) {
 				pfxlog.Logger().Errorf(
