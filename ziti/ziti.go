@@ -639,9 +639,16 @@ func (context *contextImpl) createSession(id string, sessionType edge.SessionTyp
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 	sessionKey := fmt.Sprintf("%s:%s", id, sessionType)
-	val, ok := context.sessions.Load(sessionKey)
-	if ok {
-		return val.(*edge.Session), nil
+
+	cache := sessionType == edge.SessionDial
+
+	// Can't cache Bind sessions, as we use session tokens for routing. If there are multiple binds on a single
+	// session routing information will get overwritten
+	if cache {
+		val, ok := context.sessions.Load(sessionKey)
+		if ok {
+			return val.(*edge.Session), nil
+		}
 	}
 
 	body := fmt.Sprintf(`{"serviceId":"%s", "type": "%s"}`, id, sessionType)
@@ -709,14 +716,16 @@ func (context *contextImpl) toSession(op string, resp *http.Response, expectedSt
 
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
-	if op == "create" {
-		context.sessions.Store(sessionKey, session)
-	} else if op == "refresh" {
-		// N.B.: refreshed sessions do not contain token so update stored session object with updated edgeRouters
-		val, exists := context.sessions.LoadOrStore(sessionKey, session)
-		if exists {
-			existingSession := val.(*edge.Session)
-			existingSession.EdgeRouters = session.EdgeRouters
+	if session.Type == edge.SessionDial {
+		if op == "create" {
+			context.sessions.Store(sessionKey, session)
+		} else if op == "refresh" {
+			// N.B.: refreshed sessions do not contain token so update stored session object with updated edgeRouters
+			val, exists := context.sessions.LoadOrStore(sessionKey, session)
+			if exists {
+				existingSession := val.(*edge.Session)
+				existingSession.EdgeRouters = session.EdgeRouters
+			}
 		}
 	}
 
@@ -756,11 +765,12 @@ func newListenerManager(serviceId, serviceName string, context *contextImpl, opt
 		options:           options,
 		routerConnections: map[string]edge.RouterConn{},
 		connects:          map[string]time.Time{},
-		listener:          impl.NewMultiListener(serviceName),
 		connectChan:       make(chan *edgeRouterConnResult, 3),
 		eventChan:         make(chan listenerEvent),
 		disconnectedTime:  &now,
 	}
+
+	listenerMgr.listener = impl.NewMultiListener(serviceName, listenerMgr.GetCurrentSession)
 
 	go listenerMgr.run()
 
@@ -965,6 +975,29 @@ func (mgr *listenerManager) createSession() error {
 	return nil
 }
 
+func (mgr *listenerManager) GetCurrentSession() *edge.Session {
+	if mgr.listener.IsClosed() {
+		return nil
+	}
+	event := &getSessionEvent{
+		doneC: make(chan struct{}),
+	}
+	timeout := time.After(5 * time.Second)
+
+	select {
+	case mgr.eventChan <- event:
+	case <-timeout:
+		return nil
+	}
+
+	select {
+	case <-event.doneC:
+		return event.session
+	case <-timeout:
+	}
+	return nil
+}
+
 type listenerEvent interface {
 	handle(mgr *listenerManager)
 }
@@ -994,4 +1027,14 @@ type listenSuccessEvent struct{}
 
 func (event listenSuccessEvent) handle(mgr *listenerManager) {
 	mgr.disconnectedTime = nil
+}
+
+type getSessionEvent struct {
+	session *edge.Session
+	doneC   chan struct{}
+}
+
+func (event *getSessionEvent) handle(mgr *listenerManager) {
+	defer close(event.doneC)
+	event.session = mgr.session
 }

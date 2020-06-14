@@ -65,6 +65,11 @@ type Listener interface {
 	UpdateCostAndPrecedence(cost uint16, precedence Precedence) error
 }
 
+type SessionListener interface {
+	Listener
+	GetCurrentSession() *Session
+}
+
 type ServiceConn interface {
 	net.Conn
 	IsClosed() bool
