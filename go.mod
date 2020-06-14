@@ -13,7 +13,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/netfoundry/secretstream v0.1.1
-	github.com/openziti/foundation v0.11.1
+	github.com/openziti/foundation v0.11.2
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
