@@ -507,7 +507,7 @@ func (context *contextImpl) createSession(id string, sessionType edge.SessionTyp
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("create", session)
+	return context.cacheSession("create", session)
 }
 
 func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
@@ -519,10 +519,10 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return context.toSession("refresh", session)
+	return context.cacheSession("refresh", session)
 }
 
-func (context *contextImpl) toSession(op string, session *edge.Session) (*edge.Session, error) {
+func (context *contextImpl) cacheSession(op string, session *edge.Session) (*edge.Session, error) {
 
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
