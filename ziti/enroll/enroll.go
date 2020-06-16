@@ -223,7 +223,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 
 func generateKey() (crypto.PrivateKey, error) {
 	p384 := elliptic.P384()
-	pfxlog.Logger().Infof("generating %s key\n", p384.Params().Name)
+	pfxlog.Logger().Infof("generating %s key", p384.Params().Name)
 	return ecdsa.GenerateKey(p384, rand.Reader)
 }
 
@@ -278,20 +278,27 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		if strings.Split(resp.Header.Get("content-type"), ";")[0] == "application/json" {
-			container, err := gabs.ParseJSON(body)
-			if err != nil {
-				return fmt.Errorf("could not parse json enrollment response: %v", err)
-			}
-			certPem, ok := container.Path("data.cert").Data().(string)
+		contentTypes := resp.Header.Values("content-type")
 
-			if !ok {
-				return errors.New("could not find data.cert in enrollment response")
-			}
+		if len(contentTypes) == 1 {
+			if contentTypes[0] == "application/json" {
+				container, err := gabs.ParseJSON(body)
+				if err != nil {
+					return fmt.Errorf("could not parse json enrollment response: %v", err)
+				}
+				certPem, ok := container.Path("data.cert").Data().(string)
 
-			cfg.ID.Cert = "pem:" + certPem
-			return nil
+				if !ok {
+					return errors.New("could not find data.cert in enrollment response")
+				}
+
+				cfg.ID.Cert = "pem:" + certPem
+				return nil
+			} else {
+				cfg.ID.Cert = "pem:" + string(body)
+			}
 		} else {
+			pfxlog.Logger().Warnf("more than one content-type detected. Using response as pem. content-types: %s", strings.Join(contentTypes, ", "))
 			cfg.ID.Cert = "pem:" + string(body)
 		}
 
