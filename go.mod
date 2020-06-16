@@ -2,7 +2,7 @@ module github.com/openziti/sdk-golang
 
 go 1.14
 
-// replace github.com/netfoundry/ziti-foundation => ../ziti-foundation
+// replace github.com/openziti/foundation => ../foundation
 
 require (
 	github.com/Jeffail/gabs v1.4.0
