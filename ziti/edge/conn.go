@@ -68,6 +68,7 @@ type Listener interface {
 type SessionListener interface {
 	Listener
 	GetCurrentSession() *Session
+	SetConnectionChangeHandler(func(conn []Listener))
 }
 
 type ServiceConn interface {
