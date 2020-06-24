@@ -186,7 +186,7 @@ func (listener *multiListener) notifyEventHandler() {
 		for k := range listener.listeners {
 			list = append(list, k)
 		}
-		handler(list)
+		go handler(list)
 	}
 }
 
@@ -268,7 +268,7 @@ func (listener *multiListener) AddListener(netListener edge.Listener, closeHandl
 		delete(listener.listeners, edgeListener)
 
 		listener.notifyEventHandler()
-		closeHandler()
+		go closeHandler()
 	}
 
 	listener.notifyEventHandler()
