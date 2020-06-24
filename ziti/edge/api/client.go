@@ -136,7 +136,7 @@ func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*
 
 	if resp.StatusCode != 200 {
 		msg, _ := ioutil.ReadAll(resp.Body)
-		pfxlog.Logger().Errorf("failed to authenticate with Ziti controller, result status: %v, msg: %v", resp.StatusCode, msg)
+		pfxlog.Logger().Errorf("failed to authenticate with Ziti controller, result status: %v, msg: %v", resp.StatusCode, string(msg))
 		return nil, AuthFailure{
 			httpCode: resp.StatusCode,
 			msg:      string(msg),

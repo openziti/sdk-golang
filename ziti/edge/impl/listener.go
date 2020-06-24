@@ -26,6 +26,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -164,6 +165,29 @@ type multiListener struct {
 	listeners    map[edge.Listener]struct{}
 	listenerLock sync.Mutex
 	getSessionF  func() *edge.Session
+	eventHandler atomic.Value
+}
+
+func (listener *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
+	listener.eventHandler.Store(handler)
+}
+
+func (listener *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
+	val := listener.eventHandler.Load()
+	if val == nil {
+		return nil
+	}
+	return val.(func([]edge.Listener))
+}
+
+func (listener *multiListener) notifyEventHandler() {
+	if handler := listener.GetConnectionChangeHandler(); handler != nil {
+		var list []edge.Listener
+		for k := range listener.listeners {
+			list = append(list, k)
+		}
+		handler(list)
+	}
 }
 
 func (listener *multiListener) GetCurrentSession() *edge.Session {
@@ -243,8 +267,11 @@ func (listener *multiListener) AddListener(netListener edge.Listener, closeHandl
 		defer listener.listenerLock.Unlock()
 		delete(listener.listeners, edgeListener)
 
+		listener.notifyEventHandler()
 		closeHandler()
 	}
+
+	listener.notifyEventHandler()
 
 	go listener.forward(edgeListener, closer)
 }

@@ -523,7 +523,6 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 }
 
 func (context *contextImpl) cacheSession(op string, session *edge.Session) (*edge.Session, error) {
-
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
 	if session.Type == edge.SessionDial {
@@ -643,10 +642,13 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 }
 
 func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *edge.Session) {
+	start := time.Now()
 	logger := pfxlog.Logger()
 	serviceName := mgr.listener.GetServiceName()
 	edgeConn := routerConnection.NewConn(serviceName)
 	listener, err := edgeConn.Listen(session, serviceName, mgr.options)
+	elapsed := time.Now().Sub(start)
+	logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 	if err == nil {
 		mgr.listener.AddListener(listener, func() {
 			mgr.eventChan <- &routerConnectionListenFailedEvent{
@@ -757,6 +759,7 @@ func (mgr *listenerManager) createSessionWithBackoff() {
 }
 
 func (mgr *listenerManager) createSession() error {
+	start := time.Now()
 	logger := pfxlog.Logger()
 	logger.Debugf("establishing bind session to service %v", mgr.listener.GetServiceName())
 	session, err := mgr.context.GetBindSession(mgr.serviceId)
@@ -779,7 +782,8 @@ func (mgr *listenerManager) createSession() error {
 		}
 		return err
 	}
-	logger.Debugf("successfully created bind session to service %v", mgr.listener.GetServiceName())
+	elapsed := time.Now().Sub(start)
+	logger.Debugf("successfully created bind session to service %v in %vms", mgr.listener.GetServiceName(), elapsed.Milliseconds())
 	mgr.session = session
 	mgr.sessionRefreshTime = time.Now()
 	return nil
@@ -817,7 +821,7 @@ type routerConnectionListenFailedEvent struct {
 }
 
 func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
-	pfxlog.Logger().Warnf("listener connection failed")
+	pfxlog.Logger().Infof("child listener connection closed. parent listener closed: %v", mgr.listener.IsClosed())
 	delete(mgr.routerConnections, event.router)
 	now := time.Now()
 	if len(mgr.routerConnections) == 0 {
