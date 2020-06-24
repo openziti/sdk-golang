@@ -447,8 +447,11 @@ func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
 }
 
 func (context *contextImpl) GetService(name string) (*edge.Service, bool) {
-	s, found := context.services.Load(name)
-	return s.(*edge.Service), found
+	if s, found := context.services.Load(name); !found {
+		return nil, false
+	} else {
+		return s.(*edge.Service), true
+	}
 }
 
 func (context *contextImpl) getServiceId(name string) (string, bool) {
