@@ -42,7 +42,6 @@ func accept(conn net.Conn){
 	rw := bufio.NewReadWriter(reader, writer)
 	//line delimited
 	for {
-		log.Info("about to read a string")
 		line, err := rw.ReadString('\n')
 		if err != nil {
 			log.Error(err)

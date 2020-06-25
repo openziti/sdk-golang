@@ -21,7 +21,7 @@ func Client(zitiCfg *config.Config, serviceName string) {
 	if !ok {
 		panic("error when retrieving all the services for the provided config")
 	}
-	fmt.Print(foundSvc)
+	log.Infof("found service named: %s", serviceName)
 
 	clientConfig := &ServiceConfig{}
 	found, err := foundSvc.GetConfigOfType("ziti-tunneler-client.v1", clientConfig)
@@ -29,7 +29,7 @@ func Client(zitiCfg *config.Config, serviceName string) {
 		panic(fmt.Sprintf("error when getting configs for service named %s. %v", serviceName, err))
 	}
 	if !found {
-		fmt.Print("WARN: no config of type ziti-tunneler-client.v1 was found")
+		log.Warn("WARN: no config of type ziti-tunneler-client.v1 was found")
 	}
 
 	svc, err := ctx.Dial(serviceName) //dial the service using the given name
