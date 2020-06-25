@@ -29,15 +29,14 @@ func Client(zitiCfg *config.Config, serviceName string) {
 		panic(fmt.Sprintf("error when getting configs for service named %s. %v", serviceName, err))
 	}
 	if !found {
-		log.Warn("WARN: no config of type ziti-tunneler-client.v1 was found")
+		log.Warn("no config of type ziti-tunneler-client.v1 was found")
 	}
 
 	svc, err := ctx.Dial(serviceName) //dial the service using the given name
 	if err != nil {
 		panic(fmt.Sprintf("error when dialing service name %s. %v", serviceName, err))
 	}
-	log.Info("Connected to %s successfully.", serviceName)
-
+	log.Infof("Connected to %s successfully.", serviceName)
 	log.Info("You may now type a line to be sent to the server (press enter to send)")
 	log.Info("The line will be sent to the echo server and returned")
 
