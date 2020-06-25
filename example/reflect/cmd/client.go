@@ -38,7 +38,7 @@ func Client(zitiCfg *config.Config, serviceName string) {
 	}
 	log.Infof("Connected to %s successfully.", serviceName)
 	log.Info("You may now type a line to be sent to the server (press enter to send)")
-	log.Info("The line will be sent to the echo server and returned")
+	log.Info("The line will be sent to the reflect server and returned")
 
 	reader := bufio.NewReader(os.Stdin) //setup a reader for reading input from the commandline
 
