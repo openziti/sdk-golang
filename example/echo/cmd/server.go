@@ -7,6 +7,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/config"
 	"net"
 	"os"
+	"strings"
 )
 
 func Server(zitiCfg *config.Config, serviceName string){
@@ -33,6 +34,9 @@ func serve(listener net.Listener) {
 }
 
 func accept(conn net.Conn){
+	if conn == nil {
+		panic("connection is nil!")
+	}
 	writer := bufio.NewWriter(conn)
 	reader := bufio.NewReader(conn)
 	rw := bufio.NewReadWriter(reader, writer)
@@ -44,9 +48,11 @@ func accept(conn net.Conn){
 			log.Error(err)
 			break
 		}
-		log.Infof("read a string: %s", line)
-		_, _ = rw.WriteString(fmt.Sprintf("you sent me: %s", line))
+		log.Info("about to read a string :")
+		log.Infof("                  read : %s", strings.TrimSpace(line))
+		resp := fmt.Sprintf("you sent me: %s", line)
+		_, _ = rw.WriteString(resp)
 		_ = rw.Flush()
-		log.Info("response sent")
+		log.Infof("       responding with : %s", strings.TrimSpace(resp))
 	}
 }

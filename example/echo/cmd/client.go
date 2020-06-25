@@ -16,13 +16,15 @@ type ServiceConfig struct {
 
 func Client(zitiCfg *config.Config, serviceName string) {
 	ctx := ziti.NewContextWithConfig(zitiCfg) //get a ziti context using a file
-	svcs, ok := ctx.GetService(serviceName)
+
+	foundSvc, ok := ctx.GetService(serviceName)
 	if !ok {
 		panic("error when retrieving all the services for the provided config")
 	}
+	fmt.Print(foundSvc)
 
 	clientConfig := &ServiceConfig{}
-	found, err := svcs.GetConfigOfType("ziti-tunneler-client.v1", clientConfig)
+	found, err := foundSvc.GetConfigOfType("ziti-tunneler-client.v1", clientConfig)
 	if err != nil {
 		panic(fmt.Sprintf("error when getting configs for service named %s. %v", serviceName, err))
 	}
@@ -56,7 +58,7 @@ func Client(zitiCfg *config.Config, serviceName string) {
 		} else {
 			fmt.Println("wrote", bytesRead, "bytes")
 		}
-		fmt.Println("Sent    :", text)
+		fmt.Print("Sent    :", text)
 		read, err := conRead.ReadString('\n')
 		if err != nil {
 			fmt.Println(err)
