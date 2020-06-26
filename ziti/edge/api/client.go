@@ -64,7 +64,7 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (Client, error) {
 }
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
-var currSess, _ = url.Parse("/current-apiSession-apiSession")
+var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 
