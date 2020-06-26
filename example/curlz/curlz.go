@@ -37,9 +37,9 @@ func (dc *ZitiDialContext) Dial(_ context.Context, _ string, addr string) (net.C
 
 func newZitiClient() *http.Client {
 	zitiDialContext := ZitiDialContext{context: ziti.NewContext()}
-	zitiTransport := *http.DefaultTransport.(*http.Transport) // copy default transport
+	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
-	return &http.Client{Transport: &zitiTransport}
+	return &http.Client{Transport: zitiTransport}
 }
 
 func main() {
