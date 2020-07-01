@@ -12,12 +12,13 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.3.2
-	github.com/netfoundry/secretstream v0.1.1
+	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/foundation v0.11.10
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v0.0.7
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae
 )
