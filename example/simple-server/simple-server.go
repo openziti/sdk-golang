@@ -34,8 +34,10 @@ func (g Greeter) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	var result string
 	if name := req.URL.Query().Get("name"); name != "" {
 		result = fmt.Sprintf("Hello, %v, from %v\n", name, g)
+		fmt.Printf("Saying hello to %v, coming in from %v\n", name, g)
 	} else {
 		result = "Who are you?\n"
+		fmt.Println("Asking for introduction")
 	}
 	if _, err := resp.Write([]byte(result)); err != nil {
 		panic(err)
@@ -53,7 +55,8 @@ func plain(listenAddr string) {
 	if err != nil {
 		panic(err)
 	}
-	serve(listener, "plain")
+	fmt.Printf("listening for non-ziti requests on %v\n", listenAddr)
+	serve(listener, "plain-internet")
 }
 
 func withZiti(service string) {
@@ -66,6 +69,7 @@ func withZiti(service string) {
 		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)
 	}
+	fmt.Printf("listening for requests for Ziti service %v\n", service)
 	serve(listener, "ziti")
 }
 
@@ -74,9 +78,12 @@ func main() {
 		pfxlog.Global(logrus.DebugLevel)
 		pfxlog.Logger().Debugf("debug enabled")
 	}
-	if len(os.Args) > 2 && os.Args[1] == "ziti" {
-		withZiti(os.Args[2])
-	} else {
-		plain("localhost:8080")
+
+	serviceName := "simple"
+	if len(os.Args) > 1 {
+		serviceName = os.Args[1]
 	}
+
+	go withZiti(serviceName)
+	plain("localhost:8080")
 }

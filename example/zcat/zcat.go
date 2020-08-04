@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/transport/udp"
+	"github.com/openziti/foundation/util/info"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -84,7 +84,7 @@ func runFunc(_ *cobra.Command, args []string) {
 }
 
 func Copy(writer io.Writer, reader io.Reader) {
-	buf := make([]byte, udp.MaxPacketSize)
+	buf := make([]byte, info.MaxUdpPacketSize)
 	bytesCopied, err := io.CopyBuffer(writer, reader, buf)
 	pfxlog.Logger().Infof("Copied %v bytes", bytesCopied)
 	if err != nil {
