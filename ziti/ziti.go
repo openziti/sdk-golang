@@ -23,7 +23,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
-	"github.com/openziti/foundation/event"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
 	"github.com/openziti/foundation/transport"
@@ -162,8 +161,7 @@ func (context *contextImpl) initializer() error {
 		"srcId": context.apiSession.Identity.Id,
 	}
 
-	eventDispatcher := event.NewDispatcher()
-	context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags, LatencyCheckInterval, metrics.NewDispatchWrapper(eventDispatcher.Dispatch))
+	context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags)
 
 	// get services
 	if services, err := context.getServices(); err != nil {
@@ -288,7 +286,7 @@ func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error 
 }
 
 func (context *contextImpl) Authenticate() error {
-	logrus.Info("attempting to authenticate")
+	logrus.Debug("attempting to authenticate")
 	context.services = sync.Map{}
 	context.sessions = sync.Map{}
 
