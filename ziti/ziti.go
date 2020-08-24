@@ -304,8 +304,7 @@ func (context *contextImpl) Authenticate() error {
 		metricsTags := map[string]string{
 			"srcId": context.apiSession.Identity.Id,
 		}
-
-		eventDispatcher := event.NewDispatcher()
+		
 		context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags)
 
 		// get services
