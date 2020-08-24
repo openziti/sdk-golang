@@ -23,7 +23,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
-	"github.com/openziti/foundation/event"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
 	"github.com/openziti/foundation/transport"
@@ -276,16 +275,16 @@ func (context *contextImpl) Authenticate() error {
 	}
 
 	if context.apiSession != nil {
-		logrus.Info("previous apiSession detected, checking if valid")
+		logrus.Debug("previous apiSession detected, checking if valid")
 		if _, err := context.ctrlClt.Refresh(); err == nil {
-			logrus.Info("previous apiSession refreshed")
+			logrus.Debug("previous apiSession refreshed")
 			return nil
 		} else {
 			logrus.WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
 		}
 	}
 
-	logrus.Info("attempting to authenticate")
+	logrus.Debug("attempting to authenticate")
 	context.services = sync.Map{}
 	context.sessions = sync.Map{}
 
@@ -307,7 +306,7 @@ func (context *contextImpl) Authenticate() error {
 		}
 
 		eventDispatcher := event.NewDispatcher()
-		context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags, LatencyCheckInterval, metrics.NewDispatchWrapper(eventDispatcher.Dispatch))
+		context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags)
 
 		// get services
 		if services, err := context.getServices(); err != nil {
