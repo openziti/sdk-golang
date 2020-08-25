@@ -150,7 +150,7 @@ func (context *contextImpl) load() error {
 		return err
 	}
 	context.ctrlClt, err = api.NewClient(context.zitiUrl, context.id.ClientTLSConfig())
-	return nil
+	return err
 }
 
 func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
@@ -304,7 +304,7 @@ func (context *contextImpl) Authenticate() error {
 		metricsTags := map[string]string{
 			"srcId": context.apiSession.Identity.Id,
 		}
-		
+
 		context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags)
 
 		// get services
