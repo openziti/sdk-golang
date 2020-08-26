@@ -31,8 +31,8 @@ func main() {
 	rootCmd.PersistentFlags().StringP("identity", "i", "", "REQUIRED: Path to JSON file that contains an enrolled identity")
 	rootCmd.PersistentFlags().StringP("serviceName", "s", "", "REQUIRED: The service to host")
 
-	cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "identity")
-	cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "serviceName")
+	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "identity")
+	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "serviceName")
 
 	var serverCmd = &cobra.Command{
 		Use:   "server",
@@ -51,7 +51,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(clientCmd, serverCmd)
-	rootCmd.Execute()
+	_ = rootCmd.Execute()
 }
 
 func getConfig() (zitiCfg *config.Config) {

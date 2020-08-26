@@ -43,6 +43,13 @@ func (e NotAccessible) Error() string {
 	return fmt.Sprintf("unable to create apiSession. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
+type NotFound NotAccessible
+
+func (e NotFound) Error() string {
+	return fmt.Sprintf("unable to find resource. http status code: %v, msg: %v", e.httpCode, e.msg)
+}
+
+
 type Client interface {
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
@@ -164,26 +171,45 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 
 	log.Debugf("refreshing apiSession apiSession")
 	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(currSess).String(), nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new HTTP request during refresh: %v", err)
+	}
+
+	if c.apiSession == nil {
+		return nil, fmt.Errorf("no apiSession to refresh")
+	}
+
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	resp, err := c.clt.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		log.Errorf("failed to get current apiSession %+v, trying to login again", err)
-		c.apiSession, err = c.Login(nil, nil)
-		if err != nil {
-			log.Fatalf("failed to login again")
-			return nil, err
-		}
-	} else {
-		apiSessionResp := &edge.ApiSession{}
-		_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			log.Fatalf("failed to parse current apiSession")
-			return nil, err
-		}
-		c.apiSession = apiSessionResp
-		log.Debugf("apiSession refreshed, new expiration[%s]", c.apiSession.Expires)
+	if err != nil && resp == nil {
+		return nil, fmt.Errorf("failed contact controller: %v", err)
 	}
+
+	if resp != nil {
+		if resp.StatusCode == http.StatusOK {
+			apiSessionResp := &edge.ApiSession{}
+			_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse current apiSession during refresh: %v", err)
+			}
+			c.apiSession = apiSessionResp
+			log.Debugf("apiSession refreshed, new expiration[%s]", c.apiSession.Expires)
+		} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized {
+			log.Errorf("session is invalid, trying to login again: %+v", err)
+			apiSession, err := c.Login(nil, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to login during apiSession refresh: %v", err)
+			}
+			log.Debugf("new apiSession created, expiration[%s]", c.apiSession.Expires)
+			c.apiSession = apiSession
+		} else {
+			return nil, fmt.Errorf("unhandled response from controller interogating sessions: %v - %v", resp.StatusCode, resp.Body)
+		}
+
+	}
+
 	return &c.apiSession.Expires, nil
 }
 
@@ -261,6 +287,13 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 		}
 		if resp.StatusCode == http.StatusBadRequest {
 			return nil, NotAccessible{
+				httpCode: resp.StatusCode,
+				msg:      string(respBody),
+			}
+		}
+
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, NotFound{
 				httpCode: resp.StatusCode,
 				msg:      string(respBody),
 			}
