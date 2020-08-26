@@ -37,7 +37,6 @@ import (
 	"net/url"
 	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
@@ -322,6 +321,11 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
+
+	if err := context.ensureApiSession(); err != nil {
+		return nil, fmt.Errorf("failed to dial: %v", err)
+	}
+
 	serviceId, ok := context.getServiceId(serviceName)
 	if !ok {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
@@ -330,17 +334,16 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	var conn edge.ServiceConn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
-		session, err := context.GetSession(serviceId)
+		var session *edge.Session
+		session, err = context.GetSession(serviceId)
 		if err != nil {
-			return nil, err
+			continue
 		}
 		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
 		conn, err = context.dialSession(serviceName, session)
 		if err != nil {
-			if strings.Contains(err.Error(), "closed") {
-				context.deleteServiceSessions(serviceId)
-				continue
-			}
+			context.deleteServiceSessions(serviceId)
+			continue
 		}
 		return conn, err
 	}
@@ -356,6 +359,15 @@ func (context *contextImpl) dialSession(service string, session *edge.Session) (
 	return edgeConn.Connect(session)
 }
 
+func (context *contextImpl) ensureApiSession() error {
+	if context.apiSession == nil {
+		if err := context.Authenticate(); err != nil {
+			return fmt.Errorf("no apiSession, authentication attempt failed: %v", err)
+		}
+	}
+	return nil
+}
+
 func (context *contextImpl) Listen(serviceName string) (edge.Listener, error) {
 	return context.ListenWithOptions(serviceName, edge.DefaultListenOptions())
 }
@@ -363,6 +375,10 @@ func (context *contextImpl) Listen(serviceName string) (edge.Listener, error) {
 func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
+	}
+
+	if err := context.ensureApiSession(); err != nil {
+		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
 
 	if id, ok, _ := context.GetServiceId(serviceName); ok {
@@ -380,8 +396,11 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 	logger := pfxlog.Logger().WithField("ns", session.Token)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
-		sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
-		context.sessions.Delete(sessionKey)
+		if _, isNotFound := err.(*api.NotFound); isNotFound {
+			sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
+			context.sessions.Delete(sessionKey)
+		}
+
 		return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
 	} else {
 		if len(refreshedSession.EdgeRouters) == 0 {
@@ -476,6 +495,10 @@ func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
 		return "", false, errors.Errorf("failed to initialize context: (%v)", err)
 	}
 
+	if err := context.ensureApiSession(); err != nil {
+		return "", false, fmt.Errorf("failed to get service id: %v", err)
+	}
+
 	id, found := context.getServiceId(name)
 	return id, found, nil
 }
@@ -484,6 +507,12 @@ func (context *contextImpl) GetService(name string) (*edge.Service, bool) {
 	if err := context.initialize(); err != nil {
 		return nil, false
 	}
+
+	if err := context.ensureApiSession(); err != nil {
+		pfxlog.Logger().Warn("failed to get service: %v", err)
+		return nil, false
+	}
+
 	if s, found := context.services.Load(name); !found {
 		return nil, false
 	} else {
@@ -502,6 +531,10 @@ func (context *contextImpl) getServiceId(name string) (string, bool) {
 func (context *contextImpl) GetServices() ([]edge.Service, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
+	}
+
+	if err := context.ensureApiSession(); err != nil {
+		return nil, fmt.Errorf("failed to get services: %v", err)
 	}
 
 	var res []edge.Service
