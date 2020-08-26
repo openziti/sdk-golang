@@ -509,7 +509,7 @@ func (context *contextImpl) GetService(name string) (*edge.Service, bool) {
 	}
 
 	if err := context.ensureApiSession(); err != nil {
-		pfxlog.Logger().Warn("failed to get service: %v", err)
+		pfxlog.Logger().Warnf("failed to get service: %v", err)
 		return nil, false
 	}
 
