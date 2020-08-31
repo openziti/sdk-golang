@@ -9,7 +9,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.0.2
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
-	github.com/google/uuid v1.1.1
+	github.com/google/uuid v1.1.2
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/mapstructure v1.3.3
 	github.com/netfoundry/secretstream v0.1.2
