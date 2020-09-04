@@ -438,7 +438,9 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	if edgeConn, found := context.routerConnections.Get(ingressUrl); found {
 		conn := edgeConn.(edge.RouterConn)
 		if !conn.IsClosed() {
-			ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: conn}
+			if ret != nil {
+				ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: conn}
+			}
 			return
 		} else {
 			context.routerConnections.Remove(ingressUrl)
@@ -448,7 +450,9 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	ingAddr, err := transport.ParseAddress(ingressUrl)
 	if err != nil {
 		logger.WithError(err).Errorf("failed to parse url[%s]", ingressUrl)
-		ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}
+		if ret != nil {
+			ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}
+		}
 		return
 	}
 
