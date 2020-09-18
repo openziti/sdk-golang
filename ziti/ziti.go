@@ -31,6 +31,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/impl"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
+	"github.com/openziti/sdk-golang/ziti/signing"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -48,8 +49,9 @@ const (
 type Context interface {
 	Authenticate() error
 	Dial(serviceName string) (edge.ServiceConn, error)
+	DialWithOptions(serviceName string, options *DialOptions) (edge.ServiceConn, error)
 	Listen(serviceName string) (edge.Listener, error)
-	ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error)
+	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
@@ -60,6 +62,41 @@ type Context interface {
 	Metrics() metrics.Registry
 	// Close closes any connections open to edge routers
 	Close()
+}
+
+type DialOptions struct {
+	ConnectTimeout time.Duration
+	Identity       string
+}
+
+func (d DialOptions) GetConnectTimeout() time.Duration {
+	return d.ConnectTimeout
+}
+
+type Precedence byte
+
+const (
+	PrecedenceDefault  Precedence = 0
+	PrecedenceRequired            = 1
+	PrecedenceFailed              = 2
+)
+
+type ListenOptions struct {
+	Cost                  uint16
+	Precedence            Precedence
+	ConnectTimeout        time.Duration
+	MaxConnections        int
+	Identity              string
+	BindUsingEdgeIdentity bool
+}
+
+func DefaultListenOptions() *ListenOptions {
+	return &ListenOptions{
+		Cost:           0,
+		Precedence:     PrecedenceDefault,
+		ConnectTimeout: 5 * time.Second,
+		MaxConnections: 3,
+	}
 }
 
 type contextImpl struct {
@@ -318,6 +355,18 @@ func (context *contextImpl) Authenticate() error {
 }
 
 func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
+	defaultOptions := &DialOptions{ConnectTimeout: 5 * time.Second}
+	return context.DialWithOptions(serviceName, defaultOptions)
+}
+
+func (context *contextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.ServiceConn, error) {
+	edgeDialOptions := &edge.DialOptions{
+		ConnectTimeout: options.ConnectTimeout,
+		Identity:       options.Identity,
+	}
+	if edgeDialOptions.GetConnectTimeout() == 0 {
+		edgeDialOptions.ConnectTimeout = 15 * time.Second
+	}
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -331,6 +380,8 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
 
+	edgeDialOptions.CallerId = context.apiSession.Identity.Name
+
 	var conn edge.ServiceConn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -340,7 +391,7 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 			continue
 		}
 		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
-		conn, err = context.dialSession(service, session)
+		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
 			context.deleteServiceSessions(service.Id)
 			continue
@@ -350,13 +401,13 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
 }
 
-func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session) (edge.ServiceConn, error) {
-	edgeConnFactory, err := context.getEdgeRouterConn(session, edge.DialConnOptions{})
+func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.ServiceConn, error) {
+	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
 	if err != nil {
 		return nil, err
 	}
 	edgeConn := edgeConnFactory.NewConn(service)
-	return edgeConn.Connect(session)
+	return edgeConn.Connect(session, options)
 }
 
 func (context *contextImpl) ensureApiSession() error {
@@ -369,10 +420,10 @@ func (context *contextImpl) ensureApiSession() error {
 }
 
 func (context *contextImpl) Listen(serviceName string) (edge.Listener, error) {
-	return context.ListenWithOptions(serviceName, edge.DefaultListenOptions())
+	return context.ListenWithOptions(serviceName, DefaultListenOptions())
 }
 
-func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.ListenOptions) (edge.Listener, error) {
+func (context *contextImpl) ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -387,8 +438,25 @@ func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(service *edge.Service, options *edge.ListenOptions) edge.Listener {
-	listenerMgr := newListenerManager(service, context, options)
+func (context *contextImpl) listenSession(service *edge.Service, options *ListenOptions) edge.Listener {
+	edgeListenOptions := &edge.ListenOptions{
+		Cost:                  options.Cost,
+		Precedence:            edge.Precedence(options.Precedence),
+		ConnectTimeout:        options.ConnectTimeout,
+		MaxConnections:        options.MaxConnections,
+		Identity:              options.Identity,
+		BindUsingEdgeIdentity: options.BindUsingEdgeIdentity,
+	}
+
+	if edgeListenOptions.ConnectTimeout == 0 {
+		edgeListenOptions.ConnectTimeout = time.Minute
+	}
+
+	if edgeListenOptions.MaxConnections < 1 {
+		edgeListenOptions.MaxConnections = 1
+	}
+
+	listenerMgr := newListenerManager(service, context, edgeListenOptions)
 	return listenerMgr.listener
 }
 
@@ -645,6 +713,7 @@ func (context *contextImpl) Metrics() metrics.Registry {
 
 func newListenerManager(service *edge.Service, context *contextImpl, options *edge.ListenOptions) *listenerManager {
 	now := time.Now()
+
 	listenerMgr := &listenerManager{
 		service:           service,
 		context:           context,
@@ -680,6 +749,19 @@ type listenerManager struct {
 func (mgr *listenerManager) run() {
 	mgr.createSessionWithBackoff()
 	mgr.makeMoreListeners()
+
+	if mgr.options.BindUsingEdgeIdentity {
+		mgr.options.Identity = mgr.context.apiSession.Identity.Name
+	}
+
+	if mgr.options.Identity != "" {
+		identitySecret, err := signing.AssertIdentityWithSecret(mgr.context.id.Cert().PrivateKey)
+		if err != nil {
+			pfxlog.Logger().Errorf("failed to sign identity: %v", err)
+		} else {
+			mgr.options.IdentitySecret = string(identitySecret)
+		}
+	}
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	refreshTicker := time.NewTicker(30 * time.Second)
@@ -725,8 +807,8 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	edgeConn := routerConnection.NewConn(service)
 	listener, err := edgeConn.Listen(session, service, mgr.options)
 	elapsed := time.Now().Sub(start)
-	logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 	if err == nil {
+		logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 		mgr.listener.AddListener(listener, func() {
 			mgr.eventChan <- &routerConnectionListenFailedEvent{
 				router: routerConnection.GetRouterName(),
@@ -734,7 +816,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 		})
 		mgr.eventChan <- listenSuccessEvent{}
 	} else {
-		logger.Errorf("creating listener failed: %v", err)
+		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
 		if err := edgeConn.Close(); err != nil {
 			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), service.Name, err)
 		}

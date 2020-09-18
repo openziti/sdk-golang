@@ -42,13 +42,14 @@ func init() {
 
 type edgeConn struct {
 	edge.MsgChannel
-	readQ        sequencer.Sequencer
-	leftover     []byte
-	msgMux       *edge.MsgMux
-	hosting      sync.Map
-	closed       concurrenz.AtomicBoolean
-	serviceId    string
-	readDeadline time.Time
+	readQ          sequencer.Sequencer
+	leftover       []byte
+	msgMux         *edge.MsgMux
+	hosting        sync.Map
+	closed         concurrenz.AtomicBoolean
+	serviceId      string
+	sourceIdentity string
+	readDeadline   time.Time
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -103,11 +104,11 @@ func (conn *edgeConn) IsClosed() bool {
 }
 
 func (conn *edgeConn) Network() string {
-	return "ziti"
+	return conn.serviceId
 }
 
 func (conn *edgeConn) String() string {
-	return conn.serviceId
+	return conn.sourceIdentity
 }
 
 func (conn *edgeConn) LocalAddr() net.Addr {
@@ -141,16 +142,16 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 	conn.closed.Set(true)
 }
 
-func (conn *edgeConn) Connect(session *edge.Session) (edge.ServiceConn, error) {
+func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.ServiceConn, error) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 
 	var pub []byte
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
-	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, pub)
+	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, pub, options)
 	conn.TraceMsg("connect", connectRequest)
-	replyMsg, err := conn.SendAndWaitWithTimeout(connectRequest, 5*time.Second)
+	replyMsg, err := conn.SendAndWaitWithTimeout(connectRequest, options.ConnectTimeout)
 	if err != nil {
 		logger.Error(err)
 		return nil, err
@@ -238,8 +239,8 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 	listener := &edgeListener{
 		baseListener: baseListener{
 			service: service,
-			acceptC:     make(chan net.Conn, 10),
-			errorC:      make(chan error, 1),
+			acceptC: make(chan net.Conn, 10),
+			errorC:  make(chan error, 1),
 		},
 		token:    session.Token,
 		edgeChan: conn,
@@ -260,7 +261,7 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, pub, options.Cost, options.Precedence)
+	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, pub, options)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {
@@ -423,7 +424,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		logger.Warn("listener not found")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
-		if err := conn.SendWithTimeout(reply, time.Second*5); err != nil {
+		if err := conn.SendPrioritizedWithTimeout(reply, channel2.Highest, time.Second*5); err != nil {
 			logger.Errorf("Failed to send reply to dial request: (%v)", err)
 		}
 		return
@@ -432,10 +433,13 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 	logger.Debug("listener found. generating id for new connection")
 	id := connSeq.Next()
 
+	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
+
 	edgeCh := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(conn.Channel, id),
-		readQ:      sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
-		msgMux:     conn.msgMux,
+		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
+		readQ:          sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
+		msgMux:         conn.msgMux,
+		sourceIdentity: sourceIdentity,
 	}
 
 	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
@@ -463,7 +467,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 	if err != nil {
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
-		if err := conn.SendWithTimeout(reply, time.Second*5); err != nil {
+		if err := conn.SendPrioritizedWithTimeout(reply, channel2.Highest, time.Second*5); err != nil {
 			logger.Errorf("Failed to send reply to dial request: (%v)", err)
 		}
 		return
@@ -471,7 +475,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 
 	reply := edge.NewDialSuccessMsg(conn.Id(), edgeCh.Id())
 	reply.ReplyTo(message)
-	startMsg, err := conn.SendAndWaitWithTimeout(reply, time.Second*5)
+	startMsg, err := conn.SendPrioritizedAndWaitWithTimeout(reply, channel2.Highest, time.Second*5)
 	if err != nil {
 		logger.Errorf("Failed to send reply to dial request: (%v)", err)
 		return
