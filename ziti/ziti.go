@@ -817,6 +817,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 		mgr.eventChan <- listenSuccessEvent{}
 	} else {
 		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
+		mgr.listener.NotifyOfChildError(err)
 		if err := edgeConn.Close(); err != nil {
 			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), service.Name, err)
 		}

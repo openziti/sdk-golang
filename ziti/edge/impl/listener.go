@@ -144,6 +144,7 @@ func (listener *edgeListener) Close() error {
 type MultiListener interface {
 	edge.Listener
 	AddListener(listener edge.Listener, closeHandler func())
+	NotifyOfChildError(err error)
 	GetServiceName() string
 	GetService() *edge.Service
 	CloseWithError(err error)
@@ -163,31 +164,57 @@ func NewMultiListener(service *edge.Service, getSessionF func() *edge.Session) M
 
 type multiListener struct {
 	baseListener
-	listeners    map[edge.Listener]struct{}
-	listenerLock sync.Mutex
-	getSessionF  func() *edge.Session
-	eventHandler atomic.Value
+	listeners            map[edge.Listener]struct{}
+	listenerLock         sync.Mutex
+	getSessionF          func() *edge.Session
+	listenerEventHandler atomic.Value
+	errorEventHandler    atomic.Value
 }
 
 func (listener *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
-	listener.eventHandler.Store(handler)
+	listener.listenerEventHandler.Store(handler)
 }
 
 func (listener *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
-	val := listener.eventHandler.Load()
+	val := listener.listenerEventHandler.Load()
 	if val == nil {
 		return nil
 	}
 	return val.(func([]edge.Listener))
 }
 
-func (listener *multiListener) notifyEventHandler() {
+func (listener *multiListener) SetErrorEventHandler(handler func(error)) {
+	listener.errorEventHandler.Store(handler)
+}
+
+func (listener *multiListener) GetErrorEventHandler() func(error) {
+	val := listener.errorEventHandler.Load()
+	if val == nil {
+		return nil
+	}
+	return val.(func(error))
+}
+
+func (listener *multiListener) NotifyOfChildError(err error) {
+	pfxlog.Logger().Infof("notify error handler of error: %v", err)
+	if handler := listener.GetErrorEventHandler(); handler != nil {
+		handler(err)
+	}
+}
+
+func (listener *multiListener) notifyOfConnectionChange() {
 	if handler := listener.GetConnectionChangeHandler(); handler != nil {
 		var list []edge.Listener
 		for k := range listener.listeners {
 			list = append(list, k)
 		}
 		go handler(list)
+	}
+}
+
+func (listener *multiListener) notifyOfChildError(err error) {
+	if handler := listener.GetErrorEventHandler(); handler != nil {
+		go handler(err)
 	}
 }
 
@@ -272,11 +299,11 @@ func (listener *multiListener) AddListener(netListener edge.Listener, closeHandl
 		defer listener.listenerLock.Unlock()
 		delete(listener.listeners, edgeListener)
 
-		listener.notifyEventHandler()
+		listener.notifyOfConnectionChange()
 		go closeHandler()
 	}
 
-	listener.notifyEventHandler()
+	listener.notifyOfConnectionChange()
 
 	go listener.forward(edgeListener, closer)
 }
