@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"
@@ -60,7 +59,7 @@ func plain(listenAddr string) {
 }
 
 func withZiti(service string) {
-	options := edge.ListenOptions{
+	options := ziti.ListenOptions{
 		ConnectTimeout: 5 * time.Minute,
 		MaxConnections: 3,
 	}

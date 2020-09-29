@@ -38,12 +38,15 @@ const (
 	ContentTypeProbe             = 60793
 	ContentTypeUpdateBind        = 60794
 
-	ConnIdHeader       = 1000
-	SeqHeader          = 1001
-	SessionTokenHeader = 1002
-	PublicKeyHeader    = 1003
-	CostHeader         = 1004
-	PrecedenceHeader   = 1005
+	ConnIdHeader                   = 1000
+	SeqHeader                      = 1001
+	SessionTokenHeader             = 1002
+	PublicKeyHeader                = 1003
+	CostHeader                     = 1004
+	PrecedenceHeader               = 1005
+	TerminatorIdentityHeader       = 1006
+	TerminatorIdentitySecretHeader = 1007
+	CallerIdHeader                 = 1008
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -130,11 +133,6 @@ func (event *MsgEvent) GetLoggerFields() logrus.Fields {
 	return fields
 }
 
-func SequencerF(v interface{}) uint {
-	event := v.(Sequenced)
-	return uint(event.GetSequence())
-}
-
 func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel2.Message {
 	msg := channel2.NewMessage(contentType, data)
 	msg.PutUint32Header(ConnIdHeader, connId)
@@ -150,9 +148,15 @@ func NewProbeMsg() *channel2.Message {
 	return channel2.NewMessage(ContentTypeProbe, nil)
 }
 
-func NewConnectMsg(connId uint32, token string, pubKey []byte) *channel2.Message {
+func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel2.Message {
 	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
 	msg.Headers[PublicKeyHeader] = pubKey
+	if options.Identity != "" {
+		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
+	}
+	if options.CallerId != "" {
+		msg.Headers[CallerIdHeader] = []byte(options.CallerId)
+	}
 	return msg
 }
 
@@ -164,22 +168,32 @@ func NewStateClosedMsg(connId uint32, message string) *channel2.Message {
 	return newMsg(ContentTypeStateClosed, connId, 0, []byte(message))
 }
 
-func NewDialMsg(connId uint32, token string) *channel2.Message {
-	return newMsg(ContentTypeDial, connId, 0, []byte(token))
+func NewDialMsg(connId uint32, token string, callerId string) *channel2.Message {
+	msg := newMsg(ContentTypeDial, connId, 0, []byte(token))
+	msg.Headers[CallerIdHeader] = []byte(callerId)
+	return msg
 }
 
-func NewBindMsg(connId uint32, token string, pubKey []byte, cost uint16, precedence Precedence) *channel2.Message {
+func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel2.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
 	}
-	if cost > 0 {
+	if options.Cost > 0 {
 		costBytes := make([]byte, 2)
-		binary.LittleEndian.PutUint16(costBytes, cost)
+		binary.LittleEndian.PutUint16(costBytes, options.Cost)
 		msg.Headers[CostHeader] = costBytes
 	}
-	if precedence != PrecedenceDefault {
-		msg.Headers[PrecedenceHeader] = []byte{byte(precedence)}
+	if options.Precedence != PrecedenceDefault {
+		msg.Headers[PrecedenceHeader] = []byte{byte(options.Precedence)}
+	}
+
+	if options.Identity != "" {
+		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
+
+		if options.IdentitySecret != "" {
+			msg.Headers[TerminatorIdentitySecretHeader] = []byte(options.IdentitySecret)
+		}
 	}
 	return msg
 }
