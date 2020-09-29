@@ -326,7 +326,7 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 		return nil, fmt.Errorf("failed to dial: %v", err)
 	}
 
-	serviceId, ok := context.getServiceId(serviceName)
+	service, ok := context.GetService(serviceName)
 	if !ok {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
@@ -335,14 +335,14 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		var session *edge.Session
-		session, err = context.GetSession(serviceId)
+		session, err = context.GetSession(service.Id)
 		if err != nil {
 			continue
 		}
 		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
-		conn, err = context.dialSession(serviceName, session)
+		conn, err = context.dialSession(service, session)
 		if err != nil {
-			context.deleteServiceSessions(serviceId)
+			context.deleteServiceSessions(service.Id)
 			continue
 		}
 		return conn, err
@@ -350,7 +350,7 @@ func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
 	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
 }
 
-func (context *contextImpl) dialSession(service string, session *edge.Session) (edge.ServiceConn, error) {
+func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session) (edge.ServiceConn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, edge.DialConnOptions{})
 	if err != nil {
 		return nil, err
@@ -381,14 +381,14 @@ func (context *contextImpl) ListenWithOptions(serviceName string, options *edge.
 		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
 
-	if id, ok, _ := context.GetServiceId(serviceName); ok {
-		return context.listenSession(id, serviceName, options), nil
+	if s, ok := context.GetService(serviceName); ok {
+		return context.listenSession(s, options), nil
 	}
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(serviceId, serviceName string, options *edge.ListenOptions) edge.Listener {
-	listenerMgr := newListenerManager(serviceId, serviceName, context, options)
+func (context *contextImpl) listenSession(service *edge.Service, options *edge.ListenOptions) edge.Listener {
+	listenerMgr := newListenerManager(service, context, options)
 	return listenerMgr.listener
 }
 
@@ -643,10 +643,10 @@ func (context *contextImpl) Metrics() metrics.Registry {
 	return context.metrics
 }
 
-func newListenerManager(serviceId, serviceName string, context *contextImpl, options *edge.ListenOptions) *listenerManager {
+func newListenerManager(service *edge.Service, context *contextImpl, options *edge.ListenOptions) *listenerManager {
 	now := time.Now()
 	listenerMgr := &listenerManager{
-		serviceId:         serviceId,
+		service:           service,
 		context:           context,
 		options:           options,
 		routerConnections: map[string]edge.RouterConn{},
@@ -656,7 +656,7 @@ func newListenerManager(serviceId, serviceName string, context *contextImpl, opt
 		disconnectedTime:  &now,
 	}
 
-	listenerMgr.listener = impl.NewMultiListener(serviceName, listenerMgr.GetCurrentSession)
+	listenerMgr.listener = impl.NewMultiListener(service, listenerMgr.GetCurrentSession)
 
 	go listenerMgr.run()
 
@@ -664,7 +664,7 @@ func newListenerManager(serviceId, serviceName string, context *contextImpl, opt
 }
 
 type listenerManager struct {
-	serviceId          string
+	service            *edge.Service
 	context            *contextImpl
 	session            *edge.Session
 	options            *edge.ListenOptions
@@ -721,9 +721,9 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *edge.Session) {
 	start := time.Now()
 	logger := pfxlog.Logger()
-	serviceName := mgr.listener.GetServiceName()
-	edgeConn := routerConnection.NewConn(serviceName)
-	listener, err := edgeConn.Listen(session, serviceName, mgr.options)
+	service := mgr.listener.GetService()
+	edgeConn := routerConnection.NewConn(service)
+	listener, err := edgeConn.Listen(session, service, mgr.options)
 	elapsed := time.Now().Sub(start)
 	logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 	if err == nil {
@@ -736,7 +736,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	} else {
 		logger.Errorf("creating listener failed: %v", err)
 		if err := edgeConn.Close(); err != nil {
-			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), serviceName, err)
+			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), service.Name, err)
 		}
 		mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}
 	}
@@ -839,7 +839,7 @@ func (mgr *listenerManager) createSession() error {
 	start := time.Now()
 	logger := pfxlog.Logger()
 	logger.Debugf("establishing bind session to service %v", mgr.listener.GetServiceName())
-	session, err := mgr.context.GetBindSession(mgr.serviceId)
+	session, err := mgr.context.GetBindSession(mgr.service.Id)
 	if err != nil {
 		logger.Warnf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
 		if errors2.Is(err, api.NotAuthorized) {

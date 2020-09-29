@@ -82,24 +82,28 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 	return connFactory
 }
 
-func (conn *routerConn) NewConn(service string) edge.Conn {
+func (conn *routerConn) NewConn(service *edge.Service) edge.Conn {
 	id := connSeq.Next()
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
 		readQ:      sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
 		msgMux:     conn.msgMux,
-		serviceId:  service,
+		serviceId:  service.Name,
 	}
 
 	var err error
-	if edgeCh.keyPair, err = kx.NewKeyPair(); err != nil {
-		pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", service, err)
+	if service.Encryption {
+		if edgeCh.keyPair, err = kx.NewKeyPair(); err == nil {
+			edgeCh.crypto = true
+		} else {
+			pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", service.Name, err)
+		}
 	}
 
 	err = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
-		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service, id, err)
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service.Name, id, err)
 	}
 	return edgeCh
 }
