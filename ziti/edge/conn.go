@@ -49,7 +49,7 @@ type RouterConn interface {
 	io.Closer
 	IsClosed() bool
 	Key() string
-	NewConn(service string) Conn
+	NewConn(service *Service) Conn
 	GetRouterName() string
 }
 
@@ -79,9 +79,9 @@ type ServiceConn interface {
 type Conn interface {
 	net.Conn
 	Identifiable
-	NewConn(service string) Conn
+	NewConn(service *Service) Conn
 	Connect(session *Session) (ServiceConn, error)
-	Listen(session *Session, serviceName string, options *ListenOptions) (Listener, error)
+	Listen(session *Session, service *Service, options *ListenOptions) (Listener, error)
 	IsClosed() bool
 }
 

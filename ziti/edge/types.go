@@ -63,6 +63,7 @@ type Service struct {
 	Id          string                            `json:"id"`
 	Name        string                            `json:"name"`
 	Permissions []string                          `json:"permissions"`
+	Encryption  bool                              `json:"encryptionRequired"`
 	Configs     map[string]map[string]interface{} `json:"config"`
 	Tags        map[string]string                 `json:"tags"`
 }

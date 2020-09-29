@@ -31,7 +31,7 @@ import (
 )
 
 type baseListener struct {
-	serviceName string
+	service     *edge.Service
 	acceptC     chan net.Conn
 	errorC      chan error
 	closed      concurrenz.AtomicBoolean
@@ -42,7 +42,7 @@ func (listener *baseListener) Network() string {
 }
 
 func (listener *baseListener) String() string {
-	return listener.serviceName
+	return listener.service.Name
 }
 
 func (listener *baseListener) Addr() net.Addr {
@@ -145,13 +145,14 @@ type MultiListener interface {
 	edge.Listener
 	AddListener(listener edge.Listener, closeHandler func())
 	GetServiceName() string
+	GetService() *edge.Service
 	CloseWithError(err error)
 }
 
-func NewMultiListener(serviceName string, getSessionF func() *edge.Session) MultiListener {
+func NewMultiListener(service *edge.Service, getSessionF func() *edge.Session) MultiListener {
 	return &multiListener{
 		baseListener: baseListener{
-			serviceName: serviceName,
+			service: service,
 			acceptC:     make(chan net.Conn),
 			errorC:      make(chan error),
 		},
@@ -244,7 +245,11 @@ func (listener *multiListener) condenseErrors(errors []error) error {
 }
 
 func (listener *multiListener) GetServiceName() string {
-	return listener.serviceName
+	return listener.service.Name
+}
+
+func (listener *multiListener) GetService() *edge.Service {
+	return listener.service
 }
 
 func (listener *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {

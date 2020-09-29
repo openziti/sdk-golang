@@ -50,6 +50,7 @@ type edgeConn struct {
 	serviceId    string
 	readDeadline time.Time
 
+	crypto   bool
 	keyPair  *kx.KeyPair
 	rxKey    []byte
 	receiver secretstream.Decryptor
@@ -83,14 +84,14 @@ func (conn *edgeConn) Accept(event *edge.MsgEvent) {
 	}
 }
 
-func (conn *edgeConn) NewConn(service string) edge.Conn {
+func (conn *edgeConn) NewConn(service *edge.Service) edge.Conn {
 	id := connSeq.Next()
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.Channel, id),
 		readQ:      sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
 		msgMux:     conn.msgMux,
-		serviceId:  service,
+		serviceId:  service.Name,
 	}
 
 	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
@@ -143,7 +144,11 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 func (conn *edgeConn) Connect(session *edge.Session) (edge.ServiceConn, error) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 
-	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, conn.keyPair.Public())
+	var pub []byte
+	if conn.crypto {
+		pub = conn.keyPair.Public()
+	}
+	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, pub)
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(connectRequest, 5*time.Second)
 	if err != nil {
@@ -159,22 +164,24 @@ func (conn *edgeConn) Connect(session *edge.Session) (edge.ServiceConn, error) {
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
-	// There is no race condition where we can receive the other side crypto header
-	// because the processing of the crypto header takes place in Conn.Read which
-	// can't happen until we return the conn to the user. So as long as we send
-	// the header and set rxkey before we return, we should be safe
-	hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
-	if hostPubKey != nil {
-		logger = logger.WithField("session", session.Id)
-		logger.Debug("setting up end-to-end encryption")
-		if err = conn.establishClientCrypto(conn.keyPair, hostPubKey); err != nil {
-			logger.WithError(err).Error("crypto failure")
-			_ = conn.Close()
-			return nil, err
+	if conn.crypto {
+		// There is no race condition where we can receive the other side crypto header
+		// because the processing of the crypto header takes place in Conn.Read which
+		// can't happen until we return the conn to the user. So as long as we send
+		// the header and set rxkey before we return, we should be safe
+		hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
+		if hostPubKey != nil {
+			logger = logger.WithField("session", session.Id)
+			logger.Debug("setting up end-to-end encryption")
+			if err = conn.establishClientCrypto(conn.keyPair, hostPubKey); err != nil {
+				logger.WithError(err).Error("crypto failure")
+				_ = conn.Close()
+				return nil, err
+			}
+			logger.Debug("client tx encryption setup done")
+		} else {
+			logger.Warn("connection is not end-to-end-encrypted")
 		}
-		logger.Debug("client tx encryption setup done")
-	} else {
-		logger.Warn("connection is not end-to-end-encrypted")
 	}
 	logger.Debug("connected")
 
@@ -222,15 +229,15 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte)
 	return txHeader, nil
 }
 
-func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, options *edge.ListenOptions) (edge.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
-		WithField("service", serviceName).
+		WithField("service", service.Name).
 		WithField("session", session.Token)
 
 	listener := &edgeListener{
 		baseListener: baseListener{
-			serviceName: serviceName,
+			service: service,
 			acceptC:     make(chan net.Conn, 10),
 			errorC:      make(chan error, 1),
 		},
@@ -249,7 +256,11 @@ func (conn *edgeConn) Listen(session *edge.Session, serviceName string, options 
 	}()
 
 	logger.Debug("sending bind request to edge router")
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, conn.keyPair.Public(), options.Cost, options.Precedence)
+	var pub []byte
+	if conn.crypto {
+		pub = conn.keyPair.Public()
+	}
+	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, pub, options.Cost, options.Precedence)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := conn.SendAndWaitWithTimeout(bindRequest, 5*time.Second)
 	if err != nil {
@@ -386,7 +397,7 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
 		if err := listener.Close(); err != nil {
-			log.WithError(err).Errorf("failed to close listener for service %v", listener.serviceName)
+			log.WithError(err).Errorf("failed to close listener for service %v", listener.service.Name)
 		}
 		return true
 	})
@@ -435,16 +446,18 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		WithField("token", token)
 	newConnLogger.Debug("new connection established")
 
-	clientKey := message.Headers[edge.PublicKeyHeader]
 	var err error
 	var txHeader []byte
-	if clientKey != nil {
-		newConnLogger.Debug("setting up crypto")
-		if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey); err != nil {
-			logger.Errorf("failed to establish crypto session %v", err)
+	if edgeCh.crypto {
+		clientKey := message.Headers[edge.PublicKeyHeader]
+		if clientKey != nil {
+			newConnLogger.Debug("setting up crypto")
+			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey); err != nil {
+				logger.Errorf("failed to establish crypto session %v", err)
+			}
+		} else {
+			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
 		}
-	} else {
-		newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
 	}
 
 	if err != nil {
