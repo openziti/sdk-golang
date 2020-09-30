@@ -393,8 +393,15 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
 		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
-			context.deleteServiceSessions(service.Id)
-			continue
+			_, refreshErr := context.refreshSession(session.Id)
+
+			switch refreshErr.(type) {
+			case *api.NotFound, *api.AuthFailure:
+				context.deleteServiceSessions(service.Id)
+				continue
+			}
+
+			break
 		}
 		return conn, err
 	}
@@ -478,7 +485,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 		session = refreshedSession
 	}
 
-	ch := make(chan *edgeRouterConnResult, 1)
+	ch := make(chan *edgeRouterConnResult, len(session.EdgeRouters))
 
 	for _, edgeRouter := range session.EdgeRouters {
 		for _, routerUrl := range edgeRouter.Urls {
@@ -503,12 +510,17 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
 	logger := pfxlog.Logger()
 
+	retF := func(res *edgeRouterConnResult) {
+		select {
+		case ret <- res:
+		default:
+		}
+	}
+
 	if edgeConn, found := context.routerConnections.Get(ingressUrl); found {
 		conn := edgeConn.(edge.RouterConn)
 		if !conn.IsClosed() {
-			if ret != nil {
-				ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: conn}
-			}
+			retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: conn})
 			return
 		} else {
 			context.routerConnections.Remove(ingressUrl)
@@ -518,9 +530,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	ingAddr, err := transport.ParseAddress(ingressUrl)
 	if err != nil {
 		logger.WithError(err).Errorf("failed to parse url[%s]", ingressUrl)
-		if ret != nil {
-			ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}
-		}
+		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
 		return
 	}
 
@@ -532,10 +542,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
 	if err != nil {
 		logger.Error(err)
-		select {
-		case ret <- &edgeRouterConnResult{routerUrl: ingressUrl, err: err}:
-		default:
-		}
+		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
 		return
 	}
 
@@ -556,10 +563,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 			return newV
 		})
 
-	select {
-	case ret <- &edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn.(edge.RouterConn)}:
-	default:
-	}
+	retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn.(edge.RouterConn)})
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
