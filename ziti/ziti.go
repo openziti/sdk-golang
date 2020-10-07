@@ -23,6 +23,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/foundation/common"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
 	"github.com/openziti/foundation/transport"
@@ -545,6 +546,22 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
 		return
 	}
+
+	if versionHeader, found := ch.Underlay().Headers()[channel2.HelloVersionHeader]; found {
+		versionInfo, err := common.StdVersionEncDec.Decode(versionHeader)
+		if err != nil {
+			pfxlog.Logger().Errorf("could not parse hello version header: %v", err)
+		} else {
+			pfxlog.Logger().
+				WithField("os", versionInfo.OS).
+				WithField("arch", versionInfo.Arch).
+				WithField("version", versionInfo.Version).
+				WithField("revision", versionInfo.Revision).
+				WithField("buildDate", versionInfo.BuildDate).
+				Debug("connected to edge router")
+		}
+	}
+
 
 	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
