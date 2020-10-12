@@ -36,6 +36,8 @@ import (
 
 var connSeq *sequence.Sequence
 
+var unsupportedCrypto = errors.New("unsupported crypto")
+
 func init() {
 	connSeq = sequence.NewSequence()
 }
@@ -170,11 +172,12 @@ func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) 
 		// because the processing of the crypto header takes place in Conn.Read which
 		// can't happen until we return the conn to the user. So as long as we send
 		// the header and set rxkey before we return, we should be safe
+		method, _ := replyMsg.GetByteHeader(edge.CryptoMethodHeader)
 		hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
 		if hostPubKey != nil {
 			logger = logger.WithField("session", session.Id)
 			logger.Debug("setting up end-to-end encryption")
-			if err = conn.establishClientCrypto(conn.keyPair, hostPubKey); err != nil {
+			if err = conn.establishClientCrypto(conn.keyPair, hostPubKey, edge.CryptoMethod(method)); err != nil {
 				logger.WithError(err).Error("crypto failure")
 				_ = conn.Close()
 				return nil, err
@@ -189,9 +192,13 @@ func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) 
 	return conn, nil
 }
 
-func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte) error {
+func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
 	var err error
 	var rx, tx []byte
+
+	if method != edge.CryptoMethodLibsodium {
+		return unsupportedCrypto
+	}
 
 	if rx, tx, err = keypair.ClientSessionKeys(peerKey); err != nil {
 		return fmt.Errorf("failed key exchange: %v", err)
@@ -212,10 +219,13 @@ func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte)
 	return nil
 }
 
-func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte) ([]byte, error) {
+func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) ([]byte, error) {
 	var err error
 	var rx, tx []byte
 
+	if method != edge.CryptoMethodLibsodium {
+		return nil, unsupportedCrypto
+	}
 	if rx, tx, err = keypair.ServerSessionKeys(peerKey); err != nil {
 		return nil, fmt.Errorf("failed key exchange: %v", err)
 	}
@@ -448,15 +458,16 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token)
-	newConnLogger.Debug("new connection established")
 
 	var err error
 	var txHeader []byte
 	if edgeCh.crypto {
+		newConnLogger.Debug("setting up crypto")
 		clientKey := message.Headers[edge.PublicKeyHeader]
+		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
+
 		if clientKey != nil {
-			newConnLogger.Debug("setting up crypto")
-			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey); err != nil {
+			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
 				logger.Errorf("failed to establish crypto session %v", err)
 			}
 		} else {
@@ -465,6 +476,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 	}
 
 	if err != nil {
+		newConnLogger.Errorf("Failed to establish connection: %v", err)
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
 		if err := conn.SendPrioritizedWithTimeout(reply, channel2.Highest, time.Second*5); err != nil {
@@ -472,6 +484,8 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		}
 		return
 	}
+
+	newConnLogger.Debug("new connection established")
 
 	reply := edge.NewDialSuccessMsg(conn.Id(), edgeCh.Id())
 	reply.ReplyTo(message)

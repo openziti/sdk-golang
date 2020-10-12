@@ -47,6 +47,7 @@ const (
 	TerminatorIdentityHeader       = 1006
 	TerminatorIdentitySecretHeader = 1007
 	CallerIdHeader                 = 1008
+	CryptoMethodHeader             = 1009
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -54,7 +55,13 @@ const (
 
 	// Put this in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
+
+	// Crypto Methods
+	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
+	CryptoMethodSSL                    = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
 )
+
+type CryptoMethod byte
 
 type Precedence byte
 
@@ -151,6 +158,8 @@ func NewProbeMsg() *channel2.Message {
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel2.Message {
 	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
 	msg.Headers[PublicKeyHeader] = pubKey
+	msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
+
 	if options.Identity != "" {
 		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
 	}
@@ -178,7 +187,9 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
+		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
 	}
+
 	if options.Cost > 0 {
 		costBytes := make([]byte, 2)
 		binary.LittleEndian.PutUint16(costBytes, options.Cost)
