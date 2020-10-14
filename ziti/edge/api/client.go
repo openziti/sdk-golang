@@ -49,7 +49,6 @@ func (e NotFound) Error() string {
 	return fmt.Sprintf("unable to find resource. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
-
 type Client interface {
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
@@ -307,5 +306,11 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 		pfxlog.Logger().WithError(err).Error("failed to decode session response")
 		return nil, err
 	}
+
+	for _, edgeRouter := range session.EdgeRouters {
+		delete(edgeRouter.Urls, "wss")
+		delete(edgeRouter.Urls, "ws")
+	}
+
 	return session, nil
 }
