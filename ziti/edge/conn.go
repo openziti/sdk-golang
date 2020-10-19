@@ -73,10 +73,13 @@ type SessionListener interface {
 	GetErrorEventHandler() func(error)
 }
 
+type CloseWriter interface {
+	CloseWrite() error
+}
 type ServiceConn interface {
 	net.Conn
+	CloseWriter
 	IsClosed() bool
-	CloseWrite() error
 }
 
 type Conn interface {
