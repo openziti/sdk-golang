@@ -157,8 +157,10 @@ func NewProbeMsg() *channel2.Message {
 
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel2.Message {
 	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
-	msg.Headers[PublicKeyHeader] = pubKey
-	msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
+	if pubKey != nil {
+		msg.Headers[PublicKeyHeader] = pubKey
+		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
+	}
 
 	if options.Identity != "" {
 		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
