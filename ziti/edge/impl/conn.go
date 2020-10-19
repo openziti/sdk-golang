@@ -49,6 +49,8 @@ type edgeConn struct {
 	msgMux         *edge.MsgMux
 	hosting        sync.Map
 	closed         concurrenz.AtomicBoolean
+	readFIN        concurrenz.AtomicBoolean
+	sentFIN        concurrenz.AtomicBoolean
 	serviceId      string
 	sourceIdentity string
 	readDeadline   time.Time
@@ -61,6 +63,11 @@ type edgeConn struct {
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
+
+	if conn.sentFIN.Get() {
+		return 0, fmt.Errorf("calling Write() after CloseWrite()")
+	}
+
 	if conn.sender != nil {
 		cipherData, err := conn.sender.Push(data, secretstream.TagMessage)
 		if err != nil {
@@ -73,6 +80,16 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 		return conn.MsgChannel.Write(data)
 	}
 }
+
+func (conn *edgeConn) CloseWrite() error {
+	if conn.sentFIN.CompareAndSwap(false, true) {
+		_, err := conn.MsgChannel.WriteTraced(nil, nil, edge.FIN)
+		return err
+	}
+
+	return nil
+}
+
 
 func (conn *edgeConn) Accept(event *edge.MsgEvent) {
 	conn.TraceMsg("Accept", event.Msg)
@@ -142,6 +159,8 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
 	conn.readQ.Close()
 	conn.closed.Set(true)
+	conn.sentFIN.Set(true)
+	conn.readFIN.Set(true)
 }
 
 func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.ServiceConn, error) {
@@ -302,15 +321,19 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	log.Debugf("read buffer = %d bytes", cap(p))
+	log.Tracef("read buffer = %d bytes", cap(p))
 	if len(conn.leftover) > 0 {
-		log.Debugf("found %d leftover bytes", len(conn.leftover))
+		log.Tracef("found %d leftover bytes", len(conn.leftover))
 		n := copy(p, conn.leftover)
 		conn.leftover = conn.leftover[n:]
 		return n, nil
 	}
 
 	for {
+		if conn.readFIN.Get() {
+			return 0, io.EOF
+		}
+
 		next, err := conn.readQ.GetNextWithDeadline(conn.readDeadline)
 		if err == sequencer.ErrClosed {
 			log.Debug("sequencer closed, closing connection")
@@ -322,9 +345,17 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		}
 
 		event := next.(*edge.MsgEvent)
+
+		flags, _ := event.Msg.GetUint32Header(edge.FlagsHeader)
+		if flags & edge.FIN != 0 {
+			conn.readFIN.Set(true)
+		}
+
 		switch event.Msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
+			conn.readFIN.Set(true)
+			conn.sentFIN.Set(true)
 			conn.msgMux.Event(&closeConnEvent{
 				conn:        conn,
 				remoteClose: true,
@@ -335,7 +366,10 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 		case edge.ContentTypeData:
 			d := event.Msg.Body
-			log.Debugf("got buffer from sequencer %d bytes", len(d))
+			log.Tracef("got buffer from sequencer %d bytes", len(d))
+			if len(d) == 0 && conn.readFIN.Get() {
+				return 0, io.EOF
+			}
 
 			// first data message should contain crypto header
 			if conn.rxKey != nil {
@@ -359,7 +393,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 				return copy(p, d), nil
 			}
 			conn.leftover = d[cap(p):]
-			log.Debugf("saving %d bytes for leftover", len(conn.leftover))
+			log.Tracef("saving %d bytes for leftover", len(conn.leftover))
 			return copy(p, d), nil
 
 		default:
@@ -390,6 +424,8 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 	if !conn.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	conn.readFIN.Set(true)
+	conn.sentFIN.Set(true)
 
 	log := pfxlog.Logger().WithField("connId", conn.Id())
 	log.Debug("close: begin")
