@@ -119,16 +119,17 @@ func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 }
 
 func (ec *MsgChannel) Write(data []byte) (n int, err error) {
-	return ec.WriteTraced(data, nil, 0)
+	return ec.WriteTraced(data, nil, nil)
 }
 
-func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, flags uint32) (int, error) {
+func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte) (int, error) {
 	msg := NewDataMsg(ec.id, ec.msgIdSeq.Next(), data)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
 	}
-	if flags != 0 {
-		msg.PutUint32Header(FlagsHeader, flags)
+
+	for k, v := range hdrs {
+		msg.Headers[k] = v
 	}
 	ec.TraceMsg("write", msg)
 	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(data))

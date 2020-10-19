@@ -81,15 +81,18 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 	}
 }
 
+var finHeaders = map[int32][]byte{
+	edge.FlagsHeader: []byte{edge.FIN, 0, 0, 0},
+}
+
 func (conn *edgeConn) CloseWrite() error {
 	if conn.sentFIN.CompareAndSwap(false, true) {
-		_, err := conn.MsgChannel.WriteTraced(nil, nil, edge.FIN)
+		_, err := conn.MsgChannel.WriteTraced(nil, nil, finHeaders)
 		return err
 	}
 
 	return nil
 }
-
 
 func (conn *edgeConn) Accept(event *edge.MsgEvent) {
 	conn.TraceMsg("Accept", event.Msg)
@@ -347,7 +350,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		event := next.(*edge.MsgEvent)
 
 		flags, _ := event.Msg.GetUint32Header(edge.FlagsHeader)
-		if flags & edge.FIN != 0 {
+		if flags&edge.FIN != 0 {
 			conn.readFIN.Set(true)
 		}
 
