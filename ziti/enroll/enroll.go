@@ -22,6 +22,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -53,6 +54,7 @@ type EnrollmentFlags struct {
 	JwtString     string
 	CertFile      string
 	KeyFile       string
+	KeyType       string
 	IDName        string
 	AdditionalCAs string
 }
@@ -132,9 +134,19 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 			pfxlog.Logger().Infof("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
 		}
 	} else {
-		key, err = generateKey()
-		asnBytes, _ := x509.MarshalECPrivateKey(key.(*ecdsa.PrivateKey))
-		keyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: asnBytes})
+		var asnBytes []byte
+		var keyPem []byte
+		if enFlags.KeyType == "EC" {
+			key, err = generateECKey()
+			asnBytes, _ := x509.MarshalECPrivateKey(key.(*ecdsa.PrivateKey))
+			keyPem = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: asnBytes})
+		} else if enFlags.KeyType == "RSA" {
+			key, err = generateRSAKey()
+			asnBytes = x509.MarshalPKCS1PrivateKey(key.(*rsa.PrivateKey))
+			keyPem = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: asnBytes})
+		} else {
+			panic(fmt.Sprintf("invalid KeyType specified: %s", enFlags.KeyType))
+		}
 		cfg.ID.Key = "pem:" + string(keyPem)
 		if err != nil {
 			return nil, err
@@ -221,10 +233,16 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	return cfg, nil // success
 }
 
-func generateKey() (crypto.PrivateKey, error) {
+func generateECKey() (crypto.PrivateKey, error) {
 	p384 := elliptic.P384()
-	pfxlog.Logger().Infof("generating %s key", p384.Params().Name)
+	pfxlog.Logger().Infof("generating %s EC key", p384.Params().Name)
 	return ecdsa.GenerateKey(p384, rand.Reader)
+}
+
+func generateRSAKey() (crypto.PrivateKey, error) {
+	bitSize := 2048
+	pfxlog.Logger().Infof("generating %d bit RSA key", bitSize)
+	return rsa.GenerateKey(rand.Reader, bitSize)
 }
 
 func useSystemCasIfEmpty(caPool *x509.CertPool) *x509.CertPool {
