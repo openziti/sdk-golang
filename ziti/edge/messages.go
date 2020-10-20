@@ -48,6 +48,7 @@ const (
 	TerminatorIdentitySecretHeader = 1007
 	CallerIdHeader                 = 1008
 	CryptoMethodHeader             = 1009
+	FlagsHeader                    = 1010
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -59,6 +60,9 @@ const (
 	// Crypto Methods
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
 	CryptoMethodSSL                    = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
+
+	// Edge Payload flags
+	FIN = 0x1
 )
 
 type CryptoMethod byte

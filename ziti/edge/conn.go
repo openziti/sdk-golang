@@ -73,18 +73,21 @@ type SessionListener interface {
 	GetErrorEventHandler() func(error)
 }
 
+type CloseWriter interface {
+	CloseWrite() error
+}
 type ServiceConn interface {
 	net.Conn
+	CloseWriter
 	IsClosed() bool
 }
 
 type Conn interface {
-	net.Conn
+	ServiceConn
 	Identifiable
 	NewConn(service *Service) Conn
 	Connect(session *Session, options *DialOptions) (ServiceConn, error)
 	Listen(session *Session, service *Service, options *ListenOptions) (Listener, error)
-	IsClosed() bool
 }
 
 type MsgChannel struct {
@@ -119,13 +122,17 @@ func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 }
 
 func (ec *MsgChannel) Write(data []byte) (n int, err error) {
-	return ec.WriteTraced(data, nil)
+	return ec.WriteTraced(data, nil, nil)
 }
 
-func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte) (int, error) {
+func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte) (int, error) {
 	msg := NewDataMsg(ec.id, ec.msgIdSeq.Next(), data)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
+	}
+
+	for k, v := range hdrs {
+		msg.Headers[k] = v
 	}
 	ec.TraceMsg("write", msg)
 	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(data))
