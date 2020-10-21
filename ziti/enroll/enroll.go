@@ -54,7 +54,7 @@ type EnrollmentFlags struct {
 	JwtString     string
 	CertFile      string
 	KeyFile       string
-	KeyType       string
+	KeyAlg        config.KeyAlgVar
 	IDName        string
 	AdditionalCAs string
 }
@@ -136,16 +136,16 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	} else {
 		var asnBytes []byte
 		var keyPem []byte
-		if enFlags.KeyType == "EC" {
+		if enFlags.KeyAlg.EC() {
 			key, err = generateECKey()
 			asnBytes, _ := x509.MarshalECPrivateKey(key.(*ecdsa.PrivateKey))
 			keyPem = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: asnBytes})
-		} else if enFlags.KeyType == "RSA" {
+		} else if enFlags.KeyAlg.RSA() {
 			key, err = generateRSAKey()
 			asnBytes = x509.MarshalPKCS1PrivateKey(key.(*rsa.PrivateKey))
 			keyPem = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: asnBytes})
 		} else {
-			panic(fmt.Sprintf("invalid KeyType specified: %s", enFlags.KeyType))
+			panic(fmt.Sprintf("invalid KeyAlg specified: %s", enFlags.KeyAlg.Get()))
 		}
 		cfg.ID.Key = "pem:" + string(keyPem)
 		if err != nil {
