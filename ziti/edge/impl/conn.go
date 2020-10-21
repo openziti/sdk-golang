@@ -489,6 +489,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		readQ:          sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
+		crypto:         conn.crypto,
 	}
 
 	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
