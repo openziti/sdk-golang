@@ -11,7 +11,7 @@ import (
 
 func Test_SignAndVerifyRsa(t *testing.T) {
 	req := require.New(t)
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
 	req.NoError(err)
 	testKeyPair(t, key, key.Public())
 }

@@ -56,5 +56,5 @@ func (f *KeyAlgVar) Get() string {
 }
 
 func (f *KeyAlgVar) Type() string {
-	return "EC|RSA"
+	return "RSA|EC"
 }
