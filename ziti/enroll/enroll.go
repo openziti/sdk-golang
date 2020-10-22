@@ -240,7 +240,7 @@ func generateECKey() (crypto.PrivateKey, error) {
 }
 
 func generateRSAKey() (crypto.PrivateKey, error) {
-	bitSize := 2048
+	bitSize := 4096
 	pfxlog.Logger().Infof("generating %d bit RSA key", bitSize)
 	return rsa.GenerateKey(rand.Reader, bitSize)
 }
