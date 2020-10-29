@@ -49,6 +49,7 @@ const (
 	CallerIdHeader                 = 1008
 	CryptoMethodHeader             = 1009
 	FlagsHeader                    = 1010
+	AppDataHeader                  = 1011
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
