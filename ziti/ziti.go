@@ -31,6 +31,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/impl"
+	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
 	cmap "github.com/orcaman/concurrent-map"
@@ -118,6 +119,8 @@ type contextImpl struct {
 	metrics metrics.Registry
 
 	firstAuthOnce sync.Once
+
+	postureCache *posture.Cache
 }
 
 func (context *contextImpl) OnClose(factory edge.RouterConn) {
@@ -187,6 +190,8 @@ func (context *contextImpl) load() error {
 		return err
 	}
 	context.ctrlClt, err = api.NewClient(context.zitiUrl, context.id.ClientTLSConfig())
+
+	context.postureCache = posture.NewCache(context.ctrlClt)
 	return err
 }
 
@@ -229,6 +234,28 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 			}
 		}
 	}
+
+	serviceQueryMap := map[string]map[string]edge.PostureQuery{} //serviceId -> queryId -> query
+
+	context.services.Range(func(serviceId, val interface{}) bool {
+		if service, ok := val.(*edge.Service); ok {
+			for _, querySets := range service.PostureQueries {
+				for _, query := range querySets.PostureQueries {
+					var queryMap map[string]edge.PostureQuery
+					var ok bool
+					if queryMap, ok = serviceQueryMap[service.Id]; !ok {
+						queryMap = map[string]edge.PostureQuery{}
+						serviceQueryMap[service.Id] = queryMap
+					}
+					queryMap[query.Id] = query
+				}
+			}
+		}
+		return true
+	})
+
+	context.postureCache.SetServiceQueryMap(serviceQueryMap)
+
 }
 
 func (context *contextImpl) refreshSessions() {
@@ -380,6 +407,8 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	if !ok {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
+
+	context.postureCache.AddActiveService(service.Id)
 
 	edgeDialOptions.CallerId = context.apiSession.Identity.Name
 
@@ -562,7 +591,6 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		}
 	}
 
-
 	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
 
@@ -668,6 +696,7 @@ func (context *contextImpl) createSession(serviceId string, sessionType edge.Ses
 		}
 	}
 
+	context.postureCache.AddActiveService(serviceId)
 	session, err := context.ctrlClt.CreateSession(serviceId, sessionType)
 
 	if err != nil {
