@@ -57,6 +57,24 @@ type EnrollmentFlags struct {
 	KeyAlg        config.KeyAlgVar
 	IDName        string
 	AdditionalCAs string
+	Username      string
+	Password      string
+}
+
+func (enFlags *EnrollmentFlags) GetCertPool() (*x509.CertPool, []*x509.Certificate) {
+	pool := x509.NewCertPool()
+	var certs []*x509.Certificate
+
+	if strings.TrimSpace(enFlags.AdditionalCAs) != "" {
+		pfxlog.Logger().Debug("adding certificates from the provided ca override file")
+		caPEMs, _ := ioutil.ReadFile(enFlags.AdditionalCAs)
+		for _, xcert := range nfpem.PemToX509(string(caPEMs)) {
+			certs = append(certs, xcert)
+			pool.AddCert(xcert)
+		}
+	}
+
+	return pool, certs
 }
 
 func ParseToken(tokenStr string) (*config.EnrollmentClaims, *jwt.Token, error) {
@@ -110,6 +128,36 @@ func ValidateToken(token *jwt.Token) (interface{}, error) {
 	return cert.PublicKey, nil
 }
 
+func EnrollUpdb(enFlags EnrollmentFlags) error {
+	caPool, allowedCerts := enFlags.GetCertPool()
+	ztApiRoot := enFlags.Token.Issuer
+
+	if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
+		if urlErr, isUrlError := err.(*url.Error); isUrlError {
+			if _, isUnknownAuthorityErr := urlErr.Err.(x509.UnknownAuthorityError); isUnknownAuthorityErr {
+				pfxlog.Logger().Debug("fetching certificates from server")
+				rootCaPool := x509.NewCertPool()
+				rootCaPool.AddCert(enFlags.Token.SignatureCert)
+
+				for _, xcert := range FetchCertificates(ztApiRoot, rootCaPool) {
+					allowedCerts = append(allowedCerts, xcert)
+					caPool.AddCert(xcert)
+				}
+				//try again
+				if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
+					return fmt.Errorf("unabled to enroll after fetching server certs: %v", err)
+				} else {
+					return nil
+				}
+			}
+		}
+
+		return fmt.Errorf("unhandled error: %v", err)
+	}
+
+	return nil
+}
+
 func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	var key crypto.PrivateKey
 	var err error
@@ -153,18 +201,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 		}
 	}
 
-	caPool := x509.NewCertPool()
-
-	allowedCerts := make([]*x509.Certificate, 0)
-
-	if strings.TrimSpace(enFlags.AdditionalCAs) != "" {
-		pfxlog.Logger().Debug("adding certificates from the provided ca override file")
-		caPEMs, _ := ioutil.ReadFile(enFlags.AdditionalCAs)
-		for _, xcert := range nfpem.PemToX509(string(caPEMs)) {
-			allowedCerts = append(allowedCerts, xcert)
-			caPool.AddCert(xcert)
-		}
-	}
+	caPool, allowedCerts := enFlags.GetCertPool()
 
 	if enFlags.CertFile != "" {
 		enFlags.CertFile, _ = filepath.Abs(enFlags.CertFile)
@@ -233,6 +270,10 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	return cfg, nil // success
 }
 
+func fetchServerCaCerts() {
+
+}
+
 func generateECKey() (crypto.PrivateKey, error) {
 	p384 := elliptic.P384()
 	pfxlog.Logger().Infof("generating %s EC key", p384.Params().Name)
@@ -253,6 +294,43 @@ func useSystemCasIfEmpty(caPool *x509.CertPool) *x509.CertPool {
 		return nil
 	} else {
 		return caPool
+	}
+}
+
+func enrollUpdb(username, password string, token *config.EnrollmentClaims, caPool *x509.CertPool) error {
+	caPool = useSystemCasIfEmpty(caPool)
+	client := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caPool,
+			},
+		},
+	}
+
+	body := gabs.New()
+	_, _ = body.Set(password, "password")
+
+	if username != "" {
+		_, _ = body.Set(username, "username")
+	}
+
+	resp, err := client.Post(token.EnrolmentUrl(), "application/json", bytes.NewBuffer(body.EncodeJSON()))
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
+	respBody, _ := ioutil.ReadAll(resp.Body)
+
+	if respContainer, err := gabs.ParseJSON(respBody); err == nil {
+		code := respContainer.Path("error.code").Data().(string)
+		message := respContainer.Path("error.message").Data().(string)
+		return errors.Errorf("enroll error: %s: %s: %s", resp.Status, code, message)
+	} else {
+		return errors.Errorf("enroll error: %s: %s", resp.Status, body)
 	}
 }
 
@@ -323,24 +401,24 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		return nil
 	}
 
-	jsonErr, err := gabs.ParseJSON(body)
+	jsonBody, err := gabs.ParseJSON(body)
 
 	if err != nil {
 		return errors.Errorf("enroll error: %s: could not parse body: %s", resp.Status, body)
 	}
 
-	if jsonErr.Exists("error", "message") {
-		message := jsonErr.Search("error", "message").Data().(string)
-		code := jsonErr.Search("error", "code").Data().(string)
+	if jsonBody.Exists("error", "message") {
+		message := jsonBody.Search("error", "message").Data().(string)
+		code := jsonBody.Search("error", "code").Data().(string)
 
 		//todo: remove causeMessage support when removed from API
 		cause := ""
-		if jsonErr.Exists("error", "cause", "message") {
-			cause = jsonErr.Search("error", "cause", "message").Data().(string)
+		if jsonBody.Exists("error", "cause", "message") {
+			cause = jsonBody.Search("error", "cause", "message").Data().(string)
 		}
 
-		if cause == "" && jsonErr.Exists("error", "causeMessage") {
-			cause = jsonErr.Search("error", "causeMessage").Data().(string)
+		if cause == "" && jsonBody.Exists("error", "causeMessage") {
+			cause = jsonBody.Search("error", "causeMessage").Data().(string)
 		}
 
 		return errors.Errorf("enroll error: %s - code: %s - message: %s - cause: %s", resp.Status, code, message, cause)

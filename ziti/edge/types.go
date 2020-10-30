@@ -60,12 +60,30 @@ type Session struct {
 }
 
 type Service struct {
-	Id          string                            `json:"id"`
-	Name        string                            `json:"name"`
-	Permissions []string                          `json:"permissions"`
-	Encryption  bool                              `json:"encryptionRequired"`
-	Configs     map[string]map[string]interface{} `json:"config"`
-	Tags        map[string]string                 `json:"tags"`
+	Id             string                            `json:"id"`
+	Name           string                            `json:"name"`
+	Permissions    []string                          `json:"permissions"`
+	Encryption     bool                              `json:"encryptionRequired"`
+	PostureQueries []PostureQueries                  `json:"postureQueries"`
+	Configs        map[string]map[string]interface{} `json:"config"`
+	Tags           map[string]string                 `json:"tags"`
+}
+
+type PostureQueries struct {
+	IsPassing      bool `json:"isPassing"`
+	PostureQueries []PostureQuery
+}
+
+type PostureQuery struct {
+	Id        string               `json:"id"`
+	IsPassing bool                 `json:"isPassing"`
+	QueryType string               `json:"queryType"`
+	Process   *PostureQueryProcess `json:"process"`
+}
+
+type PostureQueryProcess struct {
+	OsType string `json:"osType"`
+	Path   string `json:"path"`
 }
 
 func (service *Service) GetConfigOfType(configType string, target interface{}) (bool, error) {

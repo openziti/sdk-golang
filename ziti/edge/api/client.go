@@ -55,6 +55,7 @@ type Client interface {
 	GetServices() ([]*edge.Service, error)
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
 	RefreshSession(id string) (*edge.Session, error)
+	SendPostureResponse(response PostureResponse) error
 }
 
 func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (Client, error) {
@@ -73,6 +74,7 @@ var authUrl, _ = url.Parse("/authenticate?method=cert")
 var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
+var postureResponseUrl, _ = url.Parse("/posture-response")
 
 type ctrlClient struct {
 	zitiUrl    *url.URL
@@ -98,6 +100,38 @@ func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.S
 	}
 
 	return decodeSession(resp)
+}
+
+func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
+	if response.PostureSubType == nil {
+		return errors.New("posture sub type is nil")
+	}
+
+	jsonBody, err := json.Marshal(response)
+
+	if err != nil {
+		return err
+	}
+	fullUrl := c.zitiUrl.ResolveReference(postureResponseUrl).String()
+	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("recieved error during posture response submission, could not read body: %v", err)
+		}
+		return fmt.Errorf("recieved error during posture response submission: %v", string(body))
+	}
+
+	return nil
 }
 
 func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
@@ -314,3 +348,60 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 
 	return session, nil
 }
+
+type PostureResponse struct {
+	Id             string `json:"id"`
+	TypeId         string `json:"typeId"`
+	PostureSubType `json:"-"`
+}
+
+func (response PostureResponse) MarshalJSON() ([]byte, error) {
+	type alias PostureResponse
+
+	respJson, err := json.Marshal(alias(response))
+	if err != nil {
+		return nil, err
+	}
+
+	subType, err := json.Marshal(response.PostureSubType)
+	if err != nil {
+		return nil, err
+	}
+
+	s1 := string(respJson[:len(respJson)-1])
+	s2 := string(subType[1:])
+
+	return []byte(s1 + ", " + s2), nil
+}
+
+type PostureSubType interface {
+	IsPostureSubType()
+}
+
+type PostureResponseOs struct {
+	Type    string `json:"type"`
+	Version string `json:"version"`
+	Build   string `json:"build"`
+}
+
+func (p PostureResponseOs) IsPostureSubType() {}
+
+type PostureResponseDomain struct {
+	Domain string `json:"domain"`
+}
+
+func (p PostureResponseDomain) IsPostureSubType() {}
+
+type PostureResponseMac struct {
+	MacAddresses []string `json:"macAddresses"`
+}
+
+func (p PostureResponseMac) IsPostureSubType() {}
+
+type PostureResponseProcess struct {
+	IsRunning         bool   `json:"isRunning"`
+	Hash              string `json:"hash"`
+	SignerFingerprint string `json:"signerFingerprint"`
+}
+
+func (p PostureResponseProcess) IsPostureSubType() {}

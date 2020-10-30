@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
@@ -22,9 +23,10 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		options: &config.Options{
 			OnServiceUpdate: servUpdate,
 		},
-		initDone: sync.Once{},
-		services: sync.Map{},
-		sessions: sync.Map{},
+		initDone:     sync.Once{},
+		services:     sync.Map{},
+		sessions:     sync.Map{},
+		postureCache: posture.NewCache(nil),
 	}
 
 	services := []*edge.Service{}
