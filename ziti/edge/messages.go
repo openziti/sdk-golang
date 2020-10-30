@@ -173,6 +173,9 @@ func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOpti
 	if options.CallerId != "" {
 		msg.Headers[CallerIdHeader] = []byte(options.CallerId)
 	}
+	if options.AppData != nil {
+		msg.Headers[AppDataHeader] = options.AppData
+	}
 	return msg
 }
 

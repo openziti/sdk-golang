@@ -80,6 +80,7 @@ type ServiceConn interface {
 	net.Conn
 	CloseWriter
 	IsClosed() bool
+	GetAppData() []byte
 }
 
 type Conn interface {
@@ -199,6 +200,7 @@ type DialOptions struct {
 	ConnectTimeout time.Duration
 	Identity       string
 	CallerId       string
+	AppData        []byte
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {

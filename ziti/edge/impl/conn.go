@@ -60,6 +60,7 @@ type edgeConn struct {
 	rxKey    []byte
 	receiver secretstream.Decryptor
 	sender   secretstream.Encryptor
+	appData  []byte
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
@@ -490,6 +491,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,
+		appData:        message.Headers[edge.AppDataHeader],
 	}
 
 	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
@@ -549,6 +551,10 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 	} else {
 		logger.Errorf("failed to receive start after dial. got %v", startMsg)
 	}
+}
+
+func (conn *edgeConn) GetAppData() []byte {
+	return conn.appData
 }
 
 type closeConnEvent struct {

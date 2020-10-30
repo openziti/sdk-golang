@@ -53,7 +53,12 @@ func (event *connectEvent) handle(app *callApp) {
 		fmt.Printf("New incoming connection, dropping existing unanswered connection request\n")
 		_ = app.pending.Close()
 	}
-	fmt.Printf("Incoming connection from %v. Type /accept to accept the connection\n> ", event.conn.RemoteAddr().String())
+	connInfo := "from " + event.conn.RemoteAddr().String()
+	if edgeConn, ok := event.conn.(edge.Conn); ok {
+		appData := edgeConn.GetAppData()
+		connInfo += " with appData '" + string(appData) + "'"
+	}
+	fmt.Printf("Incoming connection %v. Type /accept to accept the connection\n> ", connInfo)
 	app.pending = event.conn
 }
 
@@ -114,6 +119,7 @@ func (event *userInputEvent) handle(app *callApp) {
 		dialOptions := &ziti.DialOptions{
 			Identity:       identity,
 			ConnectTimeout: 1 * time.Minute,
+			AppData: []byte("hi there"),
 		}
 		conn, err := app.context.DialWithOptions(app.service, dialOptions)
 		if err != nil {

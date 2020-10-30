@@ -68,6 +68,7 @@ type Context interface {
 type DialOptions struct {
 	ConnectTimeout time.Duration
 	Identity       string
+	AppData        []byte
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -364,6 +365,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	edgeDialOptions := &edge.DialOptions{
 		ConnectTimeout: options.ConnectTimeout,
 		Identity:       options.Identity,
+		AppData:        options.AppData,
 	}
 	if edgeDialOptions.GetConnectTimeout() == 0 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second
