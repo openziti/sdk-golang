@@ -119,7 +119,7 @@ func (event *userInputEvent) handle(app *callApp) {
 		dialOptions := &ziti.DialOptions{
 			Identity:       identity,
 			ConnectTimeout: 1 * time.Minute,
-			AppData: []byte("hi there"),
+			AppData:        []byte("hi there"),
 		}
 		conn, err := app.context.DialWithOptions(app.service, dialOptions)
 		if err != nil {
