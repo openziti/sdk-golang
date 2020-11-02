@@ -49,6 +49,7 @@ const (
 	CallerIdHeader                 = 1008
 	CryptoMethodHeader             = 1009
 	FlagsHeader                    = 1010
+	AppDataHeader                  = 1011
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -171,6 +172,9 @@ func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOpti
 	}
 	if options.CallerId != "" {
 		msg.Headers[CallerIdHeader] = []byte(options.CallerId)
+	}
+	if options.AppData != nil {
+		msg.Headers[AppDataHeader] = options.AppData
 	}
 	return msg
 }
