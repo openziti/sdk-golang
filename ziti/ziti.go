@@ -36,7 +36,9 @@ import (
 	"github.com/openziti/sdk-golang/ziti/signing"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
+	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
+	"math"
 	"net/url"
 	"os"
 	"reflect"
@@ -517,12 +519,39 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 		session = refreshedSession
 	}
 
-	ch := make(chan *edgeRouterConnResult, len(session.EdgeRouters))
-
+	// go through connected routers first
+	bestLatency := time.Duration(math.MaxInt64)
+	var bestER edge.RouterConn
+	var unconnected []edge.EdgeRouter
 	for _, edgeRouter := range session.EdgeRouters {
+		for _, routerUrl := range edgeRouter.Urls {
+			if er, found := context.routerConnections.Get(routerUrl); found {
+				h := context.metrics.Histogram("latency." + routerUrl).(metrics2.Histogram)
+				if h.Mean() < float64(bestLatency) {
+					bestLatency = time.Duration(int64(h.Mean()))
+					bestER = er.(edge.RouterConn)
+				}
+			} else {
+				unconnected = append(unconnected, edgeRouter)
+			}
+		}
+	}
+
+	var ch chan *edgeRouterConnResult
+	if bestER == nil {
+		ch = make(chan *edgeRouterConnResult, len(unconnected))
+	}
+
+	for _, edgeRouter := range unconnected {
 		for _, routerUrl := range edgeRouter.Urls {
 			go context.connectEdgeRouter(edgeRouter.Name, routerUrl, ch)
 		}
+	}
+
+	if bestER != nil {
+		logger.Debugf("selected router[%s@%s] for best latency(%d ms)",
+			bestER.GetRouterName(), bestER.Key(), bestLatency.Milliseconds())
+		return bestER, nil
 	}
 
 	timeout := time.After(options.GetConnectTimeout())
@@ -571,12 +600,15 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		edge.SessionTokenHeader: []byte(context.apiSession.Token),
 	})
 
+	start := time.Now().UnixNano()
 	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
 	if err != nil {
 		logger.Error(err)
 		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
 		return
 	}
+	connectTime := time.Duration(time.Now().UnixNano() - start)
+	logger.Debugf("routerConn[%s@%s] connected in %d ms", routerName, ingressUrl, connectTime.Milliseconds())
 
 	if versionHeader, found := ch.Underlay().Headers()[channel2.HelloVersionHeader]; found {
 		versionInfo, err := common.StdVersionEncDec.Decode(versionHeader)
@@ -606,7 +638,9 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 				}()
 				return oldV
 			}
-			go metrics.ProbeLatency(ch, context.metrics.Histogram("latency."+ingressUrl), LatencyCheckInterval)
+			h := context.metrics.Histogram("latency." + ingressUrl)
+			h.Update(int64(connectTime))
+			go metrics.ProbeLatency(ch, h, LatencyCheckInterval)
 			return newV
 		})
 
