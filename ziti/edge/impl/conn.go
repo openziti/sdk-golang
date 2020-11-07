@@ -46,7 +46,7 @@ type edgeConn struct {
 	edge.MsgChannel
 	readQ          sequencer.Sequencer
 	leftover       []byte
-	msgMux         *edge.MsgMux
+	msgMux         edge.MsgMux
 	hosting        sync.Map
 	closed         concurrenz.AtomicBoolean
 	readFIN        concurrenz.AtomicBoolean
@@ -83,7 +83,7 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 }
 
 var finHeaders = map[int32][]byte{
-	edge.FlagsHeader: []byte{edge.FIN, 0, 0, 0},
+	edge.FlagsHeader: {edge.FIN, 0, 0, 0},
 }
 
 func (conn *edgeConn) CloseWrite() error {
@@ -95,15 +95,15 @@ func (conn *edgeConn) CloseWrite() error {
 	return nil
 }
 
-func (conn *edgeConn) Accept(event *edge.MsgEvent) {
-	conn.TraceMsg("Accept", event.Msg)
-	if event.Msg.ContentType == edge.ContentTypeDial {
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).Debug("received dial request")
-		go conn.newChildConnection(event)
-	} else if event.Msg.ContentType == edge.ContentTypeStateClosed && event.Seq == 0 {
-		_ = conn.close(true)
-	} else if err := conn.readQ.PutSequenced(event.Seq, event); err != nil {
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(event.Msg)).WithError(err).
+func (conn *edgeConn) Accept(msg *channel2.Message) {
+	conn.TraceMsg("Accept", msg)
+	if msg.ContentType == edge.ContentTypeDial {
+		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
+		go conn.newChildConnection(msg)
+	} else if seq, _ := msg.GetUint32Header(edge.SeqHeader); msg.ContentType == edge.ContentTypeStateClosed && seq == 0 {
+		conn.close(true)
+	} else if err := conn.readQ.PutSequenced(0, msg); err != nil {
+		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("error pushing edge message to sequencer")
 	}
 }
@@ -113,7 +113,7 @@ func (conn *edgeConn) NewConn(service *edge.Service) edge.Conn {
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.Channel, id),
-		readQ:      sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
+		readQ:      sequencer.NewNoopSequencer(4),
 		msgMux:     conn.msgMux,
 		serviceId:  service.Name,
 	}
@@ -155,7 +155,8 @@ func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 }
 
 func (conn *edgeConn) HandleMuxClose() error {
-	return conn.close(true)
+	conn.close(true)
+	return nil
 }
 
 func (conn *edgeConn) HandleClose(channel2.Channel) {
@@ -348,28 +349,22 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			return 0, err
 		}
 
-		event := next.(*edge.MsgEvent)
+		msg := next.(*channel2.Message)
 
-		flags, _ := event.Msg.GetUint32Header(edge.FlagsHeader)
+		flags, _ := msg.GetUint32Header(edge.FlagsHeader)
 		if flags&edge.FIN != 0 {
 			conn.readFIN.Set(true)
 		}
 
-		switch event.Msg.ContentType {
+		switch msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
-			conn.readFIN.Set(true)
-			conn.sentFIN.Set(true)
-			conn.msgMux.Event(&closeConnEvent{
-				conn:        conn,
-				remoteClose: true,
-				errorC:      make(chan error, 1),
-			})
 			log.Debug("received ConnState_CLOSED message, closing connection")
+			conn.close(true)
 			continue
 
 		case edge.ContentTypeData:
-			d := event.Msg.Body
+			d := msg.Body
 			log.Tracef("got buffer from sequencer %d bytes", len(d))
 			if len(d) == 0 && conn.readFIN.Get() {
 				return 0, io.EOF
@@ -377,7 +372,6 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 			// first data message should contain crypto header
 			if conn.rxKey != nil {
-
 				if len(d) != secretstream.StreamHeaderBytes {
 					return 0, fmt.Errorf("failed to receive crypto header bytes: read[%d]", len(d))
 				}
@@ -389,7 +383,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			if conn.receiver != nil {
 				d, _, err = conn.receiver.Pull(d)
 				if err != nil {
-					log.Errorf("crypto failed: %v", err)
+					log.WithFields(edge.GetLoggerFields(msg)).Errorf("crypto failed on msg of size=%v, headers=%+v err=(%v)", len(msg.Body), msg.Headers, err)
 					return 0, err
 				}
 			}
@@ -401,32 +395,21 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			return copy(p, d), nil
 
 		default:
-			log.WithField("type", event.Msg.ContentType).Error("unexpected message")
+			log.WithField("type", msg.ContentType).Error("unexpected message")
 		}
 	}
 }
 
 func (conn *edgeConn) Close() error {
-	event := &closeConnEvent{
-		conn:        conn,
-		remoteClose: false,
-		errorC:      make(chan error, 1),
-	}
-	conn.msgMux.Event(event)
-	select {
-	case err := <-event.errorC:
-		if err != nil {
-			return err
-		}
-	case <-time.After(time.Second):
-		return errors.New("close timed out")
-	}
+	conn.close(false)
 	return nil
 }
 
-func (conn *edgeConn) close(closedByRemote bool) error {
+func (conn *edgeConn) close(closedByRemote bool) {
+	// everything in here should be safe to execute concurrently from outside the muxer loop, with
+	// the exception of the remove from mux call
 	if !conn.closed.CompareAndSwap(false, true) {
-		return nil
+		return
 	}
 	conn.readFIN.Set(true)
 	conn.sentFIN.Set(true)
@@ -443,7 +426,7 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 	}
 
 	conn.readQ.Close()
-	go conn.msgMux.RemoveMsgSink(conn) // needs to be done async, otherwise we may deadlock
+	conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
@@ -452,8 +435,6 @@ func (conn *edgeConn) close(closedByRemote bool) error {
 		}
 		return true
 	})
-
-	return nil
 }
 
 func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
@@ -464,8 +445,7 @@ func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
 	return nil, false
 }
 
-func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
-	message := event.Msg
+func (conn *edgeConn) newChildConnection(message *channel2.Message) {
 	token := string(message.Body)
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("token", token)
 	logger.Debug("looking up listener")
@@ -487,7 +467,7 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
-		readQ:          sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
+		readQ:          sequencer.NewNoopSequencer(4),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,
@@ -555,18 +535,4 @@ func (conn *edgeConn) newChildConnection(event *edge.MsgEvent) {
 
 func (conn *edgeConn) GetAppData() []byte {
 	return conn.appData
-}
-
-type closeConnEvent struct {
-	conn        *edgeConn
-	remoteClose bool
-	errorC      chan error
-}
-
-func (event *closeConnEvent) Handle(*edge.MsgMux) {
-	if err := event.conn.close(event.remoteClose); err != nil {
-		event.errorC <- err
-		pfxlog.Logger().Errorf("failure closing connection. connId = %v (%v)", event.conn.Id(), err)
-	}
-	close(event.errorC)
 }

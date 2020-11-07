@@ -23,11 +23,11 @@ import (
 )
 
 func Test_newMsgMux(t *testing.T) {
-	mux := NewMsgMux()
+	mux := NewChMsgMux()
 	assert := require.New(t)
 	assert.True(mux.running.Get())
 	assert.False(mux.closed.Get())
 	mux.Close()
-	assert.NoError(mux.closed.WaitForState(true, time.Millisecond * 100, time.Millisecond * 5))
-	assert.NoError(mux.running.WaitForState(false, time.Millisecond * 150, time.Millisecond * 5))
+	assert.NoError(mux.closed.WaitForState(true, time.Millisecond*100, time.Millisecond*5))
+	assert.NoError(mux.running.WaitForState(false, time.Millisecond*150, time.Millisecond*5))
 }

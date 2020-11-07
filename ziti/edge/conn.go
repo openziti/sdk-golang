@@ -117,6 +117,10 @@ func (ec *MsgChannel) Id() uint32 {
 	return ec.id
 }
 
+func (ec *MsgChannel) NextMsgId() uint32 {
+	return ec.msgIdSeq.Next()
+}
+
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
 	return nil
@@ -143,11 +147,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	//       it is retained and we can cause data corruption
 	var err error
 	if ec.writeDeadline.IsZero() {
-		var errC chan error
-		errC, err = ec.Channel.SendAndSync(msg)
-		if err == nil {
-			err = <-errC
-		}
+		err = ec.Channel.SendBufferSafeWithPriority(msg, channel2.Standard)
 	} else {
 		err = ec.Channel.SendWithTimeout(msg, time.Until(ec.writeDeadline))
 	}

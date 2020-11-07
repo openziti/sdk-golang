@@ -20,175 +20,108 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
 	"github.com/openziti/foundation/util/concurrenz"
-	"github.com/pkg/errors"
-	"time"
+	"sync"
+	"sync/atomic"
 )
 
 type MsgSink interface {
 	HandleMuxClose() error
 	Id() uint32
-	Accept(event *MsgEvent)
+	Accept(msg *channel2.Message)
 }
 
-func NewMsgMux() *MsgMux {
-	mux := &MsgMux{
-		eventC:  make(chan MuxEvent),
-		chanMap: make(map[uint32]MsgSink),
-	}
-
-	mux.running.Set(true)
-	go mux.handleEvents()
-	return mux
+type MsgMux interface {
+	channel2.ReceiveHandler
+	channel2.CloseHandler
+	AddMsgSink(sink MsgSink) error
+	RemoveMsgSink(sink MsgSink)
+	RemoveMsgSinkById(sinkId uint32)
+	Close()
 }
 
-type MsgMux struct {
+func NewCowMapMsgMux() MsgMux {
+	result := &CowMapMsgMux{}
+	result.sinks.Store(map[uint32]MsgSink{})
+	return result
+}
+
+type CowMapMsgMux struct {
+	sync.Mutex
 	closed  concurrenz.AtomicBoolean
 	running concurrenz.AtomicBoolean
-	eventC  chan MuxEvent
-	chanMap map[uint32]MsgSink
+	sinks   atomic.Value
 }
 
-func (mux *MsgMux) ContentType() int32 {
+func (mux *CowMapMsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *MsgMux) HandleReceive(msg *channel2.Message, _ channel2.Channel) {
-	if event, err := UnmarshalMsgEvent(msg); err != nil {
-		pfxlog.Logger().WithError(err).Errorf("error unmarshaling edge message headers. content type: %v", msg.ContentType)
+func (mux *CowMapMsgMux) HandleReceive(msg *channel2.Message, ch channel2.Channel) {
+	connId, found := msg.GetUint32Header(ConnIdHeader)
+	if !found {
+		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
+		return
+	}
+
+	sinks := mux.getSinks()
+	if sink, found := sinks[connId]; found {
+		sink.Accept(msg)
 	} else {
-		mux.eventC <- event
+		pfxlog.Logger().Debugf("unable to dispatch msg received for unknown edge conn id: %v", connId)
 	}
 }
 
-func (mux *MsgMux) AddMsgSink(sink MsgSink) error {
-	if !mux.closed.Get() {
-		event := &muxAddSinkEvent{sink: sink, doneC: make(chan error)}
-		mux.eventC <- event
-		err, ok := <-event.doneC // wait for event to be done processing
-		if ok && err != nil {
-			return err
-		}
-		pfxlog.Logger().WithField("connId", sink.Id()).Debug("added to msg mux")
-	}
-	return nil
-}
-
-func (mux *MsgMux) RemoveMsgSink(sink MsgSink) {
-	mux.RemoveMsgSinkById(sink.Id())
-}
-
-func (mux *MsgMux) RemoveMsgSinkById(sinkId uint32) {
-	log := pfxlog.Logger().WithField("connId", sinkId)
-	if mux.closed.Get() {
-		log.Debug("mux closed, sink already removed or being removed")
-	} else {
-		log.Debug("queuing sink for removal from message mux")
-		event := &muxRemoveSinkEvent{sinkId: sinkId}
-		mux.eventC <- event
-	}
-}
-
-func (mux *MsgMux) Close() {
-	if !mux.closed.Get() {
-		mux.eventC <- &muxCloseEvent{}
-	}
-}
-
-func (mux *MsgMux) Event(event MuxEvent) {
-	if !mux.closed.Get() {
-		mux.eventC <- event
-	}
-}
-
-func (mux *MsgMux) IsClosed() bool {
-	return mux.closed.Get()
-}
-
-func (mux *MsgMux) HandleClose(_ channel2.Channel) {
+func (mux *CowMapMsgMux) HandleClose(channel2.Channel) {
 	mux.Close()
 }
 
-func (mux *MsgMux) handleEvents() {
-	defer mux.running.Set(false)
-	for event := range mux.eventC {
-		event.Handle(mux)
-		if mux.closed.GetUnsafe() {
-			return
+func (mux *CowMapMsgMux) AddMsgSink(sink MsgSink) error {
+	mux.updateSinkMap(func(m map[uint32]MsgSink) {
+		m[sink.Id()] = sink
+	})
+	return nil
+}
+
+func (mux *CowMapMsgMux) RemoveMsgSink(sink MsgSink) {
+	mux.RemoveMsgSinkById(sink.Id())
+}
+
+func (mux *CowMapMsgMux) RemoveMsgSinkById(sinkId uint32) {
+	mux.updateSinkMap(func(m map[uint32]MsgSink) {
+		delete(m, sinkId)
+	})
+}
+
+func (mux *CowMapMsgMux) updateSinkMap(f func(map[uint32]MsgSink)) {
+	mux.Lock()
+	defer mux.Unlock()
+
+	current := mux.getSinks()
+	result := map[uint32]MsgSink{}
+	for k, v := range current {
+		result[k] = v
+	}
+	f(result)
+	mux.sinks.Store(result)
+}
+
+func (mux *CowMapMsgMux) Close() {
+	if mux.closed.CompareAndSwap(false, true) {
+		// we don't need to lock the mux because due to the atomic bool, only one go-routine will enter this.
+		// If the sink HandleMuxClose methods do anything with the mux, like remove themselves, they will acquire
+		// their own locks
+		sinks := mux.getSinks()
+		for _, val := range sinks {
+			if err := val.HandleMuxClose(); err != nil {
+				pfxlog.Logger().
+					WithField("sinkId", val.Id()).
+					WithError(err).
+					Error("error while closing message sink")
+			}
 		}
 	}
 }
 
-func (mux *MsgMux) ExecuteClose() {
-	mux.closed.Set(true)
-	for _, val := range mux.chanMap {
-		if err := val.HandleMuxClose(); err != nil {
-			pfxlog.Logger().
-				WithField("sinkId", val.Id()).
-				WithError(err).
-				Error("error while closing message sink")
-		}
-	}
-
-	// make sure that anything trying to deliver events is freed
-	for {
-		select {
-		case <-mux.eventC: // drop event
-		case <-time.After(time.Millisecond * 100):
-			close(mux.eventC)
-			return
-		}
-	}
-}
-
-type MuxEvent interface {
-	Handle(mux *MsgMux)
-}
-
-// muxAddSinkEvent handles adding a new message sink to the mux
-type muxAddSinkEvent struct {
-	sink  MsgSink
-	doneC chan error
-}
-
-func (event *muxAddSinkEvent) Handle(mux *MsgMux) {
-	defer close(event.doneC)
-	if _, found := mux.chanMap[event.sink.Id()]; found {
-		event.doneC <- errors.Errorf("message sink with id %v already exists", event.sink.Id())
-	} else {
-		mux.chanMap[event.sink.Id()] = event.sink
-		pfxlog.Logger().
-			WithField("connId", event.sink.Id()).
-			Debugf("Added sink to mux. Current sink count: %v", len(mux.chanMap))
-	}
-}
-
-// muxRemoveSinkEvent handles removing a closed message sink from the mux
-type muxRemoveSinkEvent struct {
-	sinkId uint32
-}
-
-func (event *muxRemoveSinkEvent) Handle(mux *MsgMux) {
-	delete(mux.chanMap, event.sinkId)
-	pfxlog.Logger().WithField("connId", event.sinkId).Debug("removed from msg mux")
-}
-
-func (event *MsgEvent) Handle(mux *MsgMux) {
-	logger := pfxlog.Logger().
-		WithField("seq", event.Seq).
-		WithField("connId", event.ConnId)
-
-	logger.Debugf("dispatching %v", ContentTypeNames[event.Msg.ContentType])
-
-	if sink, found := mux.chanMap[event.ConnId]; found {
-		sink.Accept(event)
-	} else {
-		logger.Debug("unable to dispatch msg received for unknown edge conn id")
-	}
-}
-
-// muxCloseEvent handles closing the message multiplexer and all associated sinks
-type muxCloseEvent struct{}
-
-func (event *muxCloseEvent) Handle(mux *MsgMux) {
-	mux.ExecuteClose()
+func (mux *CowMapMsgMux) getSinks() map[uint32]MsgSink {
+	return mux.sinks.Load().(map[uint32]MsgSink)
 }
