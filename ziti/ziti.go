@@ -505,7 +505,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 	logger := pfxlog.Logger().WithField("ns", session.Token)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
-		if _, isNotFound := err.(*api.NotFound); isNotFound {
+		if _, isNotFound := err.(api.NotFound); isNotFound {
 			sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 			context.sessions.Delete(sessionKey)
 		}

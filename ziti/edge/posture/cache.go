@@ -47,7 +47,6 @@ func NewCache(ctrlClient api.Client) *Cache {
 		Os: OsInfo{
 			Type:    "",
 			Version: "",
-			Build:   "",
 		},
 		Domain:          "",
 		serviceQueryMap: map[string]map[string]edge.PostureQuery{},
@@ -148,7 +147,7 @@ func (cache *Cache) sendResponsesForService(serviceId string) {
 
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(20 * time.Second)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -163,7 +162,7 @@ func (cache *Cache) start() {
 					serviceIds = append(serviceIds, serviceId)
 				})
 
- 				for _, serviceId := range serviceIds {
+				for _, serviceId := range serviceIds {
 					cache.sendResponsesForService(serviceId)
 				}
 			}
@@ -203,19 +202,15 @@ func (cache *Cache) sendResponse(query edge.PostureQuery) {
 				response.PostureSubType = api.PostureResponseOs{
 					Type:    cache.Os.Type,
 					Version: cache.Os.Version,
-					Build:   cache.Os.Build,
 				}
 			case "PROCESS":
 				if query.Process != nil {
 					process := cache.ProcessInfo(query.Process.Path)
 
 					postureSubType := api.PostureResponseProcess{
-						IsRunning: process.IsRunning,
-						Hash:      process.Hash,
-					}
-
-					if len(process.SignerFingerprints) > 0 {
-						postureSubType.SignerFingerprint = process.SignerFingerprints[0]
+						IsRunning:          process.IsRunning,
+						Hash:               process.Hash,
+						SignerFingerprints: process.SignerFingerprints,
 					}
 
 					response.PostureSubType = postureSubType
