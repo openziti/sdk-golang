@@ -419,6 +419,10 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	var conn edge.ServiceConn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			context.GetServices()
+		}
+
 		var session *edge.Session
 		session, err = context.GetSession(service.Id)
 		if err != nil {
@@ -505,7 +509,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 	logger := pfxlog.Logger().WithField("ns", session.Token)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
-		if _, isNotFound := err.(*api.NotFound); isNotFound {
+		if _, isNotFound := err.(api.NotFound); isNotFound {
 			sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 			context.sessions.Delete(sessionKey)
 		}

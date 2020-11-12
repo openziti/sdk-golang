@@ -399,9 +399,9 @@ type PostureResponseMac struct {
 func (p PostureResponseMac) IsPostureSubType() {}
 
 type PostureResponseProcess struct {
-	IsRunning         bool   `json:"isRunning"`
-	Hash              string `json:"hash"`
-	SignerFingerprint string `json:"signerFingerprint"`
+	IsRunning          bool     `json:"isRunning"`
+	Hash               string   `json:"hash"`
+	SignerFingerprints []string `json:"signerFingerprints"`
 }
 
 func (p PostureResponseProcess) IsPostureSubType() {}
