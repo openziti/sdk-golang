@@ -20,6 +20,7 @@ import (
 	"github.com/shirou/gopsutil/host"
 	"regexp"
 	"runtime"
+	"strings"
 )
 
 type OsInfo struct {
@@ -28,12 +29,23 @@ type OsInfo struct {
 }
 
 func Os() OsInfo {
-	osType := runtime.GOOS
+	osType := "unknown"
 	osVersion := "unknown"
 
 	semVerParser := regexp.MustCompile(`^((\d+)\.(\d+)\.(\d+))`)
 
-	version, _ := host.KernelVersion()
+	_, family, version, _ := host.PlatformInformation()
+
+	if runtime.GOOS == "windows" {
+		if strings.EqualFold(family, "server") {
+			osType = "windowsserver"
+		} else {
+			osType = "windows"
+		}
+	} else {
+		osType = runtime.GOOS
+	}
+
 	parsedVersion := semVerParser.FindStringSubmatch(version)
 
 	if len(parsedVersion) > 1 {
