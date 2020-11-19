@@ -23,7 +23,6 @@ import (
 	"github.com/mitchellh/go-ps"
 	"github.com/shirou/gopsutil/process"
 	"io/ioutil"
-	"strings"
 )
 
 type ProcessInfo struct {
@@ -40,7 +39,7 @@ func Process(expectedPath string) ProcessInfo {
 	}
 
 	for _, proc := range processes {
-		if !strings.Contains(expectedPath, proc.Executable()) {
+		if !isProcessPath(expectedPath, proc.Executable()) {
 			continue
 		}
 
