@@ -18,6 +18,8 @@
 
 package posture
 
+import "strings"
+
 func isProcessPath(expectedPath, processPath string) bool {
 	return strings.Contains(expectedPath, processPath)
 }
