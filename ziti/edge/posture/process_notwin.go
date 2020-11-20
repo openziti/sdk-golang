@@ -18,6 +18,12 @@
 
 package posture
 
+import "strings"
+
+func isProcessPath(expectedPath, processPath string) bool {
+	return strings.Contains(expectedPath, processPath)
+}
+
 func getSignerFingerprints(filePath string) ([]string, error) {
 	return nil, nil
 }
