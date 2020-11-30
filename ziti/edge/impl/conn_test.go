@@ -51,7 +51,7 @@ func BenchmarkConnRead(b *testing.B) {
 	mux := edge.NewCowMapMsgMux()
 	testChannel := &channel2.NoopTestChannel{}
 
-	readQ := sequencer.NewNoopSequencer()
+	readQ := sequencer.NewNoopSequencer(4)
 	conn := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:      readQ,
@@ -92,7 +92,7 @@ func BenchmarkConnRead(b *testing.B) {
 }
 
 func BenchmarkSequencer(b *testing.B) {
-	readQ := sequencer.NewNoopSequencer()
+	readQ := sequencer.NewNoopSequencer(4)
 
 	var stop concurrenz.AtomicBoolean
 	defer stop.Set(true)
