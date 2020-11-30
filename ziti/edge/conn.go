@@ -117,6 +117,10 @@ func (ec *MsgChannel) Id() uint32 {
 	return ec.id
 }
 
+func (ec *MsgChannel) NextMsgId() uint32 {
+	return ec.msgIdSeq.Next()
+}
+
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
 	return nil
@@ -127,7 +131,10 @@ func (ec *MsgChannel) Write(data []byte) (n int, err error) {
 }
 
 func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte) (int, error) {
-	msg := NewDataMsg(ec.id, ec.msgIdSeq.Next(), data)
+	copyBuf := make([]byte, len(data))
+	copy(copyBuf, data)
+
+	msg := NewDataMsg(ec.id, ec.msgIdSeq.Next(), copyBuf)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
 	}
@@ -136,18 +143,14 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 		msg.Headers[k] = v
 	}
 	ec.TraceMsg("write", msg)
-	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(data))
+	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(copyBuf))
 
 	// NOTE: We need to wait for the buffer to be on the wire before returning. The Writer contract
 	//       states that buffers are not allowed be retained, and if we have it queued asynchronously
 	//       it is retained and we can cause data corruption
 	var err error
 	if ec.writeDeadline.IsZero() {
-		var errC chan error
-		errC, err = ec.Channel.SendAndSync(msg)
-		if err == nil {
-			err = <-errC
-		}
+		err = ec.Channel.Send(msg)
 	} else {
 		err = ec.Channel.SendWithTimeout(msg, time.Until(ec.writeDeadline))
 	}

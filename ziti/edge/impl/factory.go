@@ -24,11 +24,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 )
 
-const (
-	// TODO: Add configuration mechanism for the SDK
-	DefaultMaxOutOfOrderMsgs = 5000
-)
-
 type RouterConnOwner interface {
 	OnClose(factory edge.RouterConn)
 }
@@ -37,7 +32,7 @@ type routerConn struct {
 	routerName string
 	key        string
 	ch         channel2.Channel
-	msgMux     *edge.MsgMux
+	msgMux     edge.MsgMux
 	owner      RouterConnOwner
 }
 
@@ -49,7 +44,7 @@ func (conn *routerConn) GetRouterName() string {
 	return conn.routerName
 }
 
-func (conn *routerConn) HandleClose(ch channel2.Channel) {
+func (conn *routerConn) HandleClose(channel2.Channel) {
 	if conn.owner != nil {
 		conn.owner.OnClose(conn)
 	}
@@ -60,7 +55,7 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 		key:        key,
 		routerName: routerName,
 		ch:         ch,
-		msgMux:     edge.NewMsgMux(),
+		msgMux:     edge.NewCowMapMsgMux(),
 		owner:      owner,
 	}
 
@@ -87,7 +82,7 @@ func (conn *routerConn) NewConn(service *edge.Service) edge.Conn {
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:      sequencer.NewSingleWriterSeq(DefaultMaxOutOfOrderMsgs),
+		readQ:      sequencer.NewNoopSequencer(4),
 		msgMux:     conn.msgMux,
 		serviceId:  service.Name,
 	}
