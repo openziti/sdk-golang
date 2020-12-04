@@ -19,11 +19,9 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 	}
 
 	ctx := &contextImpl{
-		config: nil,
 		options: &config.Options{
 			OnServiceUpdate: servUpdate,
 		},
-		initDone:     sync.Once{},
 		services:     sync.Map{},
 		sessions:     sync.Map{},
 		postureCache: posture.NewCache(nil),

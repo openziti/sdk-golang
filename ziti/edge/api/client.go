@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/common/constants"
+	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -50,6 +51,8 @@ func (e NotFound) Error() string {
 }
 
 type Client interface {
+	Initialize() error
+	GetIdentity() identity.Identity
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
@@ -58,7 +61,7 @@ type Client interface {
 	SendPostureResponse(response PostureResponse) error
 }
 
-func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (Client, error) {
+func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (*ctrlClient, error) {
 	return &ctrlClient{
 		zitiUrl: ctrl,
 		clt: http.Client{

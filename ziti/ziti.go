@@ -17,7 +17,6 @@
 package ziti
 
 import (
-	"crypto/tls"
 	errors2 "errors"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
@@ -39,8 +38,6 @@ import (
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
 	"math"
-	"net/url"
-	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -105,14 +102,10 @@ func DefaultListenOptions() *ListenOptions {
 }
 
 type contextImpl struct {
-	config            *config.Config
+	configTypes       []string
 	options           *config.Options
-	initDone          sync.Once
 	routerConnections cmap.ConcurrentMap
 
-	id         identity.Identity
-	zitiUrl    *url.URL
-	tlsCtx     *tls.Config
 	ctrlClt    api.Client
 	apiSession *edge.ApiSession
 
@@ -144,58 +137,22 @@ func NewContextWithOpts(cfg *config.Config, options *config.Options) Context {
 		options = config.DefaultOptions
 	}
 
-	return &contextImpl{
+	result := &contextImpl{
 		routerConnections: cmap.New(),
-		config:            cfg,
+		configTypes:       cfg.ConfigTypes,
 		options:           options,
 	}
-}
 
-func (context *contextImpl) ensureConfigPresent() error {
-	if context.config != nil {
+	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
+		result.postureCache = posture.NewCache(ctrlClient)
 		return nil
-	}
+	})
 
-	const configEnvVarName = "ZITI_SDK_CONFIG"
-	// If configEnvVarName is set, try to use it.
-	// The calling application may override this by calling NewContextWithConfig
-	confFile := os.Getenv(configEnvVarName)
-
-	if confFile == "" {
-		return errors.Errorf("unable to configure ziti as config environment variable %v not populated", configEnvVarName)
-	}
-
-	logrus.Infof("loading Ziti configuration from %s", confFile)
-	cfg, err := config.NewFromFile(confFile)
-	if err != nil {
-		return errors.Errorf("error loading config file specified by ${%s}: %v", configEnvVarName, err)
-	}
-	context.config = cfg
-	return nil
+	return result
 }
 
 func (context *contextImpl) initialize() error {
-	var err error
-	context.initDone.Do(func() {
-		err = context.load()
-	})
-	return err
-}
-
-func (context *contextImpl) load() error {
-	err := context.ensureConfigPresent()
-	if err != nil {
-		return err
-	}
-	context.zitiUrl, _ = url.Parse(context.config.ZtAPI)
-
-	if context.id, err = identity.LoadIdentity(context.config.ID); err != nil {
-		return err
-	}
-	context.ctrlClt, err = api.NewClient(context.zitiUrl, context.id.ClientTLSConfig())
-
-	context.postureCache = posture.NewCache(context.ctrlClt)
-	return err
+	return context.ctrlClt.Initialize()
 }
 
 func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
@@ -360,7 +317,7 @@ func (context *contextImpl) Authenticate() error {
 		return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
 	}
 	var err error
-	if context.apiSession, err = context.ctrlClt.Login(info, context.config.ConfigTypes); err != nil {
+	if context.apiSession, err = context.ctrlClt.Login(info, context.configTypes); err != nil {
 		return err
 	}
 
@@ -595,8 +552,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	id := context.id
-	dialer := channel2.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
+	dialer := channel2.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
 		edge.SessionTokenHeader: []byte(context.apiSession.Token),
 	})
 
@@ -841,7 +797,7 @@ func (mgr *listenerManager) run() {
 	}
 
 	if mgr.options.Identity != "" {
-		identitySecret, err := signing.AssertIdentityWithSecret(mgr.context.id.Cert().PrivateKey)
+		identitySecret, err := signing.AssertIdentityWithSecret(mgr.context.ctrlClt.GetIdentity().Cert().PrivateKey)
 		if err != nil {
 			pfxlog.Logger().Errorf("failed to sign identity: %v", err)
 		} else {
