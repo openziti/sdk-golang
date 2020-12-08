@@ -27,7 +27,7 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		postureCache: posture.NewCache(nil),
 	}
 
-	services := []*edge.Service{}
+	var services []*edge.Service
 
 	for i := 0; i < 5; i++ {
 		services = append(services, &edge.Service{

@@ -53,6 +53,7 @@ func (e NotFound) Error() string {
 type Client interface {
 	Initialize() error
 	GetIdentity() identity.Identity
+	GetCurrentApiSession() *edge.ApiSession
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
@@ -83,6 +84,10 @@ type ctrlClient struct {
 	zitiUrl    *url.URL
 	clt        http.Client
 	apiSession *edge.ApiSession
+}
+
+func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
+	return c.apiSession
 }
 
 func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error) {

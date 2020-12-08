@@ -58,7 +58,6 @@ type Context interface {
 	GetService(serviceName string) (*edge.Service, bool)
 
 	GetSession(id string) (*edge.Session, error)
-	GetBindSession(id string) (*edge.Session, error)
 
 	Metrics() metrics.Registry
 	// Close closes any connections open to edge routers
@@ -106,8 +105,7 @@ type contextImpl struct {
 	options           *config.Options
 	routerConnections cmap.ConcurrentMap
 
-	ctrlClt    api.Client
-	apiSession *edge.ApiSession
+	ctrlClt api.Client
 
 	services sync.Map // name -> Service
 	sessions sync.Map // svcID:type -> Session
@@ -247,7 +245,7 @@ func (context *contextImpl) refreshSessions() {
 func (context *contextImpl) runSessionRefresh() {
 	log := pfxlog.Logger()
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
-	expireTime := context.apiSession.Expires
+	expireTime := context.ctrlClt.GetCurrentApiSession().Expires
 	sleepDuration := expireTime.Sub(time.Now()) - (10 * time.Second)
 	for {
 
@@ -279,7 +277,7 @@ func (context *contextImpl) runSessionRefresh() {
 
 func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error {
 	operation := func() error {
-		pfxlog.Logger().Infof("attempting to establish new api session")
+		pfxlog.Logger().Info("attempting to establish new api session")
 		err := context.Authenticate()
 		if err != nil && errors2.As(err, &api.AuthFailure{}) {
 			return backoff.Permanent(err)
@@ -298,10 +296,10 @@ func (context *contextImpl) Authenticate() error {
 		return errors.Errorf("failed to initialize context: (%v)", err)
 	}
 
-	if context.apiSession != nil {
+	if context.ctrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
 		if _, err := context.ctrlClt.Refresh(); err == nil {
-			logrus.Debug("previous apiSession refreshed")
+			logrus.Info("previous apiSession refreshed")
 			return nil
 		} else {
 			logrus.WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
@@ -317,19 +315,26 @@ func (context *contextImpl) Authenticate() error {
 		return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
 	}
 	var err error
-	if context.apiSession, err = context.ctrlClt.Login(info, context.configTypes); err != nil {
+	if _, err = context.ctrlClt.Login(info, context.configTypes); err != nil {
 		return err
 	}
+
+	// router connections are establishing using the api token. If we re-authenticate we must re-establish connections
+	context.routerConnections.IterCb(func(key string, v interface{}) {
+		_ = v.(edge.RouterConn).Close()
+	})
+
+	context.routerConnections = cmap.New()
 
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		go context.runSessionRefresh()
 
 		metricsTags := map[string]string{
-			"srcId": context.apiSession.Identity.Id,
+			"srcId": context.ctrlClt.GetCurrentApiSession().Identity.Id,
 		}
 
-		context.metrics = metrics.NewRegistry(context.apiSession.Identity.Name, metricsTags)
+		context.metrics = metrics.NewRegistry(context.ctrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
 
 		// get services
 		if services, err := context.getServices(); err != nil {
@@ -371,7 +376,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 
 	context.postureCache.AddActiveService(service.Id)
 
-	edgeDialOptions.CallerId = context.apiSession.Identity.Name
+	edgeDialOptions.CallerId = context.ctrlClt.GetCurrentApiSession().Identity.Name
 
 	var conn edge.ServiceConn
 	var err error
@@ -384,19 +389,17 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
 		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
-			_, refreshErr := context.refreshSession(session.Id)
-
-			switch refreshErr.(type) {
-			case *api.NotFound, *api.AuthFailure:
+			if _, refreshErr := context.refreshSession(session.Id); refreshErr != nil {
 				context.deleteServiceSessions(service.Id)
-				continue
+				if _, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
+					break
+				}
 			}
-
-			break
+			continue
 		}
 		return conn, err
 	}
-	return nil, errors.Errorf("unable to dial service '%s' (%v)", serviceName, err)
+	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 }
 
 func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.ServiceConn, error) {
@@ -409,7 +412,7 @@ func (context *contextImpl) dialSession(service *edge.Service, session *edge.Ses
 }
 
 func (context *contextImpl) ensureApiSession() error {
-	if context.apiSession == nil {
+	if context.ctrlClt.GetCurrentApiSession() == nil {
 		if err := context.Authenticate(); err != nil {
 			return fmt.Errorf("no apiSession, authentication attempt failed: %v", err)
 		}
@@ -552,8 +555,9 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
+	pfxlog.Logger().Infof("connection to edge router using token %v", context.ctrlClt.GetCurrentApiSession().Token)
 	dialer := channel2.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(context.apiSession.Token),
+		edge.SessionTokenHeader: []byte(context.ctrlClt.GetCurrentApiSession().Token),
 	})
 
 	start := time.Now().UnixNano()
@@ -664,14 +668,10 @@ func (context *contextImpl) getServices() ([]*edge.Service, error) {
 }
 
 func (context *contextImpl) GetSession(serviceId string) (*edge.Session, error) {
-	return context.createSession(serviceId, edge.SessionDial)
+	return context.getOrCreateSession(serviceId, edge.SessionDial)
 }
 
-func (context *contextImpl) GetBindSession(id string) (*edge.Session, error) {
-	return context.createSession(id, edge.SessionBind)
-}
-
-func (context *contextImpl) createSession(serviceId string, sessionType edge.SessionType) (*edge.Session, error) {
+func (context *contextImpl) getOrCreateSession(serviceId string, sessionType edge.SessionType) (*edge.Session, error) {
 	if err := context.initialize(); err != nil {
 		return nil, errors.Errorf("failed to initialize context: (%v)", err)
 	}
@@ -694,7 +694,57 @@ func (context *contextImpl) createSession(serviceId string, sessionType edge.Ses
 	if err != nil {
 		return nil, err
 	}
-	return context.cacheSession("create", session)
+	context.cacheSession("create", session)
+	return session, nil
+}
+
+func (context *contextImpl) createSessionWithBackoff(service *edge.Service, sessionType edge.SessionType, options edge.ConnOptions) (*edge.Session, error) {
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.InitialInterval = 50 * time.Millisecond
+	expBackoff.MaxInterval = 10 * time.Second
+	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
+
+	var session *edge.Session
+	operation := func() error {
+		s, err := context.createSession(service, sessionType, options)
+		if err != nil {
+			return err
+		}
+		session = s
+		return nil
+	}
+
+	if session != nil {
+		context.postureCache.AddActiveService(service.Id)
+		context.cacheSession("create", session)
+	}
+
+	return session, backoff.Retry(operation, expBackoff)
+}
+
+func (context *contextImpl) createSession(service *edge.Service, sessionType edge.SessionType, options edge.ConnOptions) (*edge.Session, error) {
+	start := time.Now()
+	logger := pfxlog.Logger()
+	logger.Debugf("establishing %v session to service %v", sessionType, service.Name)
+	session, err := context.getOrCreateSession(service.Id, sessionType)
+	if err != nil {
+		logger.WithError(err).Warnf("failure creating %v session to service %v", sessionType, service.Name)
+		if errors2.Is(err, api.NotAuthorized) {
+			if err := context.Authenticate(); err != nil {
+				if errors2.As(err, &api.AuthFailure{}) {
+					return nil, backoff.Permanent(err)
+				}
+				return nil, err
+			}
+		} else if errors2.As(err, &api.NotAccessible{}) {
+			logger.Warnf("session create failure not recoverable, not retrying")
+			return nil, backoff.Permanent(err)
+		}
+		return nil, err
+	}
+	elapsed := time.Now().Sub(start)
+	logger.Debugf("successfully created %v session to service %v in %vms", sessionType, service.Name, elapsed.Milliseconds())
+	return session, nil
 }
 
 func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
@@ -706,10 +756,11 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return context.cacheSession("refresh", session)
+	context.cacheSession("refresh", session)
+	return session, nil
 }
 
-func (context *contextImpl) cacheSession(op string, session *edge.Session) (*edge.Session, error) {
+func (context *contextImpl) cacheSession(op string, session *edge.Session) {
 	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
 
 	if session.Type == edge.SessionDial {
@@ -724,8 +775,6 @@ func (context *contextImpl) cacheSession(op string, session *edge.Session) (*edg
 			}
 		}
 	}
-
-	return session, nil
 }
 
 func (context *contextImpl) deleteServiceSessions(svcId string) {
@@ -793,7 +842,7 @@ func (mgr *listenerManager) run() {
 	mgr.makeMoreListeners()
 
 	if mgr.options.BindUsingEdgeIdentity {
-		mgr.options.Identity = mgr.context.apiSession.Identity.Name
+		mgr.options.Identity = mgr.context.ctrlClt.GetCurrentApiSession().Identity.Name
 	}
 
 	if mgr.options.Identity != "" {
@@ -943,8 +992,8 @@ func (mgr *listenerManager) refreshSession() {
 		}
 	}
 
+	// token only returned on created, so if we refreshed the session (as opposed to creating a new one) we have to backfill it on lookups
 	if session != nil {
-		// token only returned on created, so we have to backfill it on lookups
 		session.Token = mgr.session.Token
 		mgr.session = session
 		mgr.sessionRefreshTime = time.Now()
@@ -952,43 +1001,13 @@ func (mgr *listenerManager) refreshSession() {
 }
 
 func (mgr *listenerManager) createSessionWithBackoff() {
-	expBackoff := backoff.NewExponentialBackOff()
-	expBackoff.InitialInterval = 50 * time.Millisecond
-	expBackoff.MaxInterval = 10 * time.Second
-	expBackoff.MaxElapsedTime = mgr.options.GetConnectTimeout()
-
-	_ = backoff.Retry(mgr.createSession, expBackoff)
-}
-
-func (mgr *listenerManager) createSession() error {
-	start := time.Now()
-	logger := pfxlog.Logger()
-	logger.Debugf("establishing bind session to service %v", mgr.listener.GetServiceName())
-	session, err := mgr.context.GetBindSession(mgr.service.Id)
-	if err != nil {
-		logger.Warnf("failure creating bind session to service %v (%v)", mgr.listener.GetServiceName(), err)
-		if errors2.Is(err, api.NotAuthorized) {
-			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
-				err := fmt.Errorf("unable to establish API session (%w)", err)
-				if len(mgr.routerConnections) == 0 {
-					mgr.listener.CloseWithError(err)
-				}
-				return backoff.Permanent(err)
-			}
-		} else if errors2.As(err, &api.NotAccessible{}) {
-			logger.Warnf("session create failure not recoverable, not retrying")
-			if len(mgr.routerConnections) == 0 {
-				mgr.listener.CloseWithError(err)
-			}
-			return backoff.Permanent(err)
-		}
-		return err
+	session, err := mgr.context.createSessionWithBackoff(mgr.service, edge.SessionBind, mgr.options)
+	if session != nil {
+		mgr.session = session
+		mgr.sessionRefreshTime = time.Now()
+	} else {
+		pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", mgr.session.Id, err)
 	}
-	elapsed := time.Now().Sub(start)
-	logger.Debugf("successfully created bind session to service %v in %vms", mgr.listener.GetServiceName(), elapsed.Milliseconds())
-	mgr.session = session
-	mgr.sessionRefreshTime = time.Now()
-	return nil
 }
 
 func (mgr *listenerManager) GetCurrentSession() *edge.Session {
