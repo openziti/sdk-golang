@@ -89,6 +89,7 @@ type ListenOptions struct {
 	MaxConnections        int
 	Identity              string
 	BindUsingEdgeIdentity bool
+	ManualStart           bool
 }
 
 func DefaultListenOptions() *ListenOptions {
@@ -447,6 +448,7 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 		MaxConnections:        options.MaxConnections,
 		Identity:              options.Identity,
 		BindUsingEdgeIdentity: options.BindUsingEdgeIdentity,
+		ManualStart:           options.ManualStart,
 	}
 
 	if edgeListenOptions.ConnectTimeout == 0 {

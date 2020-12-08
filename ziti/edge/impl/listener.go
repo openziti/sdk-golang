@@ -31,10 +31,10 @@ import (
 )
 
 type baseListener struct {
-	service     *edge.Service
-	acceptC     chan net.Conn
-	errorC      chan error
-	closed      concurrenz.AtomicBoolean
+	service *edge.Service
+	acceptC chan edge.Conn
+	errorC  chan error
+	closed  concurrenz.AtomicBoolean
 }
 
 func (listener *baseListener) Network() string {
@@ -54,6 +54,14 @@ func (listener *baseListener) IsClosed() bool {
 }
 
 func (listener *baseListener) Accept() (net.Conn, error) {
+	conn, err := listener.AcceptEdge()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -80,8 +88,9 @@ func (listener *baseListener) Accept() (net.Conn, error) {
 
 type edgeListener struct {
 	baseListener
-	token    string
-	edgeChan *edgeConn
+	token       string
+	edgeChan    *edgeConn
+	manualStart bool
 }
 
 func (listener *edgeListener) UpdateCost(cost uint16) error {
@@ -154,8 +163,8 @@ func NewMultiListener(service *edge.Service, getSessionF func() *edge.Session) M
 	return &multiListener{
 		baseListener: baseListener{
 			service: service,
-			acceptC:     make(chan net.Conn),
-			errorC:      make(chan error),
+			acceptC: make(chan edge.Conn),
+			errorC:  make(chan error),
 		},
 		listeners:   map[edge.Listener]struct{}{},
 		getSessionF: getSessionF,
@@ -333,7 +342,7 @@ func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler 
 	}
 }
 
-func (listener *multiListener) accept(conn net.Conn, ticker *time.Ticker) {
+func (listener *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
 	for !listener.closed.Get() {
 		select {
 		case listener.acceptC <- conn:

@@ -44,16 +44,17 @@ func init() {
 
 type edgeConn struct {
 	edge.MsgChannel
-	readQ          sequencer.Sequencer
-	leftover       []byte
-	msgMux         edge.MsgMux
-	hosting        sync.Map
-	closed         concurrenz.AtomicBoolean
-	readFIN        concurrenz.AtomicBoolean
-	sentFIN        concurrenz.AtomicBoolean
-	serviceId      string
-	sourceIdentity string
-	readDeadline   time.Time
+	readQ                 sequencer.Sequencer
+	leftover              []byte
+	msgMux                edge.MsgMux
+	hosting               sync.Map
+	closed                concurrenz.AtomicBoolean
+	readFIN               concurrenz.AtomicBoolean
+	sentFIN               concurrenz.AtomicBoolean
+	serviceId             string
+	sourceIdentity        string
+	readDeadline          time.Time
+	acceptCompleteHandler *newConnHandler
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -64,7 +65,6 @@ type edgeConn struct {
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
-
 	if conn.sentFIN.Get() {
 		return 0, fmt.Errorf("calling Write() after CloseWrite()")
 	}
@@ -273,11 +273,12 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 	listener := &edgeListener{
 		baseListener: baseListener{
 			service: service,
-			acceptC: make(chan net.Conn, 10),
+			acceptC: make(chan edge.Conn, 10),
 			errorC:  make(chan error, 1),
 		},
-		token:    session.Token,
-		edgeChan: conn,
+		token:       session.Token,
+		edgeChan:    conn,
+		manualStart: options.ManualStart,
 	}
 	logger.Debug("adding listener for session")
 	conn.hosting.Store(session.Token, listener)
@@ -507,32 +508,98 @@ func (conn *edgeConn) newChildConnection(message *channel2.Message) {
 		return
 	}
 
-	newConnLogger.Debug("new connection established")
-
-	reply := edge.NewDialSuccessMsg(conn.Id(), edgeCh.Id())
-	reply.ReplyTo(message)
-	startMsg, err := conn.SendPrioritizedAndWaitWithTimeout(reply, channel2.Highest, time.Second*5)
-	if err != nil {
-		logger.Errorf("Failed to send reply to dial request: (%v)", err)
-		return
+	connHandler := &newConnHandler{
+		conn:     conn,
+		edgeCh:   edgeCh,
+		message:  message,
+		txHeader: txHeader,
 	}
 
-	if startMsg.ContentType == edge.ContentTypeStateConnected {
-		if txHeader != nil {
-			newConnLogger.Debug("sending crypto header")
-			if _, err = edgeCh.MsgChannel.Write(txHeader); err != nil {
-				newConnLogger.Errorf("failed to write crypto header: %v", err)
-			} else {
-				newConnLogger.Debug("tx crypto established")
-			}
-		}
-
-		listener.acceptC <- edgeCh
+	if !listener.manualStart {
+		connHandler.dialSucceeded()
 	} else {
-		logger.Errorf("failed to receive start after dial. got %v", startMsg)
+		edgeCh.acceptCompleteHandler = connHandler
 	}
+
+	listener.acceptC <- edgeCh
 }
 
 func (conn *edgeConn) GetAppData() []byte {
 	return conn.appData
+}
+
+func (conn *edgeConn) CompleteAcceptSuccess() error {
+	if conn.acceptCompleteHandler != nil {
+		result := conn.acceptCompleteHandler.dialSucceeded()
+		conn.acceptCompleteHandler = nil
+		return result
+	}
+	return nil
+}
+
+func (conn *edgeConn) CompleteAcceptFailed(err error) {
+	if conn.acceptCompleteHandler != nil {
+		conn.acceptCompleteHandler.dialFailed(err)
+		conn.acceptCompleteHandler = nil
+	}
+}
+
+type newConnHandler struct {
+	conn     *edgeConn
+	edgeCh   *edgeConn
+	message  *channel2.Message
+	txHeader []byte
+}
+
+func (self *newConnHandler) dialFailed(err error) {
+	token := string(self.message.Body)
+	logger := pfxlog.Logger().WithField("connId", self.conn.Id()).WithField("token", token)
+
+	newConnLogger := pfxlog.Logger().
+		WithField("connId", self.edgeCh.Id()).
+		WithField("parentConnId", self.conn.Id()).
+		WithField("token", token)
+
+	newConnLogger.Errorf("Failed to establish connection: %v", err)
+	reply := edge.NewDialFailedMsg(self.conn.Id(), err.Error())
+	reply.ReplyTo(self.message)
+	if err := self.conn.SendPrioritizedWithTimeout(reply, channel2.Highest, time.Second*5); err != nil {
+		logger.Errorf("Failed to send reply to dial request: (%v)", err)
+	}
+}
+
+func (self *newConnHandler) dialSucceeded() error {
+	token := string(self.message.Body)
+	logger := pfxlog.Logger().WithField("connId", self.conn.Id()).WithField("token", token)
+	logger.Debug("looking up listener")
+
+	newConnLogger := pfxlog.Logger().
+		WithField("connId", self.edgeCh.Id()).
+		WithField("parentConnId", self.conn.Id()).
+		WithField("token", token)
+
+	newConnLogger.Debug("new connection established")
+
+	reply := edge.NewDialSuccessMsg(self.conn.Id(), self.edgeCh.Id())
+	reply.ReplyTo(self.message)
+	startMsg, err := self.conn.SendPrioritizedAndWaitWithTimeout(reply, channel2.Highest, time.Second*5)
+	if err != nil {
+		logger.Errorf("Failed to send reply to dial request: (%v)", err)
+		return err
+	}
+
+	if startMsg.ContentType == edge.ContentTypeStateConnected {
+		if self.txHeader != nil {
+			newConnLogger.Debug("sending crypto header")
+			if _, err = self.edgeCh.MsgChannel.Write(self.txHeader); err != nil {
+				newConnLogger.Errorf("failed to write crypto header: %v", err)
+				return err
+			}
+			newConnLogger.Debug("tx crypto established")
+		}
+		return nil
+	}
+
+	logger.Errorf("failed to receive start after dial. got %v", startMsg)
+	return errors.Errorf("failed to receive start after dial. got %v", startMsg)
 }
