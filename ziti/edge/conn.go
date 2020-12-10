@@ -88,7 +88,7 @@ type Conn interface {
 	ServiceConn
 	Identifiable
 	NewConn(service *Service) Conn
-	Connect(session *Session, options *DialOptions) (ServiceConn, error)
+	Connect(session *Session, options *DialOptions) (Conn, error)
 	Listen(session *Session, service *Service, options *ListenOptions) (Listener, error)
 
 	CompleteAcceptSuccess() error

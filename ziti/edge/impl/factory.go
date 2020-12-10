@@ -78,7 +78,7 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 }
 
 func (conn *routerConn) NewConn(service *edge.Service) edge.Conn {
-	id := connSeq.Next()
+	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
