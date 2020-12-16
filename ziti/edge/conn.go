@@ -59,6 +59,7 @@ type Identifiable interface {
 
 type Listener interface {
 	net.Listener
+	AcceptEdge() (Conn, error)
 	IsClosed() bool
 	UpdateCost(cost uint16) error
 	UpdatePrecedence(precedence Precedence) error
@@ -87,8 +88,11 @@ type Conn interface {
 	ServiceConn
 	Identifiable
 	NewConn(service *Service) Conn
-	Connect(session *Session, options *DialOptions) (ServiceConn, error)
+	Connect(session *Session, options *DialOptions) (Conn, error)
 	Listen(session *Session, service *Service, options *ListenOptions) (Listener, error)
+
+	CompleteAcceptSuccess() error
+	CompleteAcceptFailed(err error)
 }
 
 type MsgChannel struct {
@@ -218,6 +222,7 @@ type ListenOptions struct {
 	Identity              string
 	IdentitySecret        string
 	BindUsingEdgeIdentity bool
+	ManualStart           bool
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {

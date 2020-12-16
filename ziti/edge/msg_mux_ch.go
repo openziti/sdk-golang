@@ -5,6 +5,8 @@ import (
 	"github.com/openziti/foundation/channel2"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
+	"math"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,6 +14,7 @@ func NewChMsgMux() *ChMsgMux {
 	mux := &ChMsgMux{
 		eventC:  make(chan MuxEvent),
 		chanMap: make(map[uint32]MsgSink),
+		maxId:   (math.MaxUint32 / 2) - 1,
 	}
 
 	mux.running.Set(true)
@@ -24,6 +27,18 @@ type ChMsgMux struct {
 	running concurrenz.AtomicBoolean
 	eventC  chan MuxEvent
 	chanMap map[uint32]MsgSink
+	nextId  uint32
+	minId   uint32
+	maxId   uint32
+}
+
+func (mux *ChMsgMux) GetNextId() uint32 {
+	nextId := atomic.AddUint32(&mux.nextId, 1)
+	if nextId > mux.maxId {
+		atomic.StoreUint32(&mux.nextId, mux.minId)
+		nextId = atomic.AddUint32(&mux.nextId, 1)
+	}
+	return nextId
 }
 
 func (mux *ChMsgMux) ContentType() int32 {

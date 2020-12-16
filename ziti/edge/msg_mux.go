@@ -20,6 +20,8 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/channel2"
 	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/pkg/errors"
+	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -37,10 +39,13 @@ type MsgMux interface {
 	RemoveMsgSink(sink MsgSink)
 	RemoveMsgSinkById(sinkId uint32)
 	Close()
+	GetNextId() uint32
 }
 
 func NewCowMapMsgMux() MsgMux {
-	result := &CowMapMsgMux{}
+	result := &CowMapMsgMux{
+		maxId: (math.MaxUint32 / 2) - 1,
+	}
 	result.sinks.Store(map[uint32]MsgSink{})
 	return result
 }
@@ -50,6 +55,25 @@ type CowMapMsgMux struct {
 	closed  concurrenz.AtomicBoolean
 	running concurrenz.AtomicBoolean
 	sinks   atomic.Value
+	nextId  uint32
+	minId   uint32
+	maxId   uint32
+}
+
+func (mux *CowMapMsgMux) GetNextId() uint32 {
+	nextId := atomic.AddUint32(&mux.nextId, 1)
+	valid := false
+	sinks := mux.getSinks()
+	for !valid {
+		_, found := sinks[nextId]
+		valid = found || nextId <= mux.maxId
+
+		if !valid {
+			atomic.StoreUint32(&mux.nextId, mux.minId)
+			nextId = atomic.AddUint32(&mux.nextId, 1)
+		}
+	}
+	return nextId
 }
 
 func (mux *CowMapMsgMux) ContentType() int32 {
@@ -76,10 +100,15 @@ func (mux *CowMapMsgMux) HandleClose(channel2.Channel) {
 }
 
 func (mux *CowMapMsgMux) AddMsgSink(sink MsgSink) error {
+	var err error
 	mux.updateSinkMap(func(m map[uint32]MsgSink) {
-		m[sink.Id()] = sink
+		if _, found := m[sink.Id()]; found {
+			err = errors.Errorf("sink id %v already in use", sink.Id())
+		} else {
+			m[sink.Id()] = sink
+		}
 	})
-	return nil
+	return err
 }
 
 func (mux *CowMapMsgMux) RemoveMsgSink(sink MsgSink) {

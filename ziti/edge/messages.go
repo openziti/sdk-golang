@@ -50,6 +50,7 @@ const (
 	CryptoMethodHeader             = 1009
 	FlagsHeader                    = 1010
 	AppDataHeader                  = 1011
+	RouterProvidedConnId           = 1012
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -216,6 +217,7 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 			msg.Headers[TerminatorIdentitySecretHeader] = []byte(options.IdentitySecret)
 		}
 	}
+	msg.PutBoolHeader(RouterProvidedConnId, true)
 	return msg
 }
 

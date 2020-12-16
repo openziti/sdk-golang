@@ -49,8 +49,8 @@ const (
 
 type Context interface {
 	Authenticate() error
-	Dial(serviceName string) (edge.ServiceConn, error)
-	DialWithOptions(serviceName string, options *DialOptions) (edge.ServiceConn, error)
+	Dial(serviceName string) (edge.Conn, error)
+	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
 	Listen(serviceName string) (edge.Listener, error)
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
@@ -89,6 +89,7 @@ type ListenOptions struct {
 	MaxConnections        int
 	Identity              string
 	BindUsingEdgeIdentity bool
+	ManualStart           bool
 }
 
 func DefaultListenOptions() *ListenOptions {
@@ -347,12 +348,12 @@ func (context *contextImpl) Authenticate() error {
 	return doOnceErr
 }
 
-func (context *contextImpl) Dial(serviceName string) (edge.ServiceConn, error) {
+func (context *contextImpl) Dial(serviceName string) (edge.Conn, error) {
 	defaultOptions := &DialOptions{ConnectTimeout: 5 * time.Second}
 	return context.DialWithOptions(serviceName, defaultOptions)
 }
 
-func (context *contextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.ServiceConn, error) {
+func (context *contextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error) {
 	edgeDialOptions := &edge.DialOptions{
 		ConnectTimeout: options.ConnectTimeout,
 		Identity:       options.Identity,
@@ -378,7 +379,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 
 	edgeDialOptions.CallerId = context.ctrlClt.GetCurrentApiSession().Identity.Name
 
-	var conn edge.ServiceConn
+	var conn edge.Conn
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		var session *edge.Session
@@ -386,7 +387,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 		if err != nil {
 			continue
 		}
-		pfxlog.Logger().Infof("connecting via session id [%s] token [%s]", session.Id, session.Token)
+		pfxlog.Logger().Debugf("connecting via session id [%s] token [%s]", session.Id, session.Token)
 		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
 			if _, refreshErr := context.refreshSession(session.Id); refreshErr != nil {
@@ -402,7 +403,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 }
 
-func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.ServiceConn, error) {
+func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
 	if err != nil {
 		return nil, err
@@ -447,6 +448,7 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 		MaxConnections:        options.MaxConnections,
 		Identity:              options.Identity,
 		BindUsingEdgeIdentity: options.BindUsingEdgeIdentity,
+		ManualStart:           options.ManualStart,
 	}
 
 	if edgeListenOptions.ConnectTimeout == 0 {
