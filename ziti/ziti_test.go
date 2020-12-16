@@ -19,17 +19,15 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 	}
 
 	ctx := &contextImpl{
-		config: nil,
 		options: &config.Options{
 			OnServiceUpdate: servUpdate,
 		},
-		initDone:     sync.Once{},
 		services:     sync.Map{},
 		sessions:     sync.Map{},
 		postureCache: posture.NewCache(nil),
 	}
 
-	services := []*edge.Service{}
+	var services []*edge.Service
 
 	for i := 0; i < 5; i++ {
 		services = append(services, &edge.Service{
