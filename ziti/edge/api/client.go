@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -63,7 +64,7 @@ type Client interface {
 }
 
 func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (*ctrlClient, error) {
-	return &ctrlClient{
+	clt := &ctrlClient{
 		zitiUrl: ctrl,
 		clt: http.Client{
 			Transport: &http.Transport{
@@ -71,19 +72,26 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (*ctrlClient, error) {
 			},
 			Timeout: 30 * time.Second,
 		},
-	}, nil
+	}
+	clt.authUrl = clt.zitiUrl.ResolveReference(certAuthUrl).String()
+
+	return clt, nil
 }
 
-var authUrl, _ = url.Parse("/authenticate?method=cert")
+var certAuthUrl, _ = url.Parse("/authenticate?method=cert")
+var updbAuthUrl, _ = url.Parse("/authenticate?method=password")
 var currSess, _ = url.Parse("/current-api-session")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
+var sessionCertUrl, _ = url.Parse("/current-api-session/certificates")
 
 type ctrlClient struct {
 	zitiUrl    *url.URL
 	clt        http.Client
 	apiSession *edge.ApiSession
+	privateKey crypto.PrivateKey
+	authUrl    string
 }
 
 func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
@@ -174,7 +182,7 @@ func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*
 	if err := json.NewEncoder(req).Encode(reqMap); err != nil {
 		return nil, err
 	}
-	resp, err := c.clt.Post(c.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
+	resp, err := c.clt.Post(c.authUrl, "application/json", req)
 	if err != nil {
 		pfxlog.Logger().Errorf("failure to post auth %+v", err)
 		return nil, err
@@ -204,7 +212,6 @@ func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*
 
 	c.apiSession = apiSessionResp
 	return c.apiSession, nil
-
 }
 
 func (c *ctrlClient) Refresh() (*time.Time, error) {
