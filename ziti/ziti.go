@@ -49,6 +49,7 @@ const (
 
 type Context interface {
 	Authenticate() error
+	GetCurrentIdentity() (*edge.CurrentIdentity, error)
 	Dial(serviceName string) (edge.Conn, error)
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
 	Listen(serviceName string) (edge.Listener, error)
@@ -76,11 +77,35 @@ func (d DialOptions) GetConnectTimeout() time.Duration {
 
 type Precedence byte
 
+func (p Precedence) String() string {
+	if p == PrecedenceRequired {
+		return PrecedenceRequiredLabel
+	}
+	if p == PrecedenceFailed {
+		return PrecedenceFailedLabel
+	}
+	return PrecedenceDefaultLabel
+}
+
 const (
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
 	PrecedenceFailed              = 2
+
+	PrecedenceDefaultLabel  = "default"
+	PrecedenceRequiredLabel = "required"
+	PrecedenceFailedLabel   = "failed"
 )
+
+func GetPrecedenceForLabel(p string) Precedence {
+	if p == PrecedenceRequiredLabel {
+		return PrecedenceRequired
+	}
+	if p == PrecedenceFailedLabel {
+		return PrecedenceFailed
+	}
+	return PrecedenceDefault
+}
 
 type ListenOptions struct {
 	Cost                  uint16
@@ -290,6 +315,18 @@ func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error 
 	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
 
 	return backoff.Retry(operation, expBackoff)
+}
+
+func (context *contextImpl) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
+	if err := context.initialize(); err != nil {
+		return nil, errors.Wrap(err, "failed to initialize context")
+	}
+
+	if err := context.ensureApiSession(); err != nil {
+		return nil, errors.Wrap(err, "failed to establish api session")
+	}
+
+	return context.ctrlClt.GetCurrentIdentity()
 }
 
 func (context *contextImpl) Authenticate() error {
