@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/common/constants"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
@@ -54,6 +54,7 @@ type Client interface {
 	Initialize() error
 	GetIdentity() identity.Identity
 	GetCurrentApiSession() *edge.ApiSession
+	GetCurrentIdentity() (*edge.CurrentIdentity, error)
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
@@ -76,6 +77,7 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (*ctrlClient, error) {
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
 var currSess, _ = url.Parse("/current-api-session")
+var currIdentity, _ = url.Parse("/current-identity")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
@@ -88,6 +90,43 @@ type ctrlClient struct {
 
 func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
 	return c.apiSession
+}
+
+func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
+	log := pfxlog.Logger()
+
+	log.Debugf("getting current identity information")
+	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(currIdentity).String(), nil)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new HTTP request")
+	}
+
+	if c.apiSession == nil {
+		return nil, errors.New("no apiSession to refresh")
+	}
+
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	resp, err := c.clt.Do(req)
+	if err != nil && resp == nil {
+		return nil, errors.Wrap(err, "failed contact controller")
+	}
+
+	if resp == nil {
+		return nil, errors.New("controller returned empty respose")
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		currIdentity := &edge.CurrentIdentity{}
+		_, err = edge.ApiResponseDecode(currIdentity, resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to parse current identity")
+		}
+		return currIdentity, nil
+	}
+
+	return nil, fmt.Errorf("unhandled response from controller interogating sessions: %v - %v", resp.StatusCode, resp.Body)
 }
 
 func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error) {
@@ -160,7 +199,6 @@ func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
 }
 
 func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error) {
-
 	req := new(bytes.Buffer)
 	reqMap := make(map[string]interface{})
 	for k, v := range info {
@@ -210,7 +248,7 @@ func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*
 func (c *ctrlClient) Refresh() (*time.Time, error) {
 	log := pfxlog.Logger()
 
-	log.Debugf("refreshing apiSession apiSession")
+	log.Debugf("refreshing apiSession")
 	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(currSess).String(), nil)
 
 	if err != nil {

@@ -25,6 +25,13 @@ import (
 	"time"
 )
 
+type CurrentIdentity struct {
+	Id                       string `json:"id"`
+	Name                     string `json:"name"`
+	DefaultHostingPrecedence string `json:"defaultHostingPrecedence"`
+	DefaultHostingCost       uint16 `json:"defaultHostingCost"`
+}
+
 type ApiIdentity struct {
 	Id   string `json:"id"`
 	Name string `json:"name"`
@@ -96,9 +103,20 @@ func (service *Service) GetConfigOfType(configType string, target interface{}) (
 		pfxlog.Logger().Debugf("no service config of type %v defined for service %v", configType, service.Name)
 		return false, nil
 	}
-	if err := mapstructure.Decode(configMap, target); err != nil {
-		pfxlog.Logger().WithError(err).Debugf("unable to decode service configuration for of type %v defined for service %v", configType, service.Name)
-		return true, errors.Errorf("unable to decode service config structure: %v", err)
+
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:     target,
+		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
+	})
+
+	if err != nil {
+		pfxlog.Logger().WithError(err).Debugf("unable to setup decoder for service configuration for type %v defined for service %v", configType, service.Name)
+		return true, errors.Wrap(err, "unable to setup decoder for service config structure")
+	}
+
+	if err := decoder.Decode(configMap); err != nil {
+		pfxlog.Logger().WithError(err).Debugf("unable to decode service configuration for type %v defined for service %v", configType, service.Name)
+		return true, errors.Wrap(err, "unable to decode service config structure")
 	}
 	return true, nil
 }
