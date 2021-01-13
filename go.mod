@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.1.4
 	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
 	github.com/mitchellh/go-ps v1.0.0
-	github.com/mitchellh/mapstructure v1.4.0
+	github.com/mitchellh/mapstructure v1.4.1
 	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/foundation v0.14.25
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
