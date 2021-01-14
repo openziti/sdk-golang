@@ -306,7 +306,7 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 	}
 	servReq.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	pgOffset := 0
-	pgLimit := 100
+	pgLimit := 500
 
 	var services []*edge.Service
 	for {
