@@ -956,7 +956,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 	}
 
 	// If we don't have any connections and there are no available edge routers, refresh the session more often
-	if len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
+	if mgr.session == nil || len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
 		now := time.Now()
 		if mgr.disconnectedTime.Add(mgr.options.ConnectTimeout).Before(now) {
 			pfxlog.Logger().Warn("disconnected for longer than configured connect timeout. closing")
@@ -971,7 +971,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 		}
 	}
 
-	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
+	if mgr.session == nil || mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
 		return
 	}
 
@@ -994,6 +994,11 @@ func (mgr *listenerManager) makeMoreListeners() {
 }
 
 func (mgr *listenerManager) refreshSession() {
+	if mgr.session == nil {
+		mgr.createSessionWithBackoff()
+		return
+	}
+
 	session, err := mgr.context.refreshSession(mgr.session.Id)
 	if err != nil {
 		if errors2.Is(err, api.NotAuthorized) {
@@ -1040,7 +1045,7 @@ func (mgr *listenerManager) createSessionWithBackoff() {
 		mgr.session = session
 		mgr.sessionRefreshTime = time.Now()
 	} else {
-		pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", mgr.session.Id, err)
+		pfxlog.Logger().WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
 	}
 }
 
