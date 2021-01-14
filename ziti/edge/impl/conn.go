@@ -100,18 +100,6 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 	}
 }
 
-func (conn *edgeConn) NewConn(service *edge.Service) edge.Conn {
-	edgeCh := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(conn.Channel, conn.msgMux.GetNextId()),
-		readQ:      sequencer.NewNoopSequencer(4),
-		msgMux:     conn.msgMux,
-		serviceId:  service.Name,
-	}
-
-	_ = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
-	return edgeCh
-}
-
 func (conn *edgeConn) IsClosed() bool {
 	return conn.Channel.IsClosed()
 }

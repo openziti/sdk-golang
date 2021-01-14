@@ -18,7 +18,7 @@ func NewLazyClient(config *config.Config, initCallback func(Client) error) Clien
 }
 
 type lazyClient struct {
-	*ctrlClient
+	RestClient
 	config       *config.Config
 	initDone     sync.Once
 	initComplete func(Client) error
@@ -71,7 +71,7 @@ func (client *lazyClient) load() error {
 	if err != nil {
 		return err
 	}
-	client.ctrlClient, err = NewClient(zitiUrl, client.id.ClientTLSConfig())
+	client.RestClient, err = NewClient(zitiUrl, client.id.ClientTLSConfig())
 	if err != nil {
 		return err
 	}

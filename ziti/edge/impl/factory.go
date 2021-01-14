@@ -77,7 +77,7 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 	return connFactory
 }
 
-func (conn *routerConn) NewConn(service *edge.Service) edge.Conn {
+func (conn *routerConn) NewConn(service *edge.Service) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
@@ -101,6 +101,28 @@ func (conn *routerConn) NewConn(service *edge.Service) edge.Conn {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service.Name, id, err)
 	}
 	return edgeCh
+}
+
+func (conn *routerConn) Connect(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
+	ec := conn.NewConn(service)
+	dialConn, err := ec.Connect(session, options)
+	if err != nil {
+		if err2 := ec.Close(); err2 != nil {
+			pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
+		}
+	}
+	return dialConn, err
+}
+
+func (conn *routerConn) Listen(service *edge.Service, session *edge.Session, options *edge.ListenOptions) (edge.Listener, error) {
+	ec := conn.NewConn(service)
+	listener, err := ec.Listen(session, service, options)
+	if err != nil {
+		if err2 := ec.Close(); err2 != nil {
+			pfxlog.Logger().Errorf("failed to cleanup listenet for service '%v' (%v)", service.Name, err2)
+		}
+	}
+	return listener, err
 }
 
 func (conn *routerConn) Close() error {

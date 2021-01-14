@@ -445,8 +445,7 @@ func (context *contextImpl) dialSession(service *edge.Service, session *edge.Ses
 	if err != nil {
 		return nil, err
 	}
-	edgeConn := edgeConnFactory.NewConn(service)
-	return edgeConn.Connect(session, options)
+	return edgeConnFactory.Connect(service, session, options)
 }
 
 func (context *contextImpl) ensureApiSession() error {
@@ -745,7 +744,7 @@ func (context *contextImpl) createSessionWithBackoff(service *edge.Service, sess
 
 	var session *edge.Session
 	operation := func() error {
-		s, err := context.createSession(service, sessionType, options)
+		s, err := context.createSession(service, sessionType)
 		if err != nil {
 			return err
 		}
@@ -761,7 +760,7 @@ func (context *contextImpl) createSessionWithBackoff(service *edge.Service, sess
 	return session, backoff.Retry(operation, expBackoff)
 }
 
-func (context *contextImpl) createSession(service *edge.Service, sessionType edge.SessionType, options edge.ConnOptions) (*edge.Session, error) {
+func (context *contextImpl) createSession(service *edge.Service, sessionType edge.SessionType) (*edge.Session, error) {
 	start := time.Now()
 	logger := pfxlog.Logger()
 	logger.Debugf("establishing %v session to service %v", sessionType, service.Name)
@@ -934,8 +933,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	start := time.Now()
 	logger := pfxlog.Logger()
 	service := mgr.listener.GetService()
-	edgeConn := routerConnection.NewConn(service)
-	listener, err := edgeConn.Listen(session, service, mgr.options)
+	listener, err := routerConnection.Listen(service, session, mgr.options)
 	elapsed := time.Now().Sub(start)
 	if err == nil {
 		logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
@@ -948,9 +946,6 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	} else {
 		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
 		mgr.listener.NotifyOfChildError(err)
-		if err := edgeConn.Close(); err != nil {
-			pfxlog.Logger().Errorf("failed to close edgeConn %v for service '%v' (%v)", edgeConn.Id(), service.Name, err)
-		}
 		mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}
 	}
 }
