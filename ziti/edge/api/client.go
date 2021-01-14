@@ -50,9 +50,7 @@ func (e NotFound) Error() string {
 	return fmt.Sprintf("unable to find resource. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
-type Client interface {
-	Initialize() error
-	GetIdentity() identity.Identity
+type RestClient interface {
 	GetCurrentApiSession() *edge.ApiSession
 	GetCurrentIdentity() (*edge.CurrentIdentity, error)
 	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
@@ -63,7 +61,13 @@ type Client interface {
 	SendPostureResponse(response PostureResponse) error
 }
 
-func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (*ctrlClient, error) {
+type Client interface {
+	Initialize() error
+	GetIdentity() identity.Identity
+	RestClient
+}
+
+func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (RestClient, error) {
 	return &ctrlClient{
 		zitiUrl: ctrl,
 		clt: http.Client{

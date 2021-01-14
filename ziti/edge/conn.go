@@ -45,11 +45,16 @@ func init() {
 	transport.AddAddressParser(new(addrParser))
 }
 
+type RouterClient interface {
+	Connect(service *Service, session *Session, options *DialOptions) (Conn, error)
+	Listen(service *Service, session *Session, options *ListenOptions) (Listener, error)
+}
+
 type RouterConn interface {
 	io.Closer
+	RouterClient
 	IsClosed() bool
 	Key() string
-	NewConn(service *Service) Conn
 	GetRouterName() string
 }
 
@@ -87,10 +92,6 @@ type ServiceConn interface {
 type Conn interface {
 	ServiceConn
 	Identifiable
-	NewConn(service *Service) Conn
-	Connect(session *Session, options *DialOptions) (Conn, error)
-	Listen(session *Session, service *Service, options *ListenOptions) (Listener, error)
-
 	CompleteAcceptSuccess() error
 	CompleteAcceptFailed(err error)
 }
