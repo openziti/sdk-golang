@@ -422,6 +422,10 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 		var session *edge.Session
 		session, err = context.GetSession(service.Id)
 		if err != nil {
+			context.deleteServiceSessions(service.Id)
+			if _, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
+				break
+			}
 			continue
 		}
 		pfxlog.Logger().Debugf("connecting via session id [%s] token [%s]", session.Id, session.Token)
