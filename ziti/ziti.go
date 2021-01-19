@@ -63,6 +63,12 @@ type Context interface {
 	Metrics() metrics.Registry
 	// Close closes any connections open to edge routers
 	Close()
+
+	// Add a Ziti MFA handler, invoked during authentication
+	AddZitiMfaHandler(handler func(query *edge.AuthQuery, resp func(code string) error) error)
+	EnrollZitiMfa() (*api.MfaEnrollment, error)
+	VerifyZitiMfa(code string) error
+	RemoveZitiMfa(code string) error
 }
 
 type DialOptions struct {
@@ -149,6 +155,8 @@ type contextImpl struct {
 	firstAuthOnce sync.Once
 
 	postureCache *posture.Cache
+
+	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
 }
 
 func (context *contextImpl) OnClose(factory edge.RouterConn) {
@@ -172,6 +180,7 @@ func NewContextWithOpts(cfg *config.Config, options *config.Options) Context {
 	result := &contextImpl{
 		routerConnections: cmap.New(),
 		options:           options,
+		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
 	}
 
 	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
@@ -359,9 +368,18 @@ func (context *contextImpl) Authenticate() error {
 	info["appId"] = globalAppId
 	info["appVersion"] = globalAppVersion
 
-	var err error
-	if _, err = context.ctrlClt.Login(info); err != nil {
+	apiSession, err := context.ctrlClt.Login(info)
+
+	if err != nil {
 		return err
+	}
+
+	if len(apiSession.AuthQueries) != 0 {
+		for _, authQuery := range apiSession.AuthQueries {
+			if err := context.handleAuthQuery(authQuery); err != nil {
+				return err
+			}
+		}
 	}
 
 	// router connections are establishing using the api token. If we re-authenticate we must re-establish connections
@@ -390,6 +408,28 @@ func (context *contextImpl) Authenticate() error {
 	})
 
 	return doOnceErr
+}
+
+const (
+	MfaProviderZiti = "ziti"
+)
+
+func (context *contextImpl) AddZitiMfaHandler(handler func(query *edge.AuthQuery, resp func(code string) error) error) {
+	context.authQueryHandlers[MfaProviderZiti] = handler
+}
+
+func (context *contextImpl) handleAuthQuery(authQuery *edge.AuthQuery) error {
+	if authQuery.Provider == MfaProviderZiti {
+		handler := context.authQueryHandlers[MfaProviderZiti]
+
+		if handler == nil {
+			return fmt.Errorf("no handler registered for: %v", authQuery.Provider)
+		}
+
+		return handler(authQuery, context.ctrlClt.AuthenticateMFA)
+	}
+
+	return fmt.Errorf("unsupported MFA provider: %v", authQuery.Provider)
 }
 
 func (context *contextImpl) Dial(serviceName string) (edge.Conn, error) {
@@ -849,6 +889,17 @@ func (context *contextImpl) Close() {
 func (context *contextImpl) Metrics() metrics.Registry {
 	_ = context.initialize()
 	return context.metrics
+}
+
+func (context *contextImpl) EnrollZitiMfa() (*api.MfaEnrollment, error) {
+	return context.ctrlClt.EnrollMfa()
+}
+
+func (context *contextImpl) VerifyZitiMfa(code string) error {
+	return context.ctrlClt.VerifyMfa(code)
+}
+func (context *contextImpl) RemoveZitiMfa(code string) error {
+	return context.ctrlClt.RemoveMfa(code)
 }
 
 func newListenerManager(service *edge.Service, context *contextImpl, options *edge.ListenOptions) *listenerManager {

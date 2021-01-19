@@ -38,11 +38,21 @@ type ApiIdentity struct {
 }
 
 type ApiSession struct {
-	Id       string       `json:"id"`
-	Token    string       `json:"token"`
-	Identity *ApiIdentity `json:"identity"`
-	Expires  time.Time    `json:"expiresAt"`
+	Id          string       `json:"id"`
+	Token       string       `json:"token"`
+	Identity    *ApiIdentity `json:"identity"`
+	Expires     time.Time    `json:"expiresAt"`
+	AuthQueries []*AuthQuery `json: "authQueries"`
 	//Tags  []string `json:"tags"`
+}
+
+type AuthQuery struct {
+	Format     string `json:"format,omitempty"`
+	HTTPMethod string `json:"httpMethod,omitempty"`
+	HTTPURL    string `json:"httpUrl,omitempty"`
+	MaxLength  int64  `json:"maxLength,omitempty"`
+	MinLength  int64  `json:"minLength,omitempty"`
+	Provider   string `json:"provider"`
 }
 
 type EdgeRouter struct {
