@@ -57,7 +57,6 @@ type Context interface {
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
-	SetAppInfo(appId, appVersion string)
 
 	GetSession(id string) (*edge.Session, error)
 
@@ -127,6 +126,15 @@ func DefaultListenOptions() *ListenOptions {
 	}
 }
 
+var globalAppId = ""
+var globalAppVersion = ""
+
+//Set the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
+func SetAppInfo(appId, appVersion string){
+	globalAppId = appId
+	globalAppVersion = appVersion
+}
+
 type contextImpl struct {
 	options           *config.Options
 	routerConnections cmap.ConcurrentMap
@@ -141,15 +149,6 @@ type contextImpl struct {
 	firstAuthOnce sync.Once
 
 	postureCache *posture.Cache
-
-	appId      string
-	appVersion string
-}
-
-// Set application information that is provided during authentication. Must be set before calling Authenticate()
-func (context *contextImpl) SetAppInfo(appId, appVersion string) {
-	context.appId = appId
-	context.appVersion = appVersion
 }
 
 func (context *contextImpl) OnClose(factory edge.RouterConn) {
@@ -357,8 +356,8 @@ func (context *contextImpl) Authenticate() error {
 	context.sessions = sync.Map{}
 
 	info := sdkinfo.GetSdkInfo()
-	info["appId"] = context.appId
-	info["appVersion"] = context.appVersion
+	info["appId"] = globalAppId
+	info["appVersion"] = globalAppVersion
 
 	var err error
 	if _, err = context.ctrlClt.Login(info); err != nil {
