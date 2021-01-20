@@ -53,7 +53,7 @@ func (e NotFound) Error() string {
 type RestClient interface {
 	GetCurrentApiSession() *edge.ApiSession
 	GetCurrentIdentity() (*edge.CurrentIdentity, error)
-	Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error)
+	Login(info map[string]interface{}) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
@@ -67,7 +67,7 @@ type Client interface {
 	RestClient
 }
 
-func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (RestClient, error) {
+func NewClient(ctrl *url.URL, tlsCfg *tls.Config, configTypes []string) (RestClient, error) {
 	return &ctrlClient{
 		zitiUrl: ctrl,
 		clt: http.Client{
@@ -76,6 +76,7 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config) (RestClient, error) {
 			},
 			Timeout: 30 * time.Second,
 		},
+		configTypes: configTypes,
 	}, nil
 }
 
@@ -87,9 +88,10 @@ var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
 
 type ctrlClient struct {
-	zitiUrl    *url.URL
-	clt        http.Client
-	apiSession *edge.ApiSession
+	configTypes []string
+	zitiUrl     *url.URL
+	clt         http.Client
+	apiSession  *edge.ApiSession
 }
 
 func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
@@ -202,15 +204,15 @@ func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
 	return decodeSession(resp)
 }
 
-func (c *ctrlClient) Login(info map[string]interface{}, configTypes []string) (*edge.ApiSession, error) {
+func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error) {
 	req := new(bytes.Buffer)
 	reqMap := make(map[string]interface{})
 	for k, v := range info {
 		reqMap[k] = v
 	}
 
-	if len(configTypes) > 0 {
-		reqMap["configTypes"] = configTypes
+	if len(c.configTypes) > 0 {
+		reqMap["configTypes"] = c.configTypes
 	}
 
 	if err := json.NewEncoder(req).Encode(reqMap); err != nil {
@@ -281,7 +283,7 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 			log.Debugf("apiSession refreshed, new expiration[%s]", c.apiSession.Expires)
 		} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized {
 			log.Errorf("session is invalid, trying to login again: %+v", err)
-			apiSession, err := c.Login(nil, nil)
+			apiSession, err := c.Login(nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to login during apiSession refresh: %v", err)
 			}
