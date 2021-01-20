@@ -21,7 +21,7 @@ import (
 	"runtime"
 )
 
-func GetSdkInfo() interface{} {
+func GetSdkInfo() map[string]interface{} {
 
 	result := make(map[string]interface{})
 	result["sdkInfo"] = map[string]interface{}{

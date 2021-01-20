@@ -127,7 +127,6 @@ func DefaultListenOptions() *ListenOptions {
 }
 
 type contextImpl struct {
-	configTypes       []string
 	options           *config.Options
 	routerConnections cmap.ConcurrentMap
 
@@ -163,7 +162,6 @@ func NewContextWithOpts(cfg *config.Config, options *config.Options) Context {
 
 	result := &contextImpl{
 		routerConnections: cmap.New(),
-		configTypes:       cfg.ConfigTypes,
 		options:           options,
 	}
 
@@ -348,12 +346,9 @@ func (context *contextImpl) Authenticate() error {
 	context.services = sync.Map{}
 	context.sessions = sync.Map{}
 
-	info, ok := sdkinfo.GetSdkInfo().(map[string]interface{})
-	if !ok {
-		return errors.Errorf("SdkInfo is no longer a map[string]interface{}. Cannot request configTypes!")
-	}
+	info := sdkinfo.GetSdkInfo()
 	var err error
-	if _, err = context.ctrlClt.Login(info, context.configTypes); err != nil {
+	if _, err = context.ctrlClt.Login(info); err != nil {
 		return err
 	}
 

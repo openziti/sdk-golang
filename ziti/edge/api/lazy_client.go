@@ -65,13 +65,14 @@ func (client *lazyClient) load() error {
 	if err != nil {
 		return err
 	}
+
 	zitiUrl, _ := url.Parse(client.config.ZtAPI)
 
 	client.id, err = identity.LoadIdentity(client.config.ID)
 	if err != nil {
 		return err
 	}
-	client.RestClient, err = NewClient(zitiUrl, client.id.ClientTLSConfig())
+	client.RestClient, err = NewClient(zitiUrl, client.id.ClientTLSConfig(), client.config.ConfigTypes)
 	if err != nil {
 		return err
 	}
