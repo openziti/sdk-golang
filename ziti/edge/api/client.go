@@ -9,6 +9,7 @@ import (
 	"github.com/openziti/foundation/common/constants"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -283,7 +284,7 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 			log.Debugf("apiSession refreshed, new expiration[%s]", c.apiSession.Expires)
 		} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized {
 			log.Errorf("session is invalid, trying to login again: %+v", err)
-			apiSession, err := c.Login(nil)
+			apiSession, err := c.Login(sdkinfo.GetSdkInfo())
 			if err != nil {
 				return nil, fmt.Errorf("failed to login during apiSession refresh: %v", err)
 			}
