@@ -61,6 +61,7 @@ type RestClient interface {
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
 	RefreshSession(id string) (*edge.Session, error)
 	SendPostureResponse(response PostureResponse) error
+	SendPostureResponseBulk(responses []*PostureResponse) error
 
 	AuthenticateMFA(code string) error
 	VerifyMfa(code string) error
@@ -98,6 +99,7 @@ var serviceUpdate, _ = url.Parse("/current-api-session/service-updates")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
+var postureResponseBulkUrl, _ = url.Parse("/posture-response-bulk")
 var currentIdentityMfa, _ = url.Parse("/current-identity/mfa")
 var currentIdentityMfaVerify, _ = url.Parse("/current-identity/mfa/verify")
 var currentIdentityMfaRecoveryCodes, _ = url.Parse("/current-identity/mfa/recovery-codes")
@@ -229,11 +231,39 @@ func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.S
 	return decodeSession(resp)
 }
 
-func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
-	if response.PostureSubType == nil {
-		return errors.New("posture sub type is nil")
+func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error {
+	if len(responses) == 0 {
+		return nil
 	}
 
+	jsonBody, err := json.Marshal(responses)
+
+	if err != nil {
+		return err
+	}
+	fullUrl := c.zitiUrl.ResolveReference(postureResponseBulkUrl).String()
+	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("recieved error during bulk posture response submission, could not read body: %v", err)
+		}
+		return fmt.Errorf("recieved error during bulk posture response submission: %v", string(body))
+	}
+
+	return nil
+}
+
+func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 	jsonBody, err := json.Marshal(response)
 
 	if err != nil {
@@ -772,6 +802,13 @@ func (response PostureResponse) MarshalJSON() ([]byte, error) {
 
 	return []byte(s1 + ", " + s2), nil
 }
+
+const (
+	PostureCheckTypeOs      = "OS"
+	PostureCheckTypeDomain  = "DOMAIN"
+	PostureCheckTypeProcess = "PROCESS"
+	PostureCheckTypeMAC     = "MAC"
+)
 
 type PostureSubType interface {
 	IsPostureSubType()
