@@ -60,6 +60,13 @@ type RestClient interface {
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
 	RefreshSession(id string) (*edge.Session, error)
 	SendPostureResponse(response PostureResponse) error
+
+	AuthenticateMFA(code string) error
+	VerifyMfa(code string) error
+	EnrollMfa() (*MfaEnrollment, error)
+	RemoveMfa(code string) error
+	GenerateNewMfaRecoveryCodes(code string) error
+	GetMfaRecoveryCodes(code string) ([]string, error)
 }
 
 type Client interface {
@@ -82,11 +89,15 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config, configTypes []string) (RestCli
 }
 
 var authUrl, _ = url.Parse("/authenticate?method=cert")
+var authMfaUrl, _ = url.Parse("/authenticate/mfa")
 var currSess, _ = url.Parse("/current-api-session")
 var currIdentity, _ = url.Parse("/current-identity")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
+var currentIdentityMfa, _ = url.Parse("/current-identity/mfa")
+var currentIdentityMfaVerify, _ = url.Parse("/current-identity/mfa/verify")
+var currentIdentityMfaRecoveryCodes, _ = url.Parse("/current-identity/mfa/recovery-codes")
 
 type ctrlClient struct {
 	configTypes []string
@@ -250,6 +261,260 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 	c.apiSession = apiSessionResp
 	return c.apiSession, nil
 
+}
+
+// During MFA enrollment, and initial TOTP code must be provided to enable MFA authentication. The code
+// provided MUST NOT be a recovery code. Until MFA enrollment is verified, MFA authentication will not
+// be required or possible. MFA Posture Checks may restrict service access until MFA is enrolled
+// and authenticated.
+func (c *ctrlClient) VerifyMfa(code string) error {
+	body := NewMFACodeBody(code)
+	reqBody := bytes.NewBuffer(body)
+
+	mfaVerifyUrl := c.zitiUrl.ResolveReference(currentIdentityMfaVerify).String()
+	pfxlog.Logger().Debugf("verifying MFA: POST %v", mfaVerifyUrl)
+
+	req, _ := http.NewRequest("POST", mfaVerifyUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("invalid status code returned attempting to verify MFA for enrollment [%v], response body: %v", resp.StatusCode, respBody)
+	}
+
+	return nil
+}
+
+// During authentication/login additional MFA authentication queries may be provided. AuthenticateMFA allows
+// the current identity for their current api session to attempt to pass MFA authentication.
+func (c *ctrlClient) AuthenticateMFA(code string) error {
+	body := NewMFACodeBody(code)
+	reqBody := bytes.NewBuffer(body)
+
+	mfaAuthUrl := c.zitiUrl.ResolveReference(authMfaUrl).String()
+	pfxlog.Logger().Debugf("authenticating MFA: POST %v", mfaAuthUrl)
+
+	req, _ := http.NewRequest("POST", mfaAuthUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("invalid status code returned attempting to authenticate MFA [%v], response body: %v", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+type MfaEnrollment struct {
+	ProvisioningUrl string
+	RecoveryCodes   []string
+}
+
+// Enroll in MFA. Will only succeed if the current identity of the current API session is not enrolled in MFA.
+// If MFA is already enrolled and re-enrollment is desired first use RemoveMfa.
+func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
+	body := `{}`
+	reqBody := bytes.NewBufferString(body)
+
+	mfaUrl := c.zitiUrl.ResolveReference(currentIdentityMfa).String()
+	pfxlog.Logger().Debugf("enrolling in mfa: POST %v", mfaUrl)
+	req, _ := http.NewRequest("POST", mfaUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("invalid status code returned attempting to start MFA enrollment [%v], response body: %v", resp.StatusCode, string(respBody))
+	}
+
+	req, _ = http.NewRequest("GET", mfaUrl, bytes.NewBuffer(nil))
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err = c.clt.Do(req)
+
+	respBody, err := parseApiResponseEnvelope(resp)
+
+	if err != nil {
+		return nil, fmt.Errorf("error parsing API MFA response: %v", err)
+	}
+
+	mfaEnrollment := &MfaEnrollment{}
+
+	provisioningUrlVal, ok := respBody.Data["provisioningUrl"]
+
+	if !ok {
+		return nil, errors.New("could not find provisioning URL in MFA response")
+	}
+
+	mfaEnrollment.ProvisioningUrl, ok = provisioningUrlVal.(string)
+
+	if !ok {
+		return nil, fmt.Errorf("could not read provisioning URL, expected string got %T", provisioningUrlVal)
+	}
+
+	codes, err := getMfaRecoveryCodes(respBody)
+
+	if err != nil {
+		return nil, err
+	}
+
+	mfaEnrollment.RecoveryCodes = codes
+
+	return mfaEnrollment, nil
+}
+
+// Remove the previous enrolled MFA. A valid TOTP/recovery code is required. If MFA enrollment has not been completed
+// an emty string can be used to remove the partially started MFA enrollment.
+func (c *ctrlClient) RemoveMfa(code string) error {
+	body := NewMFACodeBody(code)
+	reqBody := bytes.NewBuffer(body)
+
+	mfaUrl := c.zitiUrl.ResolveReference(currentIdentityMfa).String()
+	pfxlog.Logger().Debugf("removing mfa: DELETE %v", mfaUrl)
+	req, _ := http.NewRequest("DELETE", mfaUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("invalid status code returned attempting to remove MFA [%v], response body: %v", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// Generate new MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
+func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
+	body := NewMFACodeBody(code)
+	reqBody := bytes.NewBuffer(body)
+
+	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(currentIdentityMfaRecoveryCodes).String()
+	pfxlog.Logger().Debugf("generating new MFA recovery codes: POST %v", mfaRecoveryCodesUrl)
+	req, _ := http.NewRequest("POST", mfaRecoveryCodesUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("invalid status code returned attempting to generate new MFA recovery codes [%v], response body: %v", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// Retrieve MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
+func (c *ctrlClient) GetMfaRecoveryCodes(code string) ([]string, error) {
+	body := NewMFACodeBody(code)
+	reqBody := bytes.NewBuffer(body)
+
+	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(currentIdentityMfaRecoveryCodes).String()
+	pfxlog.Logger().Debugf("retrieving MFA recovery codes: GET %v", mfaRecoveryCodesUrl)
+	req, _ := http.NewRequest("GET", mfaRecoveryCodesUrl, reqBody)
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := c.clt.Do(req)
+
+	if err != nil {
+		return nil, fmt.Errorf("error requesting MFA recovery codes: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("could not retrieve MFA recovery codes [%v], response body: %v", resp.StatusCode, string(respBody))
+	}
+
+	respBody, err := parseApiResponseEnvelope(resp)
+
+	if err != nil {
+		return nil, fmt.Errorf("error parsing API MFA recovery code response: %v", err)
+	}
+
+	return getMfaRecoveryCodes(respBody)
+}
+
+func getMfaRecoveryCodes(respBody *ApiEnvelope) ([]string, error) {
+	codeVal := respBody.Data["recoveryCodes"]
+
+	if codeVal == nil {
+		return nil, fmt.Errorf("unexpected nil value for recoveryCodes")
+	}
+
+	codeArr := codeVal.([]interface{})
+
+	if codeArr == nil {
+		return nil, fmt.Errorf("unexpected nil value for recoveryCodes as array")
+	}
+
+	var codes []string
+
+	for _, codeVal := range codeArr {
+		code, ok := codeVal.(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected non string value found in recoveryCodes")
+		}
+		codes = append(codes, code)
+	}
+
+	return codes, nil
+}
+
+type ApiEnvelope struct {
+	Meta map[string]interface{} `json:"meta"`
+	Data map[string]interface{} `json:"data"`
+}
+
+func parseApiResponseEnvelope(resp *http.Response) (*ApiEnvelope, error) {
+	respBody, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	respEnvelope := &ApiEnvelope{}
+	json.Unmarshal(respBody, &respEnvelope)
+
+	if respEnvelope.Data == nil {
+		return nil, fmt.Errorf("data section of response not found for MFA recovery codes")
+	}
+
+	if respEnvelope.Meta == nil {
+		return nil, fmt.Errorf("meta section of response not found for: %v %v", resp.Request.Method, resp.Request.URL.String())
+	}
+
+	return respEnvelope, nil
 }
 
 func (c *ctrlClient) Refresh() (*time.Time, error) {
@@ -458,3 +723,15 @@ type PostureResponseProcess struct {
 }
 
 func (p PostureResponseProcess) IsPostureSubType() {}
+
+type MFACode struct {
+	Code string `json: "code"`
+}
+
+func NewMFACodeBody(code string) []byte {
+	val := MFACode{
+		Code: code,
+	}
+	body, _ := json.Marshal(val)
+	return body
+}
