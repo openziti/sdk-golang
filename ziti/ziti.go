@@ -126,6 +126,15 @@ func DefaultListenOptions() *ListenOptions {
 	}
 }
 
+var globalAppId = ""
+var globalAppVersion = ""
+
+//Set the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
+func SetAppInfo(appId, appVersion string){
+	globalAppId = appId
+	globalAppVersion = appVersion
+}
+
 type contextImpl struct {
 	options           *config.Options
 	routerConnections cmap.ConcurrentMap
@@ -347,6 +356,9 @@ func (context *contextImpl) Authenticate() error {
 	context.sessions = sync.Map{}
 
 	info := sdkinfo.GetSdkInfo()
+	info["appId"] = globalAppId
+	info["appVersion"] = globalAppVersion
+
 	var err error
 	if _, err = context.ctrlClt.Login(info); err != nil {
 		return err
