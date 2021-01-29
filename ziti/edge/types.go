@@ -42,8 +42,7 @@ type ApiSession struct {
 	Token       string       `json:"token"`
 	Identity    *ApiIdentity `json:"identity"`
 	Expires     time.Time    `json:"expiresAt"`
-	AuthQueries []*AuthQuery `json: "authQueries"`
-	//Tags  []string `json:"tags"`
+	AuthQueries []*AuthQuery `json:"authQueries"`
 }
 
 type AuthQuery struct {
@@ -53,6 +52,10 @@ type AuthQuery struct {
 	MaxLength  int64  `json:"maxLength,omitempty"`
 	MinLength  int64  `json:"minLength,omitempty"`
 	Provider   string `json:"provider"`
+}
+
+type ServiceUpdates struct {
+	LastChangeAt time.Time `json:"lastChangeAt"`
 }
 
 type EdgeRouter struct {

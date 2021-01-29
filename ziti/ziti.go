@@ -136,7 +136,7 @@ var globalAppId = ""
 var globalAppVersion = ""
 
 //Set the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
-func SetAppInfo(appId, appVersion string){
+func SetAppInfo(appId, appVersion string) {
 	globalAppId = appId
 	globalAppVersion = appVersion
 }
@@ -196,6 +196,8 @@ func (context *contextImpl) initialize() error {
 }
 
 func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
+	pfxlog.Logger().Debugf("procesing service updates with %v services", len(services))
+
 	idMap := make(map[string]*edge.Service)
 	for _, s := range services {
 		idMap[s.Id] = s
@@ -255,7 +257,6 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 	})
 
 	context.postureCache.SetServiceQueryMap(serviceQueryMap)
-
 }
 
 func (context *contextImpl) refreshSessions() {
@@ -267,6 +268,7 @@ func (context *contextImpl) refreshSessions() {
 		session := value.(*edge.Session)
 		if s, err := context.refreshSession(session.Id); err != nil {
 			log.WithError(err).Errorf("failed to refresh session for %s", key)
+			context.sessions.Delete(session.Id)
 		} else {
 			for _, er := range s.EdgeRouters {
 				for _, u := range er.Urls {
@@ -281,7 +283,6 @@ func (context *contextImpl) refreshSessions() {
 	for u, name := range edgeRouters {
 		go context.connectEdgeRouter(name, u, nil)
 	}
-
 }
 
 func (context *contextImpl) runSessionRefresh() {
@@ -289,8 +290,10 @@ func (context *contextImpl) runSessionRefresh() {
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
 	expireTime := context.ctrlClt.GetCurrentApiSession().Expires
 	sleepDuration := expireTime.Sub(time.Now()) - (10 * time.Second)
-	for {
 
+	var serviceUpdateApiAvailable = true
+
+	for {
 		select {
 		case <-time.After(sleepDuration):
 			exp, err := context.ctrlClt.Refresh()
@@ -306,12 +309,30 @@ func (context *contextImpl) runSessionRefresh() {
 
 		case <-svcUpdateTick.C:
 			log.Debug("refreshing services")
-			services, err := context.getServices()
-			if err != nil {
-				log.Errorf("failed to load service updates %+v", err)
+			checkService := false
+
+			if serviceUpdateApiAvailable {
+				var err error
+				if checkService, err = context.ctrlClt.IsServiceListUpdateAvailable(); err != nil {
+					log.WithError(err).Errorf("failed to check if service list update is available")
+					if errors.As(err, &api.NotFound{}) {
+						serviceUpdateApiAvailable = false
+						checkService = true
+					}
+				}
 			} else {
-				context.processServiceUpdates(services)
-				context.refreshSessions()
+				checkService = true
+			}
+
+			if checkService {
+				log.Debug("refreshing services")
+				services, err := context.getServices()
+				if err != nil {
+					log.Errorf("failed to load service updates %+v", err)
+				} else {
+					context.processServiceUpdates(services)
+					context.refreshSessions()
+				}
 			}
 		}
 	}

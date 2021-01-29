@@ -57,6 +57,7 @@ type RestClient interface {
 	Login(info map[string]interface{}) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
+	IsServiceListUpdateAvailable() (bool, error)
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
 	RefreshSession(id string) (*edge.Session, error)
 	SendPostureResponse(response PostureResponse) error
@@ -92,6 +93,7 @@ var authUrl, _ = url.Parse("/authenticate?method=cert")
 var authMfaUrl, _ = url.Parse("/authenticate/mfa")
 var currSess, _ = url.Parse("/current-api-session")
 var currIdentity, _ = url.Parse("/current-identity")
+var serviceUpdate, _ = url.Parse("/current-api-session/service-updates")
 var servicesUrl, _ = url.Parse("/services")
 var sessionUrl, _ = url.Parse("/sessions")
 var postureResponseUrl, _ = url.Parse("/posture-response")
@@ -100,10 +102,12 @@ var currentIdentityMfaVerify, _ = url.Parse("/current-identity/mfa/verify")
 var currentIdentityMfaRecoveryCodes, _ = url.Parse("/current-identity/mfa/recovery-codes")
 
 type ctrlClient struct {
-	configTypes []string
-	zitiUrl     *url.URL
-	clt         http.Client
-	apiSession  *edge.ApiSession
+	configTypes        []string
+	zitiUrl            *url.URL
+	clt                http.Client
+	apiSession         *edge.ApiSession
+	lastServiceRefresh time.Time
+	lastServiceUpdate  time.Time
 }
 
 func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
@@ -145,6 +149,55 @@ func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 	}
 
 	return nil, fmt.Errorf("unhandled response from controller interogating sessions: %v - %v", resp.StatusCode, resp.Body)
+}
+
+func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
+	log := pfxlog.Logger()
+
+	log.Debugf("checking if service list update is available")
+	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(serviceUpdate).String(), nil)
+
+	if err != nil {
+		return false, errors.Wrap(err, "failed to create new HTTP request")
+	}
+
+	if c.apiSession == nil {
+		return false, errors.New("not authenticated")
+	}
+
+	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	resp, err := c.clt.Do(req)
+	if err != nil && resp == nil {
+		return false, errors.Wrap(err, "failed contact controller")
+	}
+
+	if resp == nil {
+		return false, errors.New("controller returned empty respose")
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		serviceUpdates := &edge.ServiceUpdates{}
+		_, err = edge.ApiResponseDecode(serviceUpdates, resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return false, errors.Wrap(err, "failed to parse service updates")
+		}
+		c.lastServiceUpdate = serviceUpdates.LastChangeAt
+		updateAvailable := c.lastServiceUpdate.After(c.lastServiceRefresh)
+		log.Debugf("service list update available: %v", updateAvailable)
+		return updateAvailable, nil
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, NotFound{
+			httpCode: resp.StatusCode,
+			msg:      string(body),
+		}
+	}
+
+	return false, fmt.Errorf("unhandled response from controller interogating sessions: %v - %v", resp.StatusCode, string(body))
 }
 
 func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error) {
@@ -624,8 +677,8 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 		}
 	}
 
+	c.lastServiceRefresh = c.lastServiceUpdate
 	return services, nil
-
 }
 
 func decodeSession(resp *http.Response) (*edge.Session, error) {
