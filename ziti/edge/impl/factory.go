@@ -77,7 +77,7 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 	return connFactory
 }
 
-func (conn *routerConn) NewConn(service *edge.Service) *edgeConn {
+func (conn *routerConn) NewConn(service *edge.Service, connType ConnType) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
@@ -85,6 +85,7 @@ func (conn *routerConn) NewConn(service *edge.Service) *edgeConn {
 		readQ:      sequencer.NewNoopSequencer(4),
 		msgMux:     conn.msgMux,
 		serviceId:  service.Name,
+		connType:   connType,
 	}
 
 	var err error
@@ -104,7 +105,7 @@ func (conn *routerConn) NewConn(service *edge.Service) *edgeConn {
 }
 
 func (conn *routerConn) Connect(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
-	ec := conn.NewConn(service)
+	ec := conn.NewConn(service, ConnTypeDial)
 	dialConn, err := ec.Connect(session, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
@@ -115,7 +116,7 @@ func (conn *routerConn) Connect(service *edge.Service, session *edge.Session, op
 }
 
 func (conn *routerConn) Listen(service *edge.Service, session *edge.Session, options *edge.ListenOptions) (edge.Listener, error) {
-	ec := conn.NewConn(service)
+	ec := conn.NewConn(service, ConnTypeBind)
 	listener, err := ec.Listen(session, service, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
