@@ -34,6 +34,13 @@ import (
 
 var unsupportedCrypto = errors.New("unsupported crypto")
 
+type ConnType byte
+
+const (
+	ConnTypeDial = 1
+	ConnTypeBind = 2
+)
+
 type edgeConn struct {
 	edge.MsgChannel
 	readQ                 sequencer.Sequencer
@@ -47,6 +54,7 @@ type edgeConn struct {
 	sourceIdentity        string
 	readDeadline          time.Time
 	acceptCompleteHandler *newConnHandler
+	connType              ConnType
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -89,14 +97,29 @@ func (conn *edgeConn) CloseWrite() error {
 
 func (conn *edgeConn) Accept(msg *channel2.Message) {
 	conn.TraceMsg("Accept", msg)
-	if msg.ContentType == edge.ContentTypeDial {
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
-		go conn.newChildConnection(msg)
-	} else if seq, _ := msg.GetUint32Header(edge.SeqHeader); msg.ContentType == edge.ContentTypeStateClosed && seq == 0 {
-		conn.close(true)
-	} else if err := conn.readQ.PutSequenced(0, msg); err != nil {
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			Error("error pushing edge message to sequencer")
+	switch conn.connType {
+	case ConnTypeDial:
+		if seq, _ := msg.GetUint32Header(edge.SeqHeader); msg.ContentType == edge.ContentTypeStateClosed && seq == 0 {
+			conn.close(true)
+			return
+		}
+
+		if err := conn.readQ.PutSequenced(0, msg); err != nil {
+			pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).WithError(err).
+				Error("error pushing edge message to sequencer")
+		}
+
+	case ConnTypeBind:
+		if msg.ContentType == edge.ContentTypeDial {
+			pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
+			go conn.newChildConnection(msg)
+		}
+
+		if msg.ContentType == edge.ContentTypeStateClosed {
+			conn.close(true)
+		}
+	default:
+		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
 	}
 }
 
@@ -458,6 +481,7 @@ func (conn *edgeConn) newChildConnection(message *channel2.Message) {
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,
 		appData:        message.Headers[edge.AppDataHeader],
+		connType:       ConnTypeDial,
 	}
 
 	newConnLogger := pfxlog.Logger().

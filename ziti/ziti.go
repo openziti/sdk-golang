@@ -1084,6 +1084,12 @@ func (mgr *listenerManager) refreshSession() {
 
 	session, err := mgr.context.refreshSession(mgr.session.Id)
 	if err != nil {
+		if errors2.As(err, &api.NotFound{}) {
+			// try to create new session
+			mgr.createSessionWithBackoff()
+			return
+		}
+
 		if errors2.Is(err, api.NotAuthorized) {
 			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
 			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
