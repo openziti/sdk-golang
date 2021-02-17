@@ -26,6 +26,7 @@ import (
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
 	"github.com/openziti/foundation/transport"
+	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
@@ -154,8 +155,9 @@ type contextImpl struct {
 
 	firstAuthOnce sync.Once
 
-	postureCache *posture.Cache
-
+	postureCache      *posture.Cache
+	closed            concurrenz.AtomicBoolean
+	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
 }
 
@@ -181,10 +183,11 @@ func NewContextWithOpts(cfg *config.Config, options *config.Options) Context {
 		routerConnections: cmap.New(),
 		options:           options,
 		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
+		closeNotify:       make(chan struct{}),
 	}
 
 	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
-		result.postureCache = posture.NewCache(ctrlClient)
+		result.postureCache = posture.NewCache(ctrlClient, result.closeNotify)
 		return nil
 	})
 
@@ -288,6 +291,8 @@ func (context *contextImpl) refreshSessions() {
 func (context *contextImpl) runSessionRefresh() {
 	log := pfxlog.Logger()
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
+	defer svcUpdateTick.Stop()
+
 	expireTime := context.ctrlClt.GetCurrentApiSession().Expires
 	sleepDuration := expireTime.Sub(time.Now()) - (10 * time.Second)
 
@@ -295,6 +300,9 @@ func (context *contextImpl) runSessionRefresh() {
 
 	for {
 		select {
+		case <-context.closeNotify:
+			return
+
 		case <-time.After(sleepDuration):
 			exp, err := context.ctrlClt.Refresh()
 			if err != nil {
@@ -893,17 +901,21 @@ func (context *contextImpl) deleteServiceSessions(svcId string) {
 }
 
 func (context *contextImpl) Close() {
-	logger := pfxlog.Logger()
-
-	// remove any closed connections
-	for entry := range context.routerConnections.IterBuffered() {
-		key, val := entry.Key, entry.Val.(edge.RouterConn)
-		if !val.IsClosed() {
-			if err := val.Close(); err != nil {
-				logger.WithError(err).Error("error while closing connection")
+	if context.closed.CompareAndSwap(false, true) {
+		close(context.closeNotify)
+		// remove any closed connections
+		for entry := range context.routerConnections.IterBuffered() {
+			key, val := entry.Key, entry.Val.(edge.RouterConn)
+			if !val.IsClosed() {
+				if err := val.Close(); err != nil {
+					pfxlog.Logger().WithError(err).Error("error while closing connection")
+				}
 			}
+			context.routerConnections.Remove(key)
 		}
-		context.routerConnections.Remove(key)
+		if context.ctrlClt != nil {
+			context.ctrlClt.Shutdown()
+		}
 	}
 }
 
@@ -991,6 +1003,8 @@ func (mgr *listenerManager) run() {
 			mgr.refreshSession()
 		case <-ticker.C:
 			mgr.makeMoreListeners()
+		case <-mgr.context.closeNotify:
+			mgr.listener.CloseWithError(errors.New("context closed"))
 		}
 	}
 }
@@ -1021,15 +1035,21 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	if err == nil {
 		logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 		mgr.listener.AddListener(listener, func() {
-			mgr.eventChan <- &routerConnectionListenFailedEvent{
-				router: routerConnection.GetRouterName(),
+			select {
+			case mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}:
+			case <-mgr.context.closeNotify:
+				logger.Debugf("listener closed, exiting from createListener")
 			}
 		})
 		mgr.eventChan <- listenSuccessEvent{}
 	} else {
 		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
 		mgr.listener.NotifyOfChildError(err)
-		mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}
+		select {
+		case mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerConnection.GetRouterName()}:
+		case <-mgr.context.closeNotify:
+			logger.Debugf("listener closed, exiting from createListener")
+		}
 	}
 }
 

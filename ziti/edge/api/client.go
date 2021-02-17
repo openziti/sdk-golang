@@ -68,6 +68,7 @@ type RestClient interface {
 	RemoveMfa(code string) error
 	GenerateNewMfaRecoveryCodes(code string) error
 	GetMfaRecoveryCodes(code string) ([]string, error)
+	Shutdown()
 }
 
 type Client interface {
@@ -110,6 +111,10 @@ type ctrlClient struct {
 	lastServiceUpdate  time.Time
 }
 
+func (c *ctrlClient) Shutdown() {
+	c.clt.CloseIdleConnections()
+}
+
 func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
 	return c.apiSession
 }
@@ -138,11 +143,11 @@ func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 		return nil, errors.New("controller returned empty respose")
 	}
 
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode == http.StatusOK {
 		currIdentity := &edge.CurrentIdentity{}
-		_, err = edge.ApiResponseDecode(currIdentity, resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
+		if _, err = edge.ApiResponseDecode(currIdentity, resp.Body); err != nil {
 			return nil, errors.Wrap(err, "failed to parse current identity")
 		}
 		return currIdentity, nil
@@ -175,10 +180,11 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 		return false, errors.New("controller returned empty respose")
 	}
 
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode == http.StatusOK {
 		serviceUpdates := &edge.ServiceUpdates{}
 		_, err = edge.ApiResponseDecode(serviceUpdates, resp.Body)
-		_ = resp.Body.Close()
 		if err != nil {
 			return false, errors.Wrap(err, "failed to parse service updates")
 		}
@@ -217,6 +223,9 @@ func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.S
 		return nil, err
 	}
 
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	return decodeSession(resp)
 }
 
@@ -240,6 +249,8 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 	if err != nil {
 		return err
 	}
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, err := ioutil.ReadAll(resp.Body)
@@ -266,6 +277,7 @@ func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = resp.Body.Close() }()
 	return decodeSession(resp)
 }
 
@@ -337,6 +349,8 @@ func (c *ctrlClient) VerifyMfa(code string) error {
 		return err
 	}
 
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to verify MFA for enrollment [%v], response body: %v", resp.StatusCode, respBody)
@@ -363,6 +377,8 @@ func (c *ctrlClient) AuthenticateMFA(code string) error {
 	if err != nil {
 		return err
 	}
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
@@ -394,6 +410,8 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := ioutil.ReadAll(resp.Body)
@@ -455,6 +473,8 @@ func (c *ctrlClient) RemoveMfa(code string) error {
 		return err
 	}
 
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to remove MFA [%v], response body: %v", resp.StatusCode, string(respBody))
@@ -478,6 +498,8 @@ func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
 	if err != nil {
 		return err
 	}
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
@@ -503,6 +525,8 @@ func (c *ctrlClient) GetMfaRecoveryCodes(code string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error requesting MFA recovery codes: %v", err)
 	}
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
@@ -591,10 +615,10 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 	}
 
 	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			apiSessionResp := &edge.ApiSession{}
 			_, err = edge.ApiResponseDecode(apiSessionResp, resp.Body)
-			_ = resp.Body.Close()
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse current apiSession during refresh: %v", err)
 			}
@@ -641,10 +665,14 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 			if body, err := ioutil.ReadAll(resp.Body); err != nil {
 				pfxlog.Logger().Debugf("error response: %v", body)
 			}
+			_ = resp.Body.Close()
 			return nil, errors.New("unauthorized")
 		}
 
 		if err != nil {
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
 			return nil, err
 		}
 

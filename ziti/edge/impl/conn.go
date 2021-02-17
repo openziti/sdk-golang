@@ -185,7 +185,7 @@ func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) 
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		return nil, errors.Errorf("attempt to use closed connection: %v", string(replyMsg.Body))
+		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
