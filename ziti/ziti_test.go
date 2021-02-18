@@ -18,13 +18,16 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		callbacks[service.Name] = eventType
 	}
 
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
 	ctx := &contextImpl{
 		options: &config.Options{
 			OnServiceUpdate: servUpdate,
 		},
 		services:     sync.Map{},
 		sessions:     sync.Map{},
-		postureCache: posture.NewCache(nil),
+		postureCache: posture.NewCache(nil, closeNotify),
 	}
 
 	var services []*edge.Service

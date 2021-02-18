@@ -37,10 +37,11 @@ type Cache struct {
 	timeout    time.Duration
 	ctrlClient api.Client
 
-	startOnce sync.Once
+	startOnce   sync.Once
+	closeNotify <-chan struct{}
 }
 
-func NewCache(ctrlClient api.Client) *Cache {
+func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
 		processes:    cmap.New(),
 		MacAddresses: []string{},
@@ -55,6 +56,7 @@ func NewCache(ctrlClient api.Client) *Cache {
 		timeout:         20 * time.Second,
 		ctrlClient:      ctrlClient,
 		startOnce:       sync.Once{},
+		closeNotify:     closeNotify,
 	}
 	cache.start()
 
@@ -147,7 +149,6 @@ func (cache *Cache) sendResponsesForService(serviceId string) {
 
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
-		ticker := time.NewTicker(20 * time.Second)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -155,17 +156,26 @@ func (cache *Cache) start() {
 				}
 			}()
 
-			for _ = range ticker.C {
-				cache.Refresh()
-				var serviceIds []string
-				cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
-					serviceIds = append(serviceIds, serviceId)
-				})
+			ticker := time.NewTicker(20 * time.Second)
+			defer ticker.Stop()
 
-				for _, serviceId := range serviceIds {
-					cache.sendResponsesForService(serviceId)
+			for {
+				select {
+				case <-ticker.C:
+					cache.Refresh()
+					var serviceIds []string
+					cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
+						serviceIds = append(serviceIds, serviceId)
+					})
+
+					for _, serviceId := range serviceIds {
+						cache.sendResponsesForService(serviceId)
+					}
+				case <-cache.closeNotify:
+					return
 				}
 			}
+
 		}()
 	})
 }

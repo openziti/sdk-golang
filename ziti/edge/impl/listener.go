@@ -182,6 +182,10 @@ type multiListener struct {
 
 func (listener *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
 	listener.listenerEventHandler.Store(handler)
+
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+	listener.notifyOfConnectionChange()
 }
 
 func (listener *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
