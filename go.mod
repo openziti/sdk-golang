@@ -21,7 +21,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
 	github.com/shirou/gopsutil v2.20.9+incompatible
-	github.com/sirupsen/logrus v1.7.1
+	github.com/sirupsen/logrus v1.8.0
 	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.7.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
