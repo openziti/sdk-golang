@@ -2,7 +2,7 @@ module github.com/openziti/sdk-golang
 
 go 1.15
 
-// replace github.com/openziti/foundation => ../foundation
+//replace github.com/openziti/foundation => ../foundation
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -12,11 +12,11 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/google/uuid v1.2.0
-	github.com/michaelquigley/pfxlog v0.0.0-20190813191113-2be43bd0dccc
+	github.com/michaelquigley/pfxlog v0.3.7
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/foundation v0.15.17
+	github.com/openziti/foundation v0.15.18
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
