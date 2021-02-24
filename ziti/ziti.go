@@ -46,6 +46,7 @@ import (
 
 const (
 	LatencyCheckInterval = 30 * time.Second
+	LatencyCheckTimeout  = 10 * time.Second
 )
 
 type Context interface {
@@ -718,7 +719,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 			}
 			h := context.metrics.Histogram("latency." + ingressUrl)
 			h.Update(int64(connectTime))
-			go metrics.ProbeLatency(ch, h, LatencyCheckInterval)
+			go metrics.ProbeLatency(ch, h, LatencyCheckInterval, LatencyCheckTimeout)
 			return newV
 		})
 
