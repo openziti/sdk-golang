@@ -1,4 +1,4 @@
-package config
+package ziti
 
 import (
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -17,6 +17,7 @@ type serviceCB func(eventType ServiceEventType, service *edge.Service)
 
 type Options struct {
 	RefreshInterval time.Duration
+	OnContextReady  func(ctx Context)
 	OnServiceUpdate serviceCB
 }
 
