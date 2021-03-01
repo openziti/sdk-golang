@@ -144,7 +144,7 @@ func SetAppInfo(appId, appVersion string) {
 }
 
 type contextImpl struct {
-	options           *config.Options
+	options           *Options
 	routerConnections cmap.ConcurrentMap
 
 	ctrlClt api.Client
@@ -175,9 +175,9 @@ func NewContextWithConfig(cfg *config.Config) Context {
 	return NewContextWithOpts(cfg, nil)
 }
 
-func NewContextWithOpts(cfg *config.Config, options *config.Options) Context {
+func NewContextWithOpts(cfg *config.Config, options *Options) Context {
 	if options == nil {
-		options = config.DefaultOptions
+		options = DefaultOptions
 	}
 
 	result := &contextImpl{
@@ -215,7 +215,7 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 		if _, found := idMap[svc.Id]; !found {
 			deletes = append(deletes, k)
 			if context.options.OnServiceUpdate != nil {
-				context.options.OnServiceUpdate(config.ServiceRemoved, svc)
+				context.options.OnServiceUpdate(ServiceRemoved, svc)
 			}
 			context.deleteServiceSessions(svc.Id)
 		}
@@ -231,11 +231,11 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 		val, exists := context.services.LoadOrStore(s.Name, s)
 		if context.options.OnServiceUpdate != nil {
 			if !exists {
-				context.options.OnServiceUpdate(config.ServiceAdded, val.(*edge.Service))
+				context.options.OnServiceUpdate(ServiceAdded, val.(*edge.Service))
 			} else {
 				if !reflect.DeepEqual(val, s) {
 					context.services.Store(s.Name, s) // replace
-					context.options.OnServiceUpdate(config.ServiceChanged, s)
+					context.options.OnServiceUpdate(ServiceChanged, s)
 				}
 			}
 		}
@@ -421,6 +421,9 @@ func (context *contextImpl) Authenticate() error {
 
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
+		if context.options.OnContextReady != nil {
+			context.options.OnContextReady(context)
+		}
 		go context.runSessionRefresh()
 
 		metricsTags := map[string]string{

@@ -2,7 +2,6 @@ package ziti
 
 import (
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/stretchr/testify/assert"
@@ -12,8 +11,8 @@ import (
 
 func Test_contextImpl_processServiceUpdates(t *testing.T) {
 
-	callbacks := make(map[string]config.ServiceEventType)
-	servUpdate := func(eventType config.ServiceEventType, service *edge.Service) {
+	callbacks := make(map[string]ServiceEventType)
+	servUpdate := func(eventType ServiceEventType, service *edge.Service) {
 		println(eventType, service.Name)
 		callbacks[service.Name] = eventType
 	}
@@ -22,7 +21,7 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 	defer close(closeNotify)
 
 	ctx := &contextImpl{
-		options: &config.Options{
+		options: &Options{
 			OnServiceUpdate: servUpdate,
 		},
 		services:     sync.Map{},
@@ -46,24 +45,24 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		assert.Contains(t, callbacks, s.Name)
 	}
 
-	callbacks = make(map[string]config.ServiceEventType)
+	callbacks = make(map[string]ServiceEventType)
 	ctx.processServiceUpdates(services)
 	assert.Empty(t, callbacks)
 
 	// remove one
 	ctx.processServiceUpdates(services[1:])
 	assert.Equal(t, 1, len(callbacks))
-	assert.Equal(t, config.ServiceRemoved, callbacks[services[0].Name])
+	assert.Equal(t, ServiceRemoved, callbacks[services[0].Name])
 	_, found := ctx.services.Load(services[0].Name)
 	assert.False(t, found)
 
-	callbacks = make(map[string]config.ServiceEventType)
+	callbacks = make(map[string]ServiceEventType)
 
 	// remove the rest
 	ctx.processServiceUpdates(nil)
 	assert.Equal(t, len(services)-1, len(callbacks))
 	for _, v := range callbacks {
-		assert.Equal(t, config.ServiceRemoved, v)
+		assert.Equal(t, ServiceRemoved, v)
 	}
 	ctx.services.Range(func(key, value interface{}) bool {
 		assert.Fail(t, "should be empty")
@@ -80,9 +79,9 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 			Permissions: []string{"Dial"},
 		},
 	}
-	callbacks = make(map[string]config.ServiceEventType)
+	callbacks = make(map[string]ServiceEventType)
 	ctx.processServiceUpdates(updates)
 
 	assert.Equal(t, len(services), len(callbacks))
-	assert.Equal(t, config.ServiceChanged, callbacks[services[0].Name])
+	assert.Equal(t, ServiceChanged, callbacks[services[0].Name])
 }
