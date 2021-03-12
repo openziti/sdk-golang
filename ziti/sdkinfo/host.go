@@ -21,14 +21,24 @@ import (
 	"runtime"
 )
 
+var appId string
+var appVersion string
+
+func SetApplication(theAppId, theAppVersion string) {
+	appId = theAppId
+	appVersion = theAppVersion
+}
+
 func GetSdkInfo() map[string]interface{} {
 
 	result := make(map[string]interface{})
 	result["sdkInfo"] = map[string]interface{}{
-		"type":     "ziti-sdk-golang",
-		"version":  Version,
-		"revision": Revision,
-		"branch":   Branch,
+		"type":       "ziti-sdk-golang",
+		"version":    Version,
+		"revision":   Revision,
+		"branch":     Branch,
+		"appId":      appId,
+		"appVersion": appVersion,
 	}
 
 	envInfo := map[string]interface{}{

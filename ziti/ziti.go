@@ -49,6 +49,10 @@ const (
 	LatencyCheckTimeout  = 10 * time.Second
 )
 
+func SetApplication(theAppId, theAppVersion string) {
+	sdkinfo.SetApplication(theAppId, theAppVersion)
+}
+
 type Context interface {
 	Authenticate() error
 	GetCurrentIdentity() (*edge.CurrentIdentity, error)
