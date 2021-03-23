@@ -69,6 +69,7 @@ type Listener interface {
 	UpdateCost(cost uint16) error
 	UpdatePrecedence(precedence Precedence) error
 	UpdateCostAndPrecedence(cost uint16, precedence Precedence) error
+	SendHealthEvent(pass bool) error
 }
 
 type SessionListener interface {
