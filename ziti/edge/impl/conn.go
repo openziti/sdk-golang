@@ -99,9 +99,12 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 	conn.TraceMsg("Accept", msg)
 	switch conn.connType {
 	case ConnTypeDial:
-		if seq, _ := msg.GetUint32Header(edge.SeqHeader); msg.ContentType == edge.ContentTypeStateClosed && seq == 0 {
-			conn.close(true)
-			return
+		if msg.ContentType == edge.ContentTypeStateClosed {
+			if seq, _ := msg.GetUint32Header(edge.SeqHeader); seq == 0 {
+				conn.close(true)
+				return
+			}
+			conn.sentFIN.Set(true) // if we're not closing until all reads are done, at least prevent more writes
 		}
 
 		if err := conn.readQ.PutSequenced(0, msg); err != nil {
@@ -124,7 +127,7 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 }
 
 func (conn *edgeConn) IsClosed() bool {
-	return conn.Channel.IsClosed()
+	return conn.closed.Get()
 }
 
 func (conn *edgeConn) Network() string {
