@@ -39,6 +39,8 @@ type Cache struct {
 
 	startOnce   sync.Once
 	closeNotify <-chan struct{}
+
+	DomainFunc func() string
 }
 
 func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
@@ -50,6 +52,7 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 			Version: "",
 		},
 		Domain:          "",
+		DomainFunc:      Domain,
 		serviceQueryMap: map[string]map[string]edge.PostureQuery{},
 		activeServices:  cmap.New(),
 		lastSent:        cmap.New(),
@@ -111,7 +114,8 @@ func (cache *Cache) Refresh() {
 
 	cache.MacAddresses = MacAddresses()
 	cache.Os = Os()
-	cache.Domain = Domain()
+
+	cache.Domain = cache.DomainFunc()
 }
 
 func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
@@ -147,6 +151,18 @@ func (cache *Cache) sendResponsesForService(serviceId string) {
 	}
 }
 
+func (cache *Cache) SendPostureData() {
+	cache.Refresh()
+	var serviceIds []string
+	cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
+		serviceIds = append(serviceIds, serviceId)
+	})
+
+	for _, serviceId := range serviceIds {
+		cache.sendResponsesForService(serviceId)
+	}
+}
+
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
 		go func() {
@@ -162,15 +178,7 @@ func (cache *Cache) start() {
 			for {
 				select {
 				case <-ticker.C:
-					cache.Refresh()
-					var serviceIds []string
-					cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
-						serviceIds = append(serviceIds, serviceId)
-					})
-
-					for _, serviceId := range serviceIds {
-						cache.sendResponsesForService(serviceId)
-					}
+					cache.SendPostureData()
 				case <-cache.closeNotify:
 					return
 				}
