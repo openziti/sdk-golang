@@ -117,6 +117,19 @@ func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *
 	return listener.edgeChan.SendWithTimeout(request, 5*time.Second)
 }
 
+func (listener *edgeListener) SendHealthEvent(pass bool) error {
+	logger := pfxlog.Logger().
+		WithField("connId", listener.edgeChan.Id()).
+		WithField("service", listener.edgeChan.serviceId).
+		WithField("session", listener.token).
+		WithField("health.status", pass)
+
+	logger.Debug("sending health event to edge router")
+	request := edge.NewHealthEventMsg(listener.edgeChan.Id(), listener.token, pass)
+	listener.edgeChan.TraceMsg("healthEvent", request)
+	return listener.edgeChan.SendWithTimeout(request, 5*time.Second)
+}
+
 func (listener *edgeListener) Close() error {
 	if !listener.closed.CompareAndSwap(false, true) {
 		// already closed
@@ -272,6 +285,17 @@ func (listener *multiListener) UpdateCostAndPrecedence(cost uint16, precedence e
 		}
 	}
 	return listener.condenseErrors(resultErrors)
+}
+
+func (listener *multiListener) SendHealthEvent(pass bool) error {
+	listener.listenerLock.Lock()
+	defer listener.listenerLock.Unlock()
+
+	// only send to first child, otherwise we get duplicate event reporting
+	for child := range listener.listeners {
+		return child.SendHealthEvent(pass)
+	}
+	return nil
 }
 
 func (listener *multiListener) condenseErrors(errors []error) error {

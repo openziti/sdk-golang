@@ -37,6 +37,7 @@ const (
 	ContentTypeStateSessionEnded = 60792
 	ContentTypeProbe             = 60793
 	ContentTypeUpdateBind        = 60794
+	ContentTypeHealthEvent       = 60795
 
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
@@ -51,6 +52,7 @@ const (
 	FlagsHeader                    = 1010
 	AppDataHeader                  = 1011
 	RouterProvidedConnId           = 1012
+	HealthStatusHeader             = 1013
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
@@ -233,6 +235,12 @@ func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Pre
 	if precedence != nil {
 		msg.Headers[PrecedenceHeader] = []byte{byte(*precedence)}
 	}
+	return msg
+}
+
+func NewHealthEventMsg(connId uint32, token string, pass bool) *channel2.Message {
+	msg := newMsg(ContentTypeHealthEvent, connId, 0, []byte(token))
+	msg.PutBoolHeader(HealthStatusHeader, pass)
 	return msg
 }
 
