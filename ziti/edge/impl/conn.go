@@ -41,6 +41,8 @@ const (
 	ConnTypeBind = 2
 )
 
+var _ edge.Conn = &edgeConn{}
+
 type edgeConn struct {
 	edge.MsgChannel
 	readQ                 sequencer.Sequencer

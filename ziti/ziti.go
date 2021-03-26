@@ -147,6 +147,8 @@ func SetAppInfo(appId, appVersion string) {
 	globalAppVersion = appVersion
 }
 
+var _ Context = &contextImpl{}
+
 type contextImpl struct {
 	options           *Options
 	routerConnections cmap.ConcurrentMap
@@ -164,6 +166,26 @@ type contextImpl struct {
 	closed            concurrenz.AtomicBoolean
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
+}
+
+func (context *contextImpl) Sessions() ([]*edge.Session, error) {
+	var sessions []*edge.Session
+	var err error
+	context.sessions.Range(func(key, value interface{}) bool {
+		s, ok := value.(*edge.Session)
+		if !ok {
+			err = fmt.Errorf("unexpected type: %T", value)
+			return false
+		}
+		sessions = append(sessions, s)
+		return true
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
 }
 
 func (context *contextImpl) OnClose(factory edge.RouterConn) {
@@ -1228,4 +1250,44 @@ type getSessionEvent struct {
 func (event *getSessionEvent) handle(mgr *listenerManager) {
 	defer close(event.doneC)
 	event.session = mgr.session
+}
+
+
+// Used for external integration tests
+var _ Context = &ContextImplTest{}
+
+type ContextImplTest struct {
+	Context
+}
+
+func (self *ContextImplTest) getInternal() (*contextImpl, error){
+	if impl, ok := self.Context.(*contextImpl); ok {
+		return impl, nil
+	}
+
+	return nil, fmt.Errorf("invalid type, got %T", self.Context)
+}
+
+func (self *ContextImplTest) GetApiSession() (*edge.ApiSession, error) {
+	if internal, err := self.getInternal(); err == nil {
+		return internal.ctrlClt.GetCurrentApiSession(), nil
+	} else {
+		return nil, err
+	}
+}
+
+func (self *ContextImplTest) GetSessions() ([]*edge.Session, error) {
+	if internal, err := self.getInternal(); err == nil {
+		return internal.Sessions()
+	} else {
+		return nil, err
+	}
+}
+
+func (self *ContextImplTest) GetPostureCache() (*posture.Cache, error){
+	if internal, err := self.getInternal(); err == nil {
+		return internal.postureCache, nil
+	} else {
+		return nil, err
+	}
 }
