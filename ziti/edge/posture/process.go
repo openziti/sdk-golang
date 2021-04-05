@@ -23,6 +23,8 @@ import (
 	"github.com/mitchellh/go-ps"
 	"github.com/shirou/gopsutil/process"
 	"io/ioutil"
+	"path/filepath"
+	"strings"
 )
 
 type ProcessInfo struct {
@@ -31,11 +33,17 @@ type ProcessInfo struct {
 	SignerFingerprints []string
 }
 
-func Process(expectedPath string) ProcessInfo {
+func Process(providedPath string) ProcessInfo {
+	expectedPath := filepath.Clean(providedPath)
+
 	processes, err := ps.Processes()
 
 	if err != nil {
-		fmt.Printf("error getting Processes: %v\n", err)
+		pfxlog.Logger().Debugf("error getting Processes: %v", err)
+	}
+
+	if len(processes) == 0 {
+		pfxlog.Logger().Warnf("total processes found was zero, this is unexpected")
 	}
 
 	for _, proc := range processes {
@@ -55,7 +63,7 @@ func Process(expectedPath string) ProcessInfo {
 			continue
 		}
 
-		if executablePath == expectedPath {
+		if strings.ToLower(executablePath) == strings.ToLower(expectedPath) {
 			isRunning, _ := procDetails.IsRunning()
 			file, err := ioutil.ReadFile(executablePath)
 
