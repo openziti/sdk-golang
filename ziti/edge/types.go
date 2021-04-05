@@ -26,10 +26,11 @@ import (
 )
 
 type CurrentIdentity struct {
-	Id                       string `json:"id"`
-	Name                     string `json:"name"`
-	DefaultHostingPrecedence string `json:"defaultHostingPrecedence"`
-	DefaultHostingCost       uint16 `json:"defaultHostingCost"`
+	Id                       string                 `json:"id"`
+	Name                     string                 `json:"name"`
+	AppData                  map[string]interface{} `json:"appData"`
+	DefaultHostingPrecedence string                 `json:"defaultHostingPrecedence"`
+	DefaultHostingCost       uint16                 `json:"defaultHostingCost"`
 }
 
 type ApiIdentity struct {
