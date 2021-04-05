@@ -26,11 +26,13 @@ import (
 )
 
 type CurrentIdentity struct {
-	Id                       string                 `json:"id"`
-	Name                     string                 `json:"name"`
-	AppData                  map[string]interface{} `json:"appData"`
-	DefaultHostingPrecedence string                 `json:"defaultHostingPrecedence"`
-	DefaultHostingCost       uint16                 `json:"defaultHostingCost"`
+	Id                        string                 `json:"id"`
+	Name                      string                 `json:"name"`
+	AppData                   map[string]interface{} `json:"appData"`
+	DefaultHostingPrecedence  string                 `json:"defaultHostingPrecedence"`
+	DefaultHostingCost        uint16                 `json:"defaultHostingCost"`
+	ServiceHostingPrecedences map[string]interface{} `json:"serviceHostingPrecedences"`
+	ServiceHostingCosts       map[string]interface{} `json:"serviceHostingCosts"`
 }
 
 type ApiIdentity struct {
