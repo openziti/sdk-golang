@@ -17,6 +17,7 @@
 package impl
 
 import (
+	"github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"sync"
@@ -110,13 +111,15 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 		}
 
 		if err := conn.readQ.PutSequenced(0, msg); err != nil {
-			pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("error pushing edge message to sequencer")
+		} else {
+			logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 		}
 
 	case ConnTypeBind:
 		if msg.ContentType == edge.ContentTypeDial {
-			pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
+			logrus.WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
 			go conn.newChildConnection(msg)
 		}
 
@@ -124,7 +127,7 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 			conn.close(true)
 		}
 	default:
-		pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
+		logrus.WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
 	}
 }
 
@@ -395,10 +398,12 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 				}
 			}
 			if len(d) <= cap(p) {
+				log.Debugf("reading %v bytes", len(d))
 				return copy(p, d), nil
 			}
 			conn.leftover = d[cap(p):]
 			log.Tracef("saving %d bytes for leftover", len(conn.leftover))
+			log.Debugf("reading %v bytes", len(p))
 			return copy(p, d), nil
 
 		default:
