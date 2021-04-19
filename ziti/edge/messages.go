@@ -53,6 +53,7 @@ const (
 	AppDataHeader                  = 1011
 	RouterProvidedConnId           = 1012
 	HealthStatusHeader             = 1013
+	ErrorCodeHeader                = 1014
 
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
