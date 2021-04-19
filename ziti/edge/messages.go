@@ -55,6 +55,18 @@ const (
 	HealthStatusHeader             = 1013
 	ErrorCodeHeader                = 1014
 
+	ErrorCodeInternal                    = 1
+	ErrorCodeInvalidApiSession           = 2
+	ErrorCodeInvalidSession              = 3
+	ErrorCodeWrongSessionType            = 4
+	ErrorCodeInvalidEdgeRouterForSession = 5
+	ErrorCodeInvalidService              = 6
+	ErrorCodeTunnelingNotEnabled         = 7
+	ErrorCodeInvalidTerminator           = 8
+	ErrorCodeInvalidPrecedence           = 9
+	ErrorCodeInvalidCost                 = 10
+	ErrorCodeEncryptionDataMissing       = 11
+
 	PrecedenceDefault  Precedence = 0
 	PrecedenceRequired            = 1
 	PrecedenceFailed              = 2
