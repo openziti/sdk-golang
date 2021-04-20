@@ -45,6 +45,14 @@ func (e NotAccessible) Error() string {
 	return fmt.Sprintf("unable to create apiSession. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
+type Errors struct {
+	Errors []error
+}
+
+func (e Errors) Error() string {
+	return fmt.Sprintf("%v", e.Errors)
+}
+
 type NotFound NotAccessible
 
 func (e NotFound) Error() string {
@@ -253,6 +261,13 @@ func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error
 	}
 
 	if resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode == http.StatusNotFound {
+			return &NotFound{
+				httpCode: resp.StatusCode,
+				msg:      "the bulk posture response endpoint is not supported",
+			}
+		}
+
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("recieved error during bulk posture response submission, could not read body: %v", err)

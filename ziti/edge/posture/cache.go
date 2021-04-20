@@ -55,11 +55,12 @@ type Cache struct {
 	serviceQueryMap map[string]map[string]edge.PostureQuery //map[serviceId]map[queryId]query
 	activeServices  cmap.ConcurrentMap                      // map[serviceId]
 
-	lastSent   cmap.ConcurrentMap //map[type|processQueryid]time.Time
+	lastSent   cmap.ConcurrentMap //map[type|processQueryId]time.Time
 	ctrlClient api.Client
 
-	startOnce   sync.Once
-	closeNotify <-chan struct{}
+	startOnce           sync.Once
+	doSingleSubmissions bool
+	closeNotify         <-chan struct{}
 
 	DomainFunc func() string
 }
@@ -74,14 +75,14 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 		lastSent:         cmap.New(),
 		ctrlClient:       ctrlClient,
 		startOnce:        sync.Once{},
-		closeNotify:     closeNotify,
+		closeNotify:      closeNotify,
 	}
 	cache.start()
 
 	return cache
 }
 
-// Set the current list of processes paths that are being observed
+//Set the current list of processes paths that are being observed
 func (cache *Cache) setWatchedProcesses(processPaths []string) {
 
 	processMap := map[string]struct{}{}
@@ -103,7 +104,7 @@ func (cache *Cache) setWatchedProcesses(processPaths []string) {
 	}
 }
 
-// Refreshes all posture data and determines if new posture responsees should be sent out
+// Evaluate refreshes all posture data and determines if new posture responses should be sent out
 func (cache *Cache) Evaluate() {
 	cache.Refresh()
 	if responses := cache.GetChangedResponses(); len(responses) > 0 {
@@ -113,7 +114,7 @@ func (cache *Cache) Evaluate() {
 	}
 }
 
-// Determines if posture responsess hould be sent out.
+// GetChangedResponses determines if posture responses should be sent out.
 func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 	if !cache.currentData.Evaluated.CompareAndSwap(false, true) {
 		return nil
@@ -226,7 +227,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 	return responses
 }
 
-// Refreshes posture data
+// Refresh refreshes posture data
 func (cache *Cache) Refresh() {
 	cache.previousData = cache.currentData
 
@@ -241,7 +242,7 @@ func (cache *Cache) Refresh() {
 	}
 }
 
-// reuires both slices to be sorted, returns true if slices are exact equal sets
+// requires both slices to be sorted, returns true if slices are exact equal sets
 func sliceStringEq(a, b []string) bool {
 	if (a == nil) != (b == nil) {
 		return false
@@ -260,7 +261,7 @@ func sliceStringEq(a, b []string) bool {
 	return true
 }
 
-// Recieves of a list of serviceId -> queryId -> querys. Used to determine which queries are necessary
+// SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
 // to provide data for on a per service basis.
 func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
 	cache.serviceQueryMap = serviceQueryMap
@@ -286,18 +287,6 @@ func (cache *Cache) RemoveActiveService(serviceId string) {
 	cache.Evaluate()
 }
 
-func (cache *Cache) SendPostureData() {
-	cache.Refresh()
-	var serviceIds []string
-	cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
-		serviceIds = append(serviceIds, serviceId)
-	})
-
-	for _, serviceId := range serviceIds {
-		cache.sendResponsesForService(serviceId)
-	}
-}
-
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -308,14 +297,42 @@ func (cache *Cache) start() {
 				}
 			}()
 
-			for _ = range ticker.C {
-				cache.Evaluate()
+			for {
+				select {
+				case <-ticker.C:
+					cache.Evaluate()
+				case <-cache.closeNotify:
+					return
+				}
 			}
-
 		}()
 	})
 }
 
 func (cache *Cache) SendResponses(responses []*api.PostureResponse) error {
-	return cache.ctrlClient.SendPostureResponseBulk(responses)
+	if cache.doSingleSubmissions {
+		allErrors := api.Errors{}
+		for _, response := range responses {
+			err := cache.ctrlClient.SendPostureResponse(*response)
+
+			if err != nil {
+				allErrors.Errors = append(allErrors.Errors, err)
+			}
+		}
+
+		if len(allErrors.Errors) != 0 {
+			return allErrors
+		}
+
+		return nil
+
+	} else {
+		err := cache.ctrlClient.SendPostureResponseBulk(responses)
+
+		if _, ok := err.(api.NotFound); ok {
+			cache.doSingleSubmissions = true
+			return cache.SendResponses(responses)
+		}
+		return err
+	}
 }
