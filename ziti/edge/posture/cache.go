@@ -19,6 +19,7 @@ package posture
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/openziti/foundation/util/stringz"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	cmap "github.com/orcaman/concurrent-map"
@@ -155,7 +156,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		}
 	}
 
-	if !sliceStringEq(cache.currentData.MacAddresses, cache.previousData.MacAddresses) {
+	if !stringz.EqualSlices(cache.currentData.MacAddresses, cache.previousData.MacAddresses) {
 		if queryId, ok := activeQueryTypes[api.PostureCheckTypeMAC]; ok {
 			macRes := &api.PostureResponse{
 				Id:     queryId,
@@ -207,7 +208,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 				sendResponse = true
 			}
 
-			sendResponse = prevState.IsRunning != curState.IsRunning || prevState.Hash != curState.Hash || !sliceStringEq(prevState.SignerFingerprints, curState.SignerFingerprints)
+			sendResponse = prevState.IsRunning != curState.IsRunning || prevState.Hash != curState.Hash || !stringz.EqualSlices(prevState.SignerFingerprints, curState.SignerFingerprints)
 		}
 
 		if sendResponse {
@@ -240,25 +241,6 @@ func (cache *Cache) Refresh() {
 	for _, processPath := range keys {
 		cache.currentData.Processes.Set(processPath, Process(processPath))
 	}
-}
-
-// requires both slices to be sorted, returns true if slices are exact equal sets
-func sliceStringEq(a, b []string) bool {
-	if (a == nil) != (b == nil) {
-		return false
-	}
-
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
