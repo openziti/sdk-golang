@@ -18,6 +18,8 @@ package posture
 
 import (
 	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/openziti/foundation/util/stringz"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	cmap "github.com/orcaman/concurrent-map"
@@ -25,146 +27,251 @@ import (
 	"time"
 )
 
-type Cache struct {
-	processes       cmap.ConcurrentMap // map[processPath]ProcessInfo
-	MacAddresses    []string
-	Os              OsInfo
-	Domain          string
-	serviceQueryMap map[string]map[string]edge.PostureQuery
-	activeServices  cmap.ConcurrentMap // map[serviceId]
+type CacheData struct {
+	Processes    cmap.ConcurrentMap // map[processPath]ProcessInfo
+	MacAddresses []string
+	Os           OsInfo
+	Domain       string
+	Evaluated    concurrenz.AtomicBoolean //marks whether posture responses for this data have been sent out
+}
 
-	lastSent   cmap.ConcurrentMap //map[type|processQueryid]time.Time
-	timeout    time.Duration
+func NewCacheData() *CacheData {
+	return &CacheData{
+		Processes:    cmap.New(),
+		MacAddresses: []string{},
+		Os: OsInfo{
+			Type:    "",
+			Version: "",
+		},
+		Domain: "",
+	}
+}
+
+type Cache struct {
+	currentData  *CacheData
+	previousData *CacheData
+
+	watchedProcesses cmap.ConcurrentMap //map[processPath]struct{}{}
+
+	serviceQueryMap map[string]map[string]edge.PostureQuery //map[serviceId]map[queryId]query
+	activeServices  cmap.ConcurrentMap                      // map[serviceId]
+
+	lastSent   cmap.ConcurrentMap //map[type|processQueryId]time.Time
 	ctrlClient api.Client
 
-	startOnce   sync.Once
-	closeNotify <-chan struct{}
+	startOnce           sync.Once
+	doSingleSubmissions bool
+	closeNotify         <-chan struct{}
 
 	DomainFunc func() string
 }
 
 func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
-		processes:    cmap.New(),
-		MacAddresses: []string{},
-		Os: OsInfo{
-			Type:    "",
-			Version: "",
-		},
-		Domain:          "",
-		DomainFunc:      Domain,
-		serviceQueryMap: map[string]map[string]edge.PostureQuery{},
-		activeServices:  cmap.New(),
-		lastSent:        cmap.New(),
-		timeout:         20 * time.Second,
-		ctrlClient:      ctrlClient,
-		startOnce:       sync.Once{},
-		closeNotify:     closeNotify,
+		currentData:      NewCacheData(),
+		previousData:     NewCacheData(),
+		watchedProcesses: cmap.New(),
+		serviceQueryMap:  map[string]map[string]edge.PostureQuery{},
+		activeServices:   cmap.New(),
+		lastSent:         cmap.New(),
+		ctrlClient:       ctrlClient,
+		startOnce:        sync.Once{},
+		closeNotify:      closeNotify,
 	}
 	cache.start()
 
 	return cache
 }
 
-func (cache *Cache) setProcesses(processPaths []string) {
+//Set the current list of processes paths that are being observed
+func (cache *Cache) setWatchedProcesses(processPaths []string) {
 
 	processMap := map[string]struct{}{}
 
 	for _, processPath := range processPaths {
 		processMap[processPath] = struct{}{}
+		cache.watchedProcesses.Set(processPath, struct{}{})
 	}
 
 	var processesToRemove []string
-	cache.processes.IterCb(func(processPath string, _ interface{}) {
+	cache.watchedProcesses.IterCb(func(processPath string, _ interface{}) {
 		if _, ok := processMap[processPath]; !ok {
 			processesToRemove = append(processesToRemove, processPath)
 		}
 	})
 
 	for _, processPath := range processesToRemove {
-		cache.processes.Remove(processPath)
-	}
-
-	for processPath := range processMap {
-		cache.processes.Upsert(processPath, nil, func(exist bool, valueInMap interface{}, newValue interface{}) interface{} {
-			if !exist {
-				return Process(processPath)
-			}
-			return valueInMap
-		})
+		cache.watchedProcesses.Remove(processPath)
 	}
 }
 
-func (cache *Cache) ProcessInfo(processPath string) ProcessInfo {
-	if val, found := cache.processes.Get(processPath); found {
-		return val.(ProcessInfo)
-	} else {
-		return ProcessInfo{
-			IsRunning:          false,
-			Hash:               "",
-			SignerFingerprints: nil,
+// Evaluate refreshes all posture data and determines if new posture responses should be sent out
+func (cache *Cache) Evaluate() {
+	cache.Refresh()
+	if responses := cache.GetChangedResponses(); len(responses) > 0 {
+		if err := cache.SendResponses(responses); err != nil {
+			pfxlog.Logger().Error(err)
 		}
 	}
 }
 
-func (cache *Cache) Refresh() {
-	for _, processPath := range cache.processes.Keys() {
-		cache.processes.Set(processPath, Process(processPath))
+// GetChangedResponses determines if posture responses should be sent out.
+func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
+	if !cache.currentData.Evaluated.CompareAndSwap(false, true) {
+		return nil
 	}
 
-	cache.MacAddresses = MacAddresses()
-	cache.Os = Os()
+	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
+	cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
+		queryMap, ok := cache.serviceQueryMap[serviceId]
 
-	cache.Domain = cache.DomainFunc()
+		for queryId, query := range queryMap {
+			if query.QueryType != api.PostureCheckTypeProcess {
+				activeQueryTypes[query.QueryType] = queryId
+			} else {
+				activeQueryTypes[query.Process.Path] = queryId
+			}
+		}
+
+		if !ok {
+			return
+		}
+	})
+
+	if len(activeQueryTypes) == 0 {
+		return nil
+	}
+
+	var responses []*api.PostureResponse
+	if cache.currentData.Domain != cache.previousData.Domain {
+		if queryId, ok := activeQueryTypes[api.PostureCheckTypeDomain]; ok {
+			domainRes := &api.PostureResponse{
+				Id:     queryId,
+				TypeId: api.PostureCheckTypeDomain,
+				PostureSubType: api.PostureResponseDomain{
+					Domain: cache.currentData.Domain,
+				},
+			}
+			responses = append(responses, domainRes)
+		}
+	}
+
+	if !stringz.EqualSlices(cache.currentData.MacAddresses, cache.previousData.MacAddresses) {
+		if queryId, ok := activeQueryTypes[api.PostureCheckTypeMAC]; ok {
+			macRes := &api.PostureResponse{
+				Id:     queryId,
+				TypeId: api.PostureCheckTypeMAC,
+				PostureSubType: api.PostureResponseMac{
+					MacAddresses: cache.currentData.MacAddresses,
+				},
+			}
+			responses = append(responses, macRes)
+		}
+	}
+
+	if cache.previousData.Os.Version != cache.currentData.Os.Version || cache.previousData.Os.Type != cache.previousData.Os.Type {
+		if queryId, ok := activeQueryTypes[api.PostureCheckTypeOs]; ok {
+			osRes := &api.PostureResponse{
+				Id:     queryId,
+				TypeId: api.PostureCheckTypeOs,
+				PostureSubType: api.PostureResponseOs{
+					Type:    cache.currentData.Os.Type,
+					Version: cache.currentData.Os.Version,
+					Build:   "",
+				},
+			}
+			responses = append(responses, osRes)
+		}
+	}
+
+	cache.currentData.Processes.IterCb(func(processPath string, processInfoVal interface{}) {
+		curState, ok := processInfoVal.(ProcessInfo)
+		if !ok {
+			return
+		}
+
+		queryId, isActive := activeQueryTypes[processPath]
+
+		if !isActive {
+			return
+		}
+
+		prevVal, ok := cache.previousData.Processes.Get(processPath)
+
+		sendResponse := false
+		if !ok {
+			//no prev state send
+			sendResponse = true
+		} else {
+			prevState, ok := prevVal.(ProcessInfo)
+			if !ok {
+				sendResponse = true
+			}
+
+			sendResponse = prevState.IsRunning != curState.IsRunning || prevState.Hash != curState.Hash || !stringz.EqualSlices(prevState.SignerFingerprints, curState.SignerFingerprints)
+		}
+
+		if sendResponse {
+			procResp := &api.PostureResponse{
+				Id:     queryId,
+				TypeId: api.PostureCheckTypeProcess,
+				PostureSubType: api.PostureResponseProcess{
+					IsRunning:          curState.IsRunning,
+					Hash:               curState.Hash,
+					SignerFingerprints: curState.SignerFingerprints,
+				},
+			}
+			responses = append(responses, procResp)
+		}
+	})
+
+	return responses
 }
 
+// Refresh refreshes posture data
+func (cache *Cache) Refresh() {
+	cache.previousData = cache.currentData
+
+	cache.currentData = NewCacheData()
+	cache.currentData.Os = Os()
+	cache.currentData.Domain = Domain()
+	cache.currentData.MacAddresses = MacAddresses()
+
+	keys := cache.watchedProcesses.Keys()
+	for _, processPath := range keys {
+		cache.currentData.Processes.Set(processPath, Process(processPath))
+	}
+}
+
+// SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
+// to provide data for on a per service basis.
 func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
 	cache.serviceQueryMap = serviceQueryMap
 
 	var processPaths []string
 	for _, queryMap := range serviceQueryMap {
 		for _, query := range queryMap {
-			if query.QueryType == "PROCESS" && query.Process != nil {
+			if query.QueryType == api.PostureCheckTypeProcess && query.Process != nil {
 				processPaths = append(processPaths, query.Process.Path)
 			}
 		}
 	}
-
-	cache.setProcesses(processPaths)
+	cache.setWatchedProcesses(processPaths)
 }
 
 func (cache *Cache) AddActiveService(serviceId string) {
 	cache.activeServices.Set(serviceId, struct{}{})
-	cache.sendResponsesForService(serviceId)
+	cache.Evaluate()
 }
 
-func (cache *Cache) RemoveService(serviceId string) {
+func (cache *Cache) RemoveActiveService(serviceId string) {
 	cache.activeServices.Remove(serviceId)
-}
-
-func (cache *Cache) sendResponsesForService(serviceId string) {
-	cache.Refresh()
-	if queryMap, ok := cache.serviceQueryMap[serviceId]; ok {
-		for _, query := range queryMap {
-			cache.sendResponse(query)
-		}
-	}
-}
-
-func (cache *Cache) SendPostureData() {
-	cache.Refresh()
-	var serviceIds []string
-	cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
-		serviceIds = append(serviceIds, serviceId)
-	})
-
-	for _, serviceId := range serviceIds {
-		cache.sendResponsesForService(serviceId)
-	}
+	cache.Evaluate()
 }
 
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
+		ticker := time.NewTicker(10 * time.Second)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -172,77 +279,42 @@ func (cache *Cache) start() {
 				}
 			}()
 
-			ticker := time.NewTicker(20 * time.Second)
-			defer ticker.Stop()
-
 			for {
 				select {
 				case <-ticker.C:
-					cache.SendPostureData()
+					cache.Evaluate()
 				case <-cache.closeNotify:
 					return
 				}
 			}
-
 		}()
 	})
 }
 
-func (cache *Cache) sendResponse(query edge.PostureQuery) {
-	key := query.QueryType
+func (cache *Cache) SendResponses(responses []*api.PostureResponse) error {
+	if cache.doSingleSubmissions {
+		allErrors := api.Errors{}
+		for _, response := range responses {
+			err := cache.ctrlClient.SendPostureResponse(*response)
 
-	if query.QueryType == "PROCESS" {
-		key = query.Id
-	}
-
-	if key != "" {
-		mustSend := false
-		if val, found := cache.lastSent.Get(key); !found {
-			mustSend = true
-		} else {
-			lastSent, _ := val.(time.Time)
-			mustSend = lastSent.Add(cache.timeout).After(time.Now())
-		}
-
-		if mustSend {
-			cache.lastSent.Set(key, time.Now())
-			response := api.PostureResponse{
-				Id:     query.Id,
-				TypeId: query.QueryType,
-			}
-
-			switch query.QueryType {
-			case "MAC":
-				response.PostureSubType = api.PostureResponseMac{
-					MacAddresses: cache.MacAddresses,
-				}
-			case "OS":
-				response.PostureSubType = api.PostureResponseOs{
-					Type:    cache.Os.Type,
-					Version: cache.Os.Version,
-				}
-			case "PROCESS":
-				if query.Process != nil {
-					process := cache.ProcessInfo(query.Process.Path)
-
-					postureSubType := api.PostureResponseProcess{
-						IsRunning:          process.IsRunning,
-						Hash:               process.Hash,
-						SignerFingerprints: process.SignerFingerprints,
-					}
-
-					response.PostureSubType = postureSubType
-				}
-
-			case "DOMAIN":
-				response.PostureSubType = api.PostureResponseDomain{
-					Domain: cache.Domain,
-				}
-			}
-
-			if err := cache.ctrlClient.SendPostureResponse(response); err != nil {
-				pfxlog.Logger().Error(err)
+			if err != nil {
+				allErrors.Errors = append(allErrors.Errors, err)
 			}
 		}
+
+		if len(allErrors.Errors) != 0 {
+			return allErrors
+		}
+
+		return nil
+
+	} else {
+		err := cache.ctrlClient.SendPostureResponseBulk(responses)
+
+		if _, ok := err.(api.NotFound); ok {
+			cache.doSingleSubmissions = true
+			return cache.SendResponses(responses)
+		}
+		return err
 	}
 }
