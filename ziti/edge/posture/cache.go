@@ -77,6 +77,7 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 		ctrlClient:       ctrlClient,
 		startOnce:        sync.Once{},
 		closeNotify:      closeNotify,
+		DomainFunc:       Domain,
 	}
 	cache.start()
 
@@ -234,7 +235,8 @@ func (cache *Cache) Refresh() {
 
 	cache.currentData = NewCacheData()
 	cache.currentData.Os = Os()
-	cache.currentData.Domain = Domain()
+
+	cache.currentData.Domain = cache.DomainFunc()
 	cache.currentData.MacAddresses = MacAddresses()
 
 	keys := cache.watchedProcesses.Keys()
