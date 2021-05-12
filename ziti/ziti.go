@@ -547,7 +547,11 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 		}
 		return conn, err
 	}
-	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
+	}
+	return nil, errors.Errorf("unable to dial service '%s'", serviceName)
 }
 
 func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
@@ -1252,7 +1256,6 @@ func (event *getSessionEvent) handle(mgr *listenerManager) {
 	event.session = mgr.session
 }
 
-
 // Used for external integration tests
 var _ Context = &ContextImplTest{}
 
@@ -1260,7 +1263,7 @@ type ContextImplTest struct {
 	Context
 }
 
-func (self *ContextImplTest) getInternal() (*contextImpl, error){
+func (self *ContextImplTest) getInternal() (*contextImpl, error) {
 	if impl, ok := self.Context.(*contextImpl); ok {
 		return impl, nil
 	}
@@ -1284,7 +1287,7 @@ func (self *ContextImplTest) GetSessions() ([]*edge.Session, error) {
 	}
 }
 
-func (self *ContextImplTest) GetPostureCache() (*posture.Cache, error){
+func (self *ContextImplTest) GetPostureCache() (*posture.Cache, error) {
 	if internal, err := self.getInternal(); err == nil {
 		return internal.postureCache, nil
 	} else {
