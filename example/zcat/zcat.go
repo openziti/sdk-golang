@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"io"
 	"os"
+	"time"
 )
 
 func init() {
@@ -34,9 +35,11 @@ func init() {
 
 var verbose bool
 var logFormatter string
+var retry bool
 
 func init() {
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+	root.PersistentFlags().BoolVarP(&retry, "retry", "r", false, "Retry after i/o error")
 	root.PersistentFlags().StringVar(&logFormatter, "log-formatter", "", "Specify log formatter [json|pfxlog|text]")
 }
 
@@ -72,15 +75,28 @@ func main() {
 func runFunc(_ *cobra.Command, args []string) {
 	log := pfxlog.Logger()
 	service := args[0]
-	context := ziti.NewContext()
-	conn, err := context.Dial(service)
-	if err != nil {
-		log.WithError(err).Fatalf("unable to dial service%v", service)
-	}
 
-	pfxlog.Logger().Debug("connected")
-	go Copy(conn, os.Stdin)
-	Copy(os.Stdout, conn)
+	context := ziti.NewContext()
+	for {
+		conn, err := context.Dial(service)
+		if err != nil {
+			if retry {
+				log.WithError(err).Errorf("unable to dial service: '%v'", service)
+				log.Info("retrying in 5 seconds")
+				time.Sleep(5 * time.Second)
+			} else {
+				log.WithError(err).Fatalf("unable to dial service: '%v'", service)
+			}
+		} else {
+			pfxlog.Logger().Info("connected")
+			go Copy(conn, os.Stdin)
+			Copy(os.Stdout, conn)
+			_ = conn.Close()
+			if !retry {
+				return
+			}
+		}
+	}
 }
 
 func Copy(writer io.Writer, reader io.Reader) {
