@@ -752,7 +752,28 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 			}
 			h := context.metrics.Histogram("latency." + ingressUrl)
 			h.Update(int64(connectTime))
-			go metrics.ProbeLatency(ch, h, LatencyCheckInterval, LatencyCheckTimeout)
+
+			latencyProbeConfig := &metrics.LatencyProbeConfig{
+				Channel:  ch,
+				Interval: LatencyCheckInterval,
+				Timeout:  LatencyCheckTimeout,
+				ResultHandler: func(resultNanos int64) {
+					h.Update(resultNanos)
+				},
+				TimeoutHandler: func() {
+					logrus.Errorf("latency timeout after [%s]", LatencyCheckTimeout)
+					if ch.GetTimeSinceLastRead() > LatencyCheckInterval {
+						// No traffic on channel, no response. Close the channel
+						logrus.Error("no read traffic on channel since before latency probe was sent, closing channel")
+						_ = ch.Close()
+					}
+				},
+				ExitHandler: func() {
+					h.Dispose()
+				},
+			}
+
+			go metrics.ProbeLatencyConfigurable(latencyProbeConfig)
 			return newV
 		})
 
