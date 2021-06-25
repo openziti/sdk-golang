@@ -713,7 +713,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	})
 
 	start := time.Now().UnixNano()
-	ch, err := channel2.NewChannel("ziti-sdk", dialer, nil)
+	ch, err := channel2.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, nil)
 	if err != nil {
 		logger.Error(err)
 		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})

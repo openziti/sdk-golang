@@ -17,6 +17,7 @@
 package impl
 
 import (
+	"fmt"
 	"github.com/sirupsen/logrus"
 	"io"
 	"net"
@@ -140,15 +141,15 @@ func (conn *edgeConn) Network() string {
 }
 
 func (conn *edgeConn) String() string {
-	return conn.sourceIdentity
+	return fmt.Sprintf("zitiConn connId=%v svcId=%v sourceIdentity=%v", conn.Id(), conn.serviceId, conn.sourceIdentity)
 }
 
 func (conn *edgeConn) LocalAddr() net.Addr {
-	return &edge.Addr{MsgCh: conn.MsgChannel}
+	return conn
 }
 
 func (conn *edgeConn) RemoteAddr() net.Addr {
-	return conn
+	return &edge.Addr{MsgCh: conn.MsgChannel}
 }
 
 func (conn *edgeConn) SetDeadline(t time.Time) error {
