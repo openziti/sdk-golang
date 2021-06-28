@@ -29,5 +29,5 @@ func (e *Addr) Network() string {
 }
 
 func (e *Addr) String() string {
-	return fmt.Sprintf(":%v", e.MsgCh.Id())
+	return fmt.Sprintf("ziti-edge-router connId=%v, logical=%v", e.MsgCh.Id(), e.MsgCh.LogicalName())
 }
