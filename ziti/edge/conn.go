@@ -171,7 +171,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 func (ec *MsgChannel) SendState(msg *channel2.Message) error {
 	msg.PutUint32Header(SeqHeader, ec.msgIdSeq.Next())
 	ec.TraceMsg("SendState", msg)
-	syncC, err := ec.SendAndSyncWithPriority(msg, channel2.Highest)
+	syncC, err := ec.SendAndSyncWithPriority(msg, channel2.Standard)
 	if err != nil {
 		return err
 	}
