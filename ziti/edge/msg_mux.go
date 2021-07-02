@@ -62,18 +62,20 @@ type CowMapMsgMux struct {
 
 func (mux *CowMapMsgMux) GetNextId() uint32 {
 	nextId := atomic.AddUint32(&mux.nextId, 1)
-	valid := false
 	sinks := mux.getSinks()
-	for !valid {
-		_, found := sinks[nextId]
-		valid = found || nextId <= mux.maxId
-
-		if !valid {
+	for {
+		if _, found := sinks[nextId]; found {
+			// if it's in use, try next one
+			nextId = atomic.AddUint32(&mux.nextId, 1)
+		} else if nextId < mux.minId || nextId >= mux.maxId {
+			// it's not in use, but not in the valid range, so reset to beginning of range
 			atomic.StoreUint32(&mux.nextId, mux.minId)
 			nextId = atomic.AddUint32(&mux.nextId, 1)
+		} else {
+			// If it's not in use, and in the valid range, return it
+			return nextId
 		}
 	}
-	return nextId
 }
 
 func (mux *CowMapMsgMux) ContentType() int32 {
