@@ -16,13 +16,13 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/foundation v0.15.58
+	github.com/openziti/foundation v0.15.59
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
 	github.com/shirou/gopsutil v2.20.9+incompatible
 	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/cobra v1.2.0
+	github.com/spf13/cobra v1.2.1
 	github.com/stretchr/testify v1.7.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007
