@@ -104,10 +104,6 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 	switch conn.connType {
 	case ConnTypeDial:
 		if msg.ContentType == edge.ContentTypeStateClosed {
-			if seq, _ := msg.GetUint32Header(edge.SeqHeader); seq == 0 {
-				conn.close(true)
-				return
-			}
 			conn.sentFIN.Set(true) // if we're not closing until all reads are done, at least prevent more writes
 		}
 
