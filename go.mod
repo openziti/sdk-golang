@@ -11,12 +11,12 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-ole/go-ole v1.2.5 // indirect
-	github.com/google/uuid v1.2.0
-	github.com/michaelquigley/pfxlog v0.3.7
+	github.com/google/uuid v1.3.0
+	github.com/michaelquigley/pfxlog v0.5.1
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/foundation v0.15.60
+	github.com/openziti/foundation v0.15.62
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
