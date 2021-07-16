@@ -221,7 +221,7 @@ func newCallApp(service string) *callApp {
 
 func main() {
 	if os.Getenv("DEBUG") == "true" {
-		pfxlog.Global(logrus.DebugLevel)
+		pfxlog.GlobalInit(logrus.DebugLevel, pfxlog.DefaultOptions())
 		pfxlog.Logger().Debugf("debug enabled")
 	}
 
