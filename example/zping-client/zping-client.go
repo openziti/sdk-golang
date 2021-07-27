@@ -19,14 +19,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math/rand"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
+	"html"
+	"math/rand"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 )
 
 func RandomPingData(n int) string {
@@ -40,10 +42,12 @@ func RandomPingData(n int) string {
 }
 
 func main() {
-
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	var context ziti.Context
 	var service string
 	var identity string
+	var seq string
 	servicePtr := flag.String("s", "ziti-ping", "Name of Service")
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
@@ -83,11 +87,19 @@ func main() {
 	conn, err := context.DialWithOptions(service, dialOptions)
 	//conn, err := context.Dial(service)
 	if err != nil {
+
 		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
 		panic(err)
 	}
 	var count int = 1
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
+	go func(){
+		<-c
+		rec, _ := strconv.Atoi(seq)
+		fmt.Printf("\n--- %+v ping statistics ---", identity)
+		fmt.Printf("\n %+v packets transmitted and %+v packets recieved, %+v%+v packet loss\n\n ", count, rec, 100.00-float32(rec/count*100), html.EscapeString("%"))
+		os.Exit(1)
+	}()
 	for {
 		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
 		pingData := strconv.Itoa(count) + ":" + stringData
@@ -109,11 +121,11 @@ func main() {
 		//fmt.Println(rec)
 		duration := time.Since(start)
         //fmt.Println(recData)
-		seq := strings.Split(recData,":")[0]
+		seq = strings.Split(recData,":")[0]
 		if recData == pingData {
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%+v\n", recBytes, identity,seq, duration)
 		}
-		count++
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
+		count++
 	}
 }
