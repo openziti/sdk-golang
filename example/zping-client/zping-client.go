@@ -19,12 +19,23 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
 )
+
+func RandomPingData(n int) string {
+	var set = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	slice := make([]rune, n)
+	for i := range slice {
+		slice[i] = set[rand.Intn(len(set))]
+	}
+	return string(slice)
+}
 
 func main() {
 
@@ -34,6 +45,7 @@ func main() {
 	servicePtr := flag.String("s", "ziti-ping", "Name of Service")
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
+	lengthPtr := flag.Int("l", 100, "Length of data to send")
 
 	flag.Parse()
 
@@ -74,24 +86,29 @@ func main() {
 
 	func() {
 		for {
+			pingData := RandomPingData(*lengthPtr)
 			start := time.Now()
-			input := []byte("pingdata")
+			input := []byte(pingData)
 			//fmt.Println("sent", len(input))
 			if _, err := conn.Write(input); err != nil {
 				panic(err)
 			}
-			buf := make([]byte, 1024)
+			buf := make([]byte, 1500)
 			n, err := conn.Read(buf)
 			if err != nil {
 				_ = conn.Close()
 				return
 			}
-			//rec := string(buf[:n])
+			recData := string(buf[:n])
+			if recData != pingData {
+				fmt.Println("data-corrupt")
+			}
 			recBytes := len(buf[:n])
 			//fmt.Println(rec)
 			duration := time.Since(start)
-			fmt.Printf("%+v bytes from %+v: time=%+v\n", recBytes, identity, duration)
-
+			if recData == pingData {
+				fmt.Printf("%+v bytes from %+v: time=%+v\n", recBytes, identity, duration)
+			}
 			time.Sleep(time.Duration(2) * time.Second)
 		}
 	}()

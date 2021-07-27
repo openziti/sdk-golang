@@ -30,7 +30,7 @@ import (
 
 func handlePing(conn net.Conn) {
 	for {
-		buf := make([]byte, 1024)
+		buf := make([]byte, 1500)
 		n, err := conn.Read(buf)
 		if err != nil {
 			_ = conn.Close()
