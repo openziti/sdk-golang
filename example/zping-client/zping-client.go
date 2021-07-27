@@ -48,6 +48,7 @@ func main() {
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
 	lengthPtr := flag.Int("l", 100, "Length of data to send")
+	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
 
 	flag.Parse()
 
@@ -112,6 +113,6 @@ func main() {
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%+v\n", recBytes, identity,seq, duration)
 		}
 		count++
-		time.Sleep(time.Duration(2) * time.Second)
+		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
 	}
 }
