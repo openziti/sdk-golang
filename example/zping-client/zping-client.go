@@ -87,6 +87,7 @@ func main() {
 		panic(err)
 	}
 	var count int = 1
+	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
 	for {
 		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
 		pingData := strconv.Itoa(count) + ":" + stringData
