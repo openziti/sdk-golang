@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/openziti/sdk-golang/ziti"
@@ -83,8 +85,11 @@ func main() {
 		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
 		panic(err)
 	}
+	var count int = 1
 	for {
-		pingData := RandomPingData(*lengthPtr)
+		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
+		pingData := strconv.Itoa(count) + ":" + stringData
+		//fmt.Println(pingData)
 		start := time.Now()
 		input := []byte(pingData)
 		//fmt.Println("sent", len(input))
@@ -98,15 +103,15 @@ func main() {
 			return
 		}
 		recData := string(buf[:n])
-		if recData != pingData {
-			fmt.Println("data-corrupt")
-		}
 		recBytes := len(buf[:n])
 		//fmt.Println(rec)
 		duration := time.Since(start)
+        //fmt.Println(recData)
+		seq := strings.Split(recData,":")[0]
 		if recData == pingData {
-			fmt.Printf("%+v bytes from %+v: time=%+v\n", recBytes, identity, duration)
+			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%+v\n", recBytes, identity,seq, duration)
 		}
+		count++
 		time.Sleep(time.Duration(2) * time.Second)
 	}
 }
