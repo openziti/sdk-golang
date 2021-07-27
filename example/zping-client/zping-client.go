@@ -83,33 +83,30 @@ func main() {
 		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
 		panic(err)
 	}
-
-	func() {
-		for {
-			pingData := RandomPingData(*lengthPtr)
-			start := time.Now()
-			input := []byte(pingData)
-			//fmt.Println("sent", len(input))
-			if _, err := conn.Write(input); err != nil {
-				panic(err)
-			}
-			buf := make([]byte, 1500)
-			n, err := conn.Read(buf)
-			if err != nil {
-				_ = conn.Close()
-				return
-			}
-			recData := string(buf[:n])
-			if recData != pingData {
-				fmt.Println("data-corrupt")
-			}
-			recBytes := len(buf[:n])
-			//fmt.Println(rec)
-			duration := time.Since(start)
-			if recData == pingData {
-				fmt.Printf("%+v bytes from %+v: time=%+v\n", recBytes, identity, duration)
-			}
-			time.Sleep(time.Duration(2) * time.Second)
+	for {
+		pingData := RandomPingData(*lengthPtr)
+		start := time.Now()
+		input := []byte(pingData)
+		//fmt.Println("sent", len(input))
+		if _, err := conn.Write(input); err != nil {
+			panic(err)
 		}
-	}()
+		buf := make([]byte, 1500)
+		n, err := conn.Read(buf)
+		if err != nil {
+			_ = conn.Close()
+			return
+		}
+		recData := string(buf[:n])
+		if recData != pingData {
+			fmt.Println("data-corrupt")
+		}
+		recBytes := len(buf[:n])
+		//fmt.Println(rec)
+		duration := time.Since(start)
+		if recData == pingData {
+			fmt.Printf("%+v bytes from %+v: time=%+v\n", recBytes, identity, duration)
+		}
+		time.Sleep(time.Duration(2) * time.Second)
+	}
 }
