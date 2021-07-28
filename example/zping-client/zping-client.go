@@ -147,9 +147,10 @@ func main() {
 		os.Exit(1)
 	}()
 	for {
+		//Generate a random payload of length -l
 		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
 		pingData := strconv.Itoa(count) + ":" + stringData
-		//fmt.Println(pingData)
+		//Get timestamp at ping send
 		start := time.Now()
 		input := []byte(pingData)
 		//fmt.Println("sent", len(input))
@@ -164,11 +165,10 @@ func main() {
 		}
 		recData := string(buf[:n])
 		recBytes := len(buf[:n])
-		//fmt.Println(rec)
+		//get timestamp at receipt of response from hosting identity
 		duration := time.Since(start)
 		ms, _ := strconv.ParseFloat(duration.String()[0:len(duration.String())-2],64)
 		roundtrip = append(roundtrip,ms)
-        //fmt.Println(recData)
 		seq = strings.Split(recData,":")[0]
 		if recData == pingData {
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, identity,seq, ms)

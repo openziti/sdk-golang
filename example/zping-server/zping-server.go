@@ -67,7 +67,7 @@ func main() {
 	logger.Infof("binding service %v\n", service)
 	var listener edge.Listener
 	var err error
-	if len(*configPtr) < 0 {
+	if len(*configPtr) > 0 {
 		file := *configPtr
 		configFile, _ := config.NewFromFile(file)
 		listener, err = ziti.NewContextWithConfig(configFile).ListenWithOptions(service, &options)
