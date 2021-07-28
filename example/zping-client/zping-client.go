@@ -213,11 +213,12 @@ func main() {
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, psession.identity,seq, ms)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
-		psession.psent++
-		if finite && (psession.psent > *countPtr){
+
+		if finite && (psession.psent == *countPtr){
 			psession.finish()
 			break
 		}
+		psession.psent++
 	}
 
 }
