@@ -22,6 +22,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"html"
+	"math"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -41,6 +42,51 @@ func RandomPingData(n int) string {
 	return string(slice)
 }
 
+func getStddev(roundtrip []float64, avg float64)(float64){
+	var sum float64
+	var sqavg float64
+	for index, elem := range roundtrip{
+		sum += math.Pow(elem-avg,2)
+		if index == len(roundtrip)-1{
+			sqavg = sum/float64(len(roundtrip))
+		}
+	}
+    return math.Sqrt(sqavg)
+}
+func getMinMaxAvg(roundtrip []float64)(float64,float64,float64){
+	var sum float64
+	var avg float64
+	var max float64
+	var min float64
+	for index, elem := range roundtrip{
+		sum += elem
+		if index == 0 {
+			min = elem
+			max = elem
+		}
+		if elem < min{
+			min = elem
+		}
+		if elem > max {
+			max = elem
+		}
+		if index == len(roundtrip)-1{
+			avg = sum/float64(len(roundtrip))
+		}
+
+	}
+	return min,max,avg
+}
+
+func finish(roundtrip []float64, count int, seq string,identity string){
+	rec, _ := strconv.Atoi(seq)
+	fmt.Printf("\n--- %+v ping statistics ---", identity)
+	fmt.Printf("\n%+v packets transmitted and %+v packets recieved, %.2f%+v packet loss\n", count, rec, (1.0-(float32(rec)/float32(count)))*100.00, html.EscapeString("%"))
+	min,max,avg := getMinMaxAvg(roundtrip)
+	stddev := getStddev(roundtrip,avg)
+	fmt.Printf("round-trip min/max/avg/stddev %.3f/%.3f/%.3f/%.3f ms\n\n ", min, max,avg,stddev)
+}
+
 func main() {
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -48,11 +94,13 @@ func main() {
 	var service string
 	var identity string
 	var seq string
+	var roundtrip []float64
 	servicePtr := flag.String("s", "ziti-ping", "Name of Service")
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
 	lengthPtr := flag.Int("l", 100, "Length of data to send")
 	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
+
 
 	flag.Parse()
 
@@ -95,9 +143,7 @@ func main() {
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
 	go func(){
 		<-c
-		rec, _ := strconv.Atoi(seq)
-		fmt.Printf("\n--- %+v ping statistics ---", identity)
-		fmt.Printf("\n %+v packets transmitted and %+v packets recieved, %+v%+v packet loss\n\n ", count, rec, 100.00-float32(rec/count*100), html.EscapeString("%"))
+		finish(roundtrip,count,seq,identity)
 		os.Exit(1)
 	}()
 	for {
@@ -120,10 +166,12 @@ func main() {
 		recBytes := len(buf[:n])
 		//fmt.Println(rec)
 		duration := time.Since(start)
+		ms, _ := strconv.ParseFloat(duration.String()[0:len(duration.String())-2],64)
+		roundtrip = append(roundtrip,ms)
         //fmt.Println(recData)
 		seq = strings.Split(recData,":")[0]
 		if recData == pingData {
-			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%+v\n", recBytes, identity,seq, duration)
+			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, identity,seq, ms)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
 		count++
