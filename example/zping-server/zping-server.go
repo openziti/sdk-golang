@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"time"
 
@@ -70,7 +71,10 @@ func main() {
 	if len(*configPtr) > 0 {
 		file := *configPtr
 		configFile, _ := config.NewFromFile(file)
-		listener, err = ziti.NewContextWithConfig(configFile).ListenWithOptions(service, &options)
+		context := ziti.NewContextWithConfig(configFile)
+		identity, _:= context.GetCurrentIdentity()
+		fmt.Printf("\n%+v now serving\n\n",identity.Name)
+		listener, err = context.ListenWithOptions(service, &options)
 	} else {
 		listener, err = ziti.NewContext().ListenWithOptions(service, &options)
 	}
@@ -86,6 +90,7 @@ func main() {
 			panic(err)
 		}
 		logger.Infof("new connection")
+		fmt.Println()
 		go handlePing(conn)
 	}
 }
