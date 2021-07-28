@@ -78,8 +78,8 @@ func getMinMaxAvg(roundtrip []float64)(float64,float64,float64){
 	return min,max,avg
 }
 
-func finish(roundtrip []float64, count int, seq string,identity string){
-	rec, _ := strconv.Atoi(seq)
+func finish(roundtrip []float64, count int, seq int,identity string){
+	rec :=seq
 	fmt.Printf("\n--- %+v ping statistics ---", identity)
 	fmt.Printf("\n%+v packets transmitted and %+v packets recieved, %.2f%+v packet loss\n", count, rec, (1.0-(float32(rec)/float32(count)))*100.00, html.EscapeString("%"))
 	min,max,avg := getMinMaxAvg(roundtrip)
@@ -95,11 +95,14 @@ func main() {
 	var identity string
 	var seq string
 	var roundtrip []float64
+	var finite bool
+	var seq_counter int = 0
 	servicePtr := flag.String("s", "ziti-ping", "Name of Service")
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
 	lengthPtr := flag.Int("l", 100, "Length of data to send")
 	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
+	countPtr := flag.Int("n", 0, "number of pings to send 0 for continuous")
 
 
 	flag.Parse()
@@ -108,6 +111,12 @@ func main() {
 		service = *servicePtr
 	} else {
 		service = "ziti-ping"
+	}
+
+	if *countPtr > 0{
+		finite = true
+	}else{
+		finite = false
 	}
 
 	if len(*configPtr) > 0 {
@@ -143,7 +152,7 @@ func main() {
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
 	go func(){
 		<-c
-		finish(roundtrip,count,seq,identity)
+		finish(roundtrip,count,seq_counter,identity)
 		os.Exit(1)
 	}()
 	for {
@@ -171,9 +180,15 @@ func main() {
 		roundtrip = append(roundtrip,ms)
 		seq = strings.Split(recData,":")[0]
 		if recData == pingData {
+			seq_counter ++
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, identity,seq, ms)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
 		count++
+		if finite && (count > *countPtr){
+			finish(roundtrip,count-1,seq_counter,identity)
+			break
+		}
 	}
+
 }
