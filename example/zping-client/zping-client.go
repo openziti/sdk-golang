@@ -114,7 +114,7 @@ func main() {
 	identityPtr := flag.String("i", "", "Name of remote identity")
 	lengthPtr := flag.Int("l", 100, "Length of data to send")
 	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
-	countPtr := flag.Int("n", 0, "number of pings to send 0 for continuous")
+	countPtr := flag.Int("n", 0, "number of pings to send, default is 0 for continuous")
 
 
 	flag.Parse()
@@ -173,9 +173,8 @@ func main() {
 	conn, err := context.DialWithOptions(service, dialOptions)
 	//conn, err := context.Dial(service)
 	if err != nil {
-
 		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
-		panic(err)
+		os.Exit(1)
 	}
 	var count int = 1
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
