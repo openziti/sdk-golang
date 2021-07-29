@@ -30,8 +30,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"github.com/Jeffail/gabs"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/fullsailor/pkcs7"
+	"github.com/golang-jwt/jwt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/identity/certtools"
 	"github.com/openziti/foundation/identity/identity"
@@ -268,10 +268,6 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	}
 
 	return cfg, nil // success
-}
-
-func fetchServerCaCerts() {
-
 }
 
 func generateECKey() (crypto.PrivateKey, error) {

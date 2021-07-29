@@ -8,9 +8,9 @@ require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.1
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-ole/go-ole v1.2.5 // indirect
+	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/google/uuid v1.3.0
 	github.com/michaelquigley/pfxlog v0.5.1
 	github.com/mitchellh/go-ps v1.0.0
