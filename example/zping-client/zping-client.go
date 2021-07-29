@@ -153,7 +153,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "-l needs to be integer in range 1-1500\n")
 		os.Exit(2)
 	}
-
+	//create struct to hold ping session data
 	psession := &ping_session{
 		roundtrip: []float64{},
 		psent: 1,
@@ -170,10 +170,11 @@ func main() {
 		ConnectTimeout: 1 * time.Minute,
 		//AppData:        []byte("hi there"),
 	}
+	//dial ziti service with options specified in dialOptions
 	conn, err := context.DialWithOptions(service, dialOptions)
 	//conn, err := context.Dial(service)
 	if err != nil {
-		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
+		fmt.Printf("\nerr: %+v\n\n", err.Error())
 		os.Exit(1)
 	}
 	var count int = 1
@@ -189,12 +190,14 @@ func main() {
 		pingData := strconv.Itoa(psession.psent) + ":" + stringData
 		//Get timestamp at ping send
 		start := time.Now()
+		//send ping message into ziti connection
 		input := []byte(pingData)
 		//fmt.Println("sent", len(input))
 		if _, err := conn.Write(input); err != nil {
 			panic(err)
 		}
 		buf := make([]byte, 1500)
+		//read ping response from ziti connection
 		n, err := conn.Read(buf)
 		if err != nil {
 			_ = conn.Close()
