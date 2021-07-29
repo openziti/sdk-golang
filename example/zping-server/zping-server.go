@@ -37,7 +37,7 @@ func handlePing(conn net.Conn) {
 			_ = conn.Close()
 			return
 		}
-		msg := []byte(string(buf[:n]))
+		msg := buf[:n]
 		if _, err := conn.Write(msg); err != nil {
 			pfxlog.Logger().Errorf("failed to write to (%v). closing connection", err)
 			_ = conn.Close()
