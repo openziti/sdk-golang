@@ -160,7 +160,7 @@ func main() {
 	//create struct to hold ping session data
 	psession := &ping_session{
 		roundtrip: []float64{},
-		psent: 0,
+		psent: 1,
 		prec: 0,
 		identity: identity,
 		avgrt: 0.0,
@@ -188,7 +188,7 @@ func main() {
 		psession.finish()
 		os.Exit(1)
 	}()
-	for psession.psent = 0;!(finite && (psession.psent == *countPtr));psession.psent++{
+	for {
 		//Generate a random payload of length -l
 		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
 		pingData := strconv.Itoa(psession.psent) + ":" + stringData
@@ -216,10 +216,14 @@ func main() {
 		seq = strings.Split(recData,":")[0]
 		if recData == pingData {
 			//increments valid responses received
-			psession.prec ++
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, psession.identity,seq, ms)
+			psession.prec,_= strconv.Atoi(seq)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
+		if finite && (psession.psent == *countPtr){
+			psession.finish()
+			break
+		}
+		psession.psent++
 	}
-	psession.finish()
 }
