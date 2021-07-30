@@ -137,7 +137,11 @@ func main() {
 		//file := os.Args[1]
 		file := *configPtr
 		//fmt.Println(file)
-		configFile, _ := config.NewFromFile(file)
+		configFile, err := config.NewFromFile(file)
+		if err != nil {
+			fmt.Printf("Problem loading configfile: %+v\n", err)
+			panic(err)
+		}
 		//fmt.Println(configFile)
 		context = ziti.NewContextWithConfig(configFile)
 	} else {
@@ -156,7 +160,7 @@ func main() {
 	//create struct to hold ping session data
 	psession := &ping_session{
 		roundtrip: []float64{},
-		psent: 1,
+		psent: 0,
 		prec: 0,
 		identity: identity,
 		avgrt: 0.0,
@@ -184,7 +188,7 @@ func main() {
 		psession.finish()
 		os.Exit(1)
 	}()
-	for {
+	for psession.psent = 0;!(finite && (psession.psent == *countPtr));psession.psent++{
 		//Generate a random payload of length -l
 		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
 		pingData := strconv.Itoa(psession.psent) + ":" + stringData
@@ -216,12 +220,6 @@ func main() {
 			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, psession.identity,seq, ms)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
-
-		if finite && (psession.psent == *countPtr){
-			psession.finish()
-			break
-		}
-		psession.psent++
 	}
-
+	psession.finish()
 }

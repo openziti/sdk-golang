@@ -70,7 +70,11 @@ func main() {
 	var err error
 	if len(*configPtr) > 0 {
 		file := *configPtr
-		configFile, _ := config.NewFromFile(file)
+		configFile, err := config.NewFromFile(file)
+		if err != nil {
+			logger.Errorf("Problem loading configfile: %+v\n", err)
+			panic(err)
+		}
 		context := ziti.NewContextWithConfig(configFile)
 		identity, _:= context.GetCurrentIdentity()
 		fmt.Printf("\n%+v now serving\n\n",identity.Name)
