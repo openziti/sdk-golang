@@ -23,7 +23,7 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
