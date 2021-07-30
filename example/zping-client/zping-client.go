@@ -32,15 +32,15 @@ import (
 	"time"
 )
 
-type ping_session struct{
+type ping_session struct {
 	roundtrip []float64
-	psent int
-	prec int
-	identity string
-	avgrt float64
-	maxrt float64
-	minrt float64
-	stddv float64
+	psent     int
+	prec      int
+	identity  string
+	avgrt     float64
+	maxrt     float64
+	minrt     float64
+	stddv     float64
 }
 
 func RandomPingData(n int) string {
@@ -53,36 +53,36 @@ func RandomPingData(n int) string {
 	return string(slice)
 }
 
-func (psession *ping_session)getStddev(){
+func (psession *ping_session) getStddev() {
 	var sum float64
 	var sqavg float64
-	for index, elem := range psession.roundtrip{
-		sum += math.Pow(elem-psession.avgrt,2)
-		if index == len(psession.roundtrip)-1{
-			sqavg = sum/float64(len(psession.roundtrip))
+	for index, elem := range psession.roundtrip {
+		sum += math.Pow(elem-psession.avgrt, 2)
+		if index == len(psession.roundtrip)-1 {
+			sqavg = sum / float64(len(psession.roundtrip))
 		}
 	}
-    psession.stddv = math.Sqrt(sqavg)
+	psession.stddv = math.Sqrt(sqavg)
 }
-func (psession *ping_session)getMinMaxAvg(){
+func (psession *ping_session) getMinMaxAvg() {
 	var sum float64
 	var avg float64
 	var max float64
 	var min float64
-	for index, elem := range psession.roundtrip{
+	for index, elem := range psession.roundtrip {
 		sum += elem
 		if index == 0 {
 			min = elem
 			max = elem
 		}
-		if elem < min{
+		if elem < min {
 			min = elem
 		}
 		if elem > max {
 			max = elem
 		}
-		if index == len(psession.roundtrip)-1{
-			avg = sum/float64(len(psession.roundtrip))
+		if index == len(psession.roundtrip)-1 {
+			avg = sum / float64(len(psession.roundtrip))
 		}
 
 	}
@@ -91,12 +91,12 @@ func (psession *ping_session)getMinMaxAvg(){
 	psession.minrt = min
 }
 
-func (psession *ping_session)finish(){
+func (psession *ping_session) finish() {
 	fmt.Printf("\n--- %+v ping statistics ---", psession.identity)
 	fmt.Printf("\n%+v packets transmitted and %+v packets recieved, %.2f%+v packet loss\n", psession.psent, psession.prec, (1.0-(float32(psession.prec)/float32(psession.psent)))*100.00, html.EscapeString("%"))
 	psession.getMinMaxAvg()
 	psession.getStddev()
-	fmt.Printf("round-trip min/max/avg/stddev %.3f/%.3f/%.3f/%.3f ms\n\n ", psession.minrt, psession.maxrt,psession.avgrt,psession.stddv)
+	fmt.Printf("round-trip min/max/avg/stddev %.3f/%.3f/%.3f/%.3f ms\n\n ", psession.minrt, psession.maxrt, psession.avgrt, psession.stddv)
 }
 
 func main() {
@@ -108,7 +108,6 @@ func main() {
 	var seq string
 	var finite bool
 
-
 	servicePtr := flag.String("s", "ziti-ping", "Name of Service")
 	configPtr := flag.String("c", "device.json", "Name of config file")
 	identityPtr := flag.String("i", "", "Name of remote identity")
@@ -116,10 +115,7 @@ func main() {
 	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
 	countPtr := flag.Int("n", 0, "number of pings to send, default is 0 for continuous")
 
-
 	flag.Parse()
-
-
 
 	if len(*servicePtr) > 0 {
 		service = *servicePtr
@@ -127,9 +123,9 @@ func main() {
 		service = "ziti-ping"
 	}
 
-	if *countPtr > 0{
+	if *countPtr > 0 {
 		finite = true
-	}else{
+	} else {
 		finite = false
 	}
 
@@ -160,13 +156,13 @@ func main() {
 	//create struct to hold ping session data
 	psession := &ping_session{
 		roundtrip: []float64{},
-		psent: 1,
-		prec: 0,
-		identity: identity,
-		avgrt: 0.0,
-		maxrt: 0.0,
-		minrt: 0.0,
-		stddv: 0.0,
+		psent:     1,
+		prec:      0,
+		identity:  identity,
+		avgrt:     0.0,
+		maxrt:     0.0,
+		minrt:     0.0,
+		stddv:     0.0,
 	}
 
 	dialOptions := &ziti.DialOptions{
@@ -182,15 +178,15 @@ func main() {
 		os.Exit(1)
 	}
 	var count int = 1
-	fmt.Printf("\nSending %+v byte pings to %+v:\n\n",*lengthPtr,identity)
-	go func(){
+	fmt.Printf("\nSending %+v byte pings to %+v:\n\n", *lengthPtr, identity)
+	go func() {
 		<-c
 		psession.finish()
 		os.Exit(1)
 	}()
 	for {
 		//Generate a random payload of length -l
-		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count))+1))
+		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count)) + 1))
 		pingData := strconv.Itoa(psession.psent) + ":" + stringData
 		//Get timestamp at ping send
 		start := time.Now()
@@ -211,16 +207,16 @@ func main() {
 		recBytes := len(buf[:n])
 		//get timestamp at receipt of response from hosting identity
 		duration := time.Since(start)
-		ms, _ := strconv.ParseFloat(duration.String()[0:len(duration.String())-2],64)
-		psession.roundtrip = append(psession.roundtrip,ms)
-		seq = strings.Split(recData,":")[0]
+		ms, _ := strconv.ParseFloat(duration.String()[0:len(duration.String())-2], 64)
+		psession.roundtrip = append(psession.roundtrip, ms)
+		seq = strings.Split(recData, ":")[0]
 		if recData == pingData {
 			//increments valid responses received
-			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, psession.identity,seq, ms)
-			psession.prec,_= strconv.Atoi(seq)
+			fmt.Printf("%+v bytes from %+v: ziti_seq=%+v time=%.3fms\n", recBytes, psession.identity, seq, ms)
+			psession.prec, _ = strconv.Atoi(seq)
 		}
 		time.Sleep(time.Duration(*timeoutPtr) * time.Second)
-		if finite && (psession.psent == *countPtr){
+		if finite && (psession.psent == *countPtr) {
 			psession.finish()
 			break
 		}

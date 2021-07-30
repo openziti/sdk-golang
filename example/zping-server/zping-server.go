@@ -76,8 +76,8 @@ func main() {
 			panic(err)
 		}
 		context := ziti.NewContextWithConfig(configFile)
-		identity, _:= context.GetCurrentIdentity()
-		fmt.Printf("\n%+v now serving\n\n",identity.Name)
+		identity, _ := context.GetCurrentIdentity()
+		fmt.Printf("\n%+v now serving\n\n", identity.Name)
 		listener, err = context.ListenWithOptions(service, &options)
 	} else {
 		listener, err = ziti.NewContext().ListenWithOptions(service, &options)
