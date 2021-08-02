@@ -15,10 +15,10 @@ var rootCmd = &cobra.Command{Use: "app"}
 
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{
-		ForceColors:               true,
-		DisableTimestamp:          true,
-		TimestampFormat:           "",
-		PadLevelText:              true,
+		ForceColors:      true,
+		DisableTimestamp: true,
+		TimestampFormat:  "",
+		PadLevelText:     true,
 	})
 	logrus.SetReportCaller(false)
 

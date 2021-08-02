@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func Server(zitiCfg *config.Config, serviceName string){
+func Server(zitiCfg *config.Config, serviceName string) {
 	listener, err := ziti.NewContextWithConfig(zitiCfg).Listen(serviceName)
 	if err != nil {
 		log.Panic(err)
@@ -26,14 +26,14 @@ func Server(zitiCfg *config.Config, serviceName string){
 
 func serve(listener net.Listener) {
 	log.Infof("ready to accept connections")
-	for{
-		conn, _ :=listener.Accept()
+	for {
+		conn, _ := listener.Accept()
 		log.Infof("new connection accepted")
 		go accept(conn)
 	}
 }
 
-func accept(conn net.Conn){
+func accept(conn net.Conn) {
 	if conn == nil {
 		panic("connection is nil!")
 	}
