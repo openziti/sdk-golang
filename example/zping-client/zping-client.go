@@ -177,6 +177,7 @@ func main() {
 		fmt.Printf("\nerr: %+v\n\n", err.Error())
 		os.Exit(1)
 	}
+	var count int = 1
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n", *lengthPtr, identity)
 	go func() {
 		<-c
@@ -185,7 +186,7 @@ func main() {
 	}()
 	for {
 		//Generate a random payload of length -l
-		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(psession.psent)) + 1))
+		stringData := RandomPingData(*lengthPtr - (len(strconv.Itoa(count)) + 1))
 		pingData := strconv.Itoa(psession.psent) + ":" + stringData
 		//Get timestamp at ping send
 		start := time.Now()
