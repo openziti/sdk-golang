@@ -79,12 +79,16 @@ func main() {
 		identity, _ := context.GetCurrentIdentity()
 		fmt.Printf("\n%+v now serving\n\n", identity.Name)
 		listener, err = context.ListenWithOptions(service, &options)
+		if err != nil {
+			logrus.Errorf("Error binding service %+v", err)
+			panic(err)
+		}
 	} else {
 		listener, err = ziti.NewContext().ListenWithOptions(service, &options)
-	}
-	if err != nil {
-		logrus.Errorf("Error binding service %+v", err)
-		panic(err)
+		if err != nil {
+			logrus.Errorf("Error binding service %+v", err)
+			panic(err)
+		}
 	}
 
 	for {
