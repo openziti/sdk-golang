@@ -1,0 +1,14 @@
+# docker-compose build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) reflect-server
+# IDENTITY_FILE=MyReflectSrv1.json SERVICE_NAME="My Reflect Server" docker-compose up reflect-server
+version: "3.3"
+services:
+    reflect-server:
+#        image: netfoundry/reflect-server
+        build:
+          context: .
+        restart: unless-stopped
+        volumes:
+        - .:/identity
+        environment:
+        - IDENTITY_FILE # JSON file in same dir as this Compose file
+        - SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
