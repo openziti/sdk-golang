@@ -10,7 +10,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-ole/go-ole v1.2.5 // indirect
-	github.com/golang-jwt/jwt v3.2.1+incompatible
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.3.0
 	github.com/michaelquigley/pfxlog v0.6.0
 	github.com/mitchellh/go-ps v1.0.0
