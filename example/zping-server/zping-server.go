@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
@@ -73,22 +72,19 @@ func main() {
 		file := *configPtr
 		configFile, err := config.NewFromFile(file)
 		if err != nil {
-			logrus.Errorf("Problem loading configfile: %+v\n", err)
-			os.Exit(0)
+			panic(err)
 		}
 		context := ziti.NewContextWithConfig(configFile)
 		identity, _ := context.GetCurrentIdentity()
 		fmt.Printf("\n%+v now serving\n\n", identity.Name)
 		listener, err = context.ListenWithOptions(service, &options)
 		if err != nil {
-			logrus.Errorf("Error binding service %+v", err)
-			os.Exit(1)
+			panic(err)
 		}
 	} else {
 		listener, err = ziti.NewContext().ListenWithOptions(service, &options)
 		if err != nil {
-			logrus.Errorf("Error binding service %+v", err)
-			os.Exit(1)
+			panic(err)
 		}
 	}
 
