@@ -39,7 +39,7 @@ func handlePing(conn net.Conn) {
 		}
 		msg := buf[:n]
 		if _, err := conn.Write(msg); err != nil {
-			logrus.Errorf("failed to write to (%v). closing connection", err)
+			logrus.WithError(err).Error("Problem writing to connection, closing connection")
 			_ = conn.Close()
 		}
 	}
@@ -91,7 +91,7 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			logrus.Errorf("server error, exiting: %+v\n", err)
+			logrus.WithError(err).Error("Problem accepting connection")
 		}
 		logger.Infof("new connection")
 		fmt.Println()
