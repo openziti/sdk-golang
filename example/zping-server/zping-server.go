@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
@@ -39,7 +40,7 @@ func handlePing(conn net.Conn) {
 		}
 		msg := buf[:n]
 		if _, err := conn.Write(msg); err != nil {
-			pfxlog.Logger().Errorf("failed to write to (%v). closing connection", err)
+			logrus.WithError(err).Error("failed to write. closing connection")
 			_ = conn.Close()
 		}
 	}
@@ -72,26 +73,29 @@ func main() {
 		file := *configPtr
 		configFile, err := config.NewFromFile(file)
 		if err != nil {
-			logger.Errorf("Problem loading configfile: %+v\n", err)
-			panic(err)
+			logrus.WithError(err).Error("Error loading config file")
+			os.Exit(1)
 		}
 		context := ziti.NewContextWithConfig(configFile)
 		identity, _ := context.GetCurrentIdentity()
 		fmt.Printf("\n%+v now serving\n\n", identity.Name)
 		listener, err = context.ListenWithOptions(service, &options)
+		if err != nil {
+			logrus.WithError(err).Error("Error Binding Service")
+			os.Exit(1)
+		}
 	} else {
 		listener, err = ziti.NewContext().ListenWithOptions(service, &options)
-	}
-	if err != nil {
-		logrus.Errorf("Error binding service %+v", err)
-		panic(err)
+		if err != nil {
+			logrus.WithError(err).Error("Error Binding Service")
+			os.Exit(1)
+		}
 	}
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			logger.Errorf("server error, exiting: %+v\n", err)
-			panic(err)
+			logrus.WithError(err).Error("Problem accepting connection")
 		}
 		logger.Infof("new connection")
 		fmt.Println()
