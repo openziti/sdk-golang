@@ -15,4 +15,4 @@ USER $APP_USER
 WORKDIR $APP_HOME
 VOLUME /identity
 EXPOSE 8010
-CMD reflect server --verbose --identity=/identity/${IDENTITY_FILE} --serviceName="${SERVICE_NAME}"
+CMD ls -lAh /identity; reflect server --verbose --identity=/identity/${IDENTITY_FILE} --serviceName="${SERVICE_NAME}"
