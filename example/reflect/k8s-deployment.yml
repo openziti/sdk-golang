@@ -15,15 +15,15 @@ spec:
         app: reflect-server
     spec:
       containers:
-      - image: netfoundry/reflect-server:root
+      - image: netfoundry/reflect-server:latest
         name: reflect-server
         env:
         - name: IDENTITY_FILE # JSON file in same dir as this Compose file
           value: reflect-server.json
         - name: SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
-          value: "Ken Reflect Server"
+          value: "My Reflect Service"
         volumeMounts:
-        - name: ziti-identity-json
+        - name: reflect-server-identity
           mountPath: "/identity"
           readOnly: true
 #        securityContext:
@@ -31,6 +31,10 @@ spec:
 #          runAsGroup: 1000
       restartPolicy: Always
       volumes:
-      - name: ziti-identity-json
-        secret:
-          secretName: reflect-server.json
+      - name: reflect-server-identity
+        secret: # kubectl create secret generic reflect-server-identity --from-file=reflect-server-identity=./reflect-server-identity.json
+          secretName: reflect-server-identity
+          defaultMode: 0400
+          items:
+          - key: reflect-server-identity
+            path: reflect-server.json
