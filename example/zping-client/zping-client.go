@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/sirupsen/logrus"
 	"html"
 	"math"
 	"math/rand"
@@ -130,15 +131,12 @@ func main() {
 	}
 
 	if len(*configPtr) > 0 {
-		//file := os.Args[1]
 		file := *configPtr
-		//fmt.Println(file)
 		configFile, err := config.NewFromFile(file)
 		if err != nil {
-			fmt.Printf("Problem loading configfile: %+v\n", err)
-			panic(err)
+			logrus.WithError(err).Error("Error loading config file")
+			os.Exit(1)
 		}
-		//fmt.Println(configFile)
 		context = ziti.NewContextWithConfig(configFile)
 	} else {
 		context = ziti.NewContext()
@@ -172,9 +170,8 @@ func main() {
 	}
 	//dial ziti service with options specified in dialOptions
 	conn, err := context.DialWithOptions(service, dialOptions)
-	//conn, err := context.Dial(service)
 	if err != nil {
-		fmt.Printf("\nerr: %+v\n\n", err.Error())
+		logrus.WithError(err).Error("Error dialing service")
 		os.Exit(1)
 	}
 	fmt.Printf("\nSending %+v byte pings to %+v:\n\n", *lengthPtr, identity)
@@ -191,7 +188,6 @@ func main() {
 		start := time.Now()
 		//send ping message into ziti connection
 		input := []byte(pingData)
-		//fmt.Println("sent", len(input))
 		if _, err := conn.Write(input); err != nil {
 			panic(err)
 		}
