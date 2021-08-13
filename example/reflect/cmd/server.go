@@ -3,8 +3,8 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/qrkourier/sdk-golang/ziti"
+	"github.com/qrkourier/sdk-golang/ziti/config"
 	"net"
 	"os"
 	"strings"
