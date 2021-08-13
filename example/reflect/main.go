@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/qrkourier/sdk-golang/example/reflect/cmd"
-	"github.com/qrkourier/sdk-golang/ziti/config"
+	"github.com/openziti/sdk-golang/example/reflect/cmd"
+	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

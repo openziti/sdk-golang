@@ -1,4 +1,4 @@
-module github.com/qrkourier/sdk-golang
+module github.com/openziti/sdk-golang
 
 go 1.16
 

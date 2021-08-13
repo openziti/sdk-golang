@@ -1,6 +1,5 @@
 FROM golang
-#RUN go get -u github.com/openziti/sdk-golang/example/reflect
-RUN go get -u github.com/qrkourier/sdk-golang/example/reflect@enhance-reflect-example
+RUN go get -u github.com/openziti/sdk-golang/example/reflect@enhance-reflect-example
 ENV GO111MODULE=on
 ENV GOFLAGS=-mod=vendor
 ENV APP_USER=appuser
