@@ -17,6 +17,7 @@
 package config
 
 import (
+	"github.com/michaelquigley/pfxlog"
 	"encoding/json"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/pkg/errors"
@@ -39,6 +40,7 @@ func New(ztApi string, idConfig identity.IdentityConfig) *Config {
 
 func NewFromFile(confFilePath string) (*Config, error) {
     // inspect config file inode
+	pfxlog.Logger().Debugf("looking for config file (%s)", confFilePath)
 	confFileInfo, err := os.Lstat(confFilePath)
 	if err != nil {
 		return nil, errors.Errorf("config file (%s) is not found ", confFilePath)
@@ -48,8 +50,10 @@ func NewFromFile(confFilePath string) (*Config, error) {
 	var confFileResolved string
 	if confFileInfo.Mode() & os.ModeSymlink != 0 {
 		confFileResolved, err = os.Readlink(confFileInfo.Name())
+		pfxlog.Logger().Debugf("config file (%s) is a symlink to %s", confFilePath, confFileResolved)
 	} else {
 		confFileResolved = confFileInfo.Name()
+		pfxlog.Logger().Debugf("config file (%s) is a file", confFileResolved)
 	}
 
 	// read the JSON from resolved file path
