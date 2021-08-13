@@ -15,5 +15,4 @@ RUN chmod -R 0777 ${APP_HOME}
 VOLUME ${APP_HOME}
 WORKDIR ${APP_DIR}
 USER ${APP_USER}
-EXPOSE 8010
-CMD ls -lAh ${APP_DIR}/; ./reflect server --verbose --identity=${APP_DIR}/${ZITI_SDK_CONFIG} --serviceName="${SERVICE_NAME}"
+CMD ls -lAh ${APP_DIR}/; reflect server --verbose --identity=${APP_DIR}/${ZITI_SDK_CONFIG} --serviceName="${SERVICE_NAME}"
