@@ -8,7 +8,7 @@ services:
           context: .
         restart: unless-stopped
         volumes:
-        - .:/identity
+        - .:/app
         environment:
         - IDENTITY_FILE # JSON file in same dir as this Compose file
         - SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
