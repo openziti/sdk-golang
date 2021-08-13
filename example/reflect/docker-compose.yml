@@ -10,5 +10,5 @@ services:
         volumes:
         - .:/app
         environment:
-        - IDENTITY_FILE # JSON file in same dir as this Compose file
+        - ZITI_SDK_CONFIG # JSON file in same dir as this Compose file
         - SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
