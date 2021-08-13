@@ -1,5 +1,4 @@
 FROM golang
-RUN go get -u github.com/qrkourier/sdk-golang/example/reflect@enhance-reflect-example
 ENV GO111MODULE=on
 ENV GOFLAGS=-mod=vendor
 ENV APP_USER=appuser
@@ -11,7 +10,10 @@ RUN groupadd --gid ${GROUP_ID} ${APP_GROUP} && useradd -m -l --uid ${USER_ID} --
 RUN mkdir ${APP_HOME}
 RUN chown -R ${APP_USER}:${APP_GROUP} ${APP_HOME}
 RUN chmod -R 0777 ${APP_HOME}
+RUN go get -u github.com/openziti/sdk-golang/example/reflect@main
+COPY ./docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
 VOLUME ${APP_HOME}
-WORKDIR ${APP_DIR}
+WORKDIR ${APP_HOME}
 USER ${APP_USER}
-CMD ls -lAh ${APP_DIR}/; reflect server --verbose --identity=${APP_DIR}/${ZITI_SDK_CONFIG} --serviceName="${SERVICE_NAME}"
+ENTRYPOINT [ "/docker-entrypoint.sh" ]
