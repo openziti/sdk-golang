@@ -21,6 +21,7 @@ import (
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/pkg/errors"
 	"io/ioutil"
+	"os"
 )
 
 type Config struct {
@@ -36,16 +37,32 @@ func New(ztApi string, idConfig identity.IdentityConfig) *Config {
 	}
 }
 
-func NewFromFile(confFile string) (*Config, error) {
-	conf, err := ioutil.ReadFile(confFile)
+func NewFromFile(confFilePath string) (*Config, error) {
+    // inspect config file inode
+	confFileInfo, err := os.Lstat(confFilePath)
 	if err != nil {
-		return nil, errors.Errorf("config file (%s) is not found ", confFile)
+		return nil, errors.Errorf("config file (%s) is not found ", confFilePath)
 	}
 
-	c := Config{}
-	err = json.Unmarshal(conf, &c)
+	// if symlink then store resolved path
+	var confFileResolved string
+	if confFileInfo.Mode() & os.ModeSymlink != 0 {
+		confFileResolved, err = os.Readlink(confFileInfo.Name())
+	} else {
+		confFileResolved = confFileInfo.Name()
+	}
+
+	// read the JSON from resolved file path
+	confJson, err := ioutil.ReadFile(confFileResolved)
 	if err != nil {
-		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
+		return nil, errors.Errorf("config file (%s) is not found ", confFileResolved)
+	}
+
+	// load JSON object
+	c := Config{}
+	err = json.Unmarshal(confJson, &c)
+	if err != nil {
+		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFileResolved, err)
 	}
 
 	return &c, nil
