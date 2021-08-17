@@ -181,7 +181,7 @@ func main() {
 		fmt.Println("here")
 		logger := pfxlog.Logger()
 		options := ziti.ListenOptions{
-			ConnectTimeout:        5 * time.Second,
+			ConnectTimeout:        10 * time.Second,
 			MaxConnections:        3,
 			BindUsingEdgeIdentity: true,
 		}
@@ -216,10 +216,9 @@ func main() {
 
 		for {
 			conn, err := listener.Accept()
-			fmt.Println("************************************************")
 			if err != nil {
-				logrus.WithError(err).Error("Problem accepting connection")
-				os.Exit(1)
+				logrus.WithError(err).Error("Problem accepting connection, sleeping for 5 Seconds")
+				time.Sleep(time.Duration(5) * time.Second)
 			}
 			fmt.Println(err)
 			logger.Infof("new connection")
