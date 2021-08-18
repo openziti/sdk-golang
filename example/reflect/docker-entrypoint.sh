@@ -2,18 +2,26 @@
 
 set -x -e -u -o pipefail
 
-REFLECT_DIR="${APP_HOME}/example/reflect"
-
-if [[ -d "${REFLECT_DIR}" ]]; then
-#    go build -mod=readonly -o "${REFLECT_DIR}" "${REFLECT_DIR}"
-    go build -o "${REFLECT_DIR}" "${REFLECT_DIR}"
-    REFLECT_BIN="${REFLECT_DIR}/reflect"
+# the default behavior of this entrypoint script is to run reflect server that
+# was installed during docker build in /go/bin/reflect. This assumes
+# ${APP_HOME}/${ZITI_SDK_CONFIG} is a Ziti identity config JSON file.  
+#
+# the alternative behavior to build from source is invoked when the source dir
+# is present, and it is assumed that ${REFLECT_SRC_DIR}/${ZITI_SDK_CONFIG} is a
+# Ziti identity config JSON file.  
+REFLECT_SRC_DIR="${APP_HOME}/example/reflect"
+if [[ -d "${REFLECT_SRC_DIR}" ]]; then
+#    go build -mod=readonly -o "${REFLECT_SRC_DIR}" "${REFLECT_SRC_DIR}"
+    go build -o "${REFLECT_SRC_DIR}" "${REFLECT_SRC_DIR}"
+    REFLECT_BIN="${REFLECT_SRC_DIR}/reflect"
+    IDENTITY_FILE="${REFLECT_SRC_DIR}/${ZITI_SDK_CONFIG}"
+    echo "DEBUG: REFLECT_SRC_DIR=${REFLECT_SRC_DIR}"; ls -lAh "${REFLECT_SRC_DIR}"
 else
     REFLECT_BIN=$(which reflect) # installed in Dockerfile
+    IDENTITY_FILE="${APP_HOME}/${ZITI_SDK_CONFIG}"
 fi
 
 echo "DEBUG: CWD=${PWD}"
-echo "DEBUG: ${REFLECT_DIR}"; ls -lA "${REFLECT_DIR}"
 
-#pushd "${REFLECT_DIR}"
-"${REFLECT_BIN}" server --verbose --identity="${REFLECT_DIR}/${ZITI_SDK_CONFIG}" --serviceName="${SERVICE_NAME}"
+pushd "$(dirname "${IDENTITY_FILE}")"
+"${REFLECT_BIN}" server --verbose --identity="$(basename "${IDENTITY_FILE}")" --serviceName="${SERVICE_NAME}"

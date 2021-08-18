@@ -18,17 +18,17 @@ spec:
       - image: netfoundry/reflect-server:latest
         name: reflect-server
         env:
-        - name: IDENTITY_FILE # JSON file in same dir as this Compose file
+        - name: ZITI_SDK_CONFIG
           value: reflect-server.json
         - name: SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
           value: "My Reflect Service"
         volumeMounts:
         - name: reflect-server-identity
-          mountPath: "/identity"
+          mountPath: "/app"
           readOnly: true
-#        securityContext:
-#          runAsUser: 1000
-#          runAsGroup: 1000
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
       restartPolicy: Always
       volumes:
       - name: reflect-server-identity

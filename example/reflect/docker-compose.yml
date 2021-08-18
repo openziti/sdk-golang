@@ -2,13 +2,23 @@
 # ZITI_SDK_CONFIG=MyReflectSrv1.json SERVICE_NAME="My Reflect Server" docker-compose up --build reflect-server
 version: "3.3"
 services:
-    reflect-server:
+    reflect-server-build:
         image: netfoundry/reflect-server:local
         build:
           context: .
         restart: unless-stopped
         volumes:
-        - ../..:/app
+        - ../..:/app     # mount the top-level of the Git working copy so that /app/example/reflect is source dir
+        environment:
+        - ZITI_SDK_CONFIG # JSON file in same dir as this Compose file
+        - SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
+    reflect-server-get:  # run /go/bin/reflect server that was installed by docker build
+        image: netfoundry/reflect-server:local
+        build:
+          context: .
+        restart: unless-stopped
+        volumes:
+        - .:/app          # identity file from PWD is in /app
         environment:
         - ZITI_SDK_CONFIG # JSON file in same dir as this Compose file
         - SERVICE_NAME  # Ziti service name to bind e.g. "ACME Reflect Server"
