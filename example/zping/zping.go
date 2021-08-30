@@ -178,7 +178,6 @@ func main() {
 	}
 
 	if *modePtr == "server" {
-		fmt.Println("here")
 		logger := pfxlog.Logger()
 		options := ziti.ListenOptions{
 			ConnectTimeout:        10 * time.Second,
@@ -187,7 +186,6 @@ func main() {
 		}
 		logger.Infof("binding service %v\n", service)
 		var listener edge.Listener
-		var err error
 		if len(*configPtr) > 0 {
 			file := *configPtr
 			configFile, err := config.NewFromFile(file)
@@ -196,7 +194,11 @@ func main() {
 				os.Exit(1)
 			}
 			context := ziti.NewContextWithConfig(configFile)
-			identity, _ := context.GetCurrentIdentity()
+			identity, err := context.GetCurrentIdentity()
+			if err != nil {
+				logrus.WithError(err).Error("Error resolving local Identity")
+				os.Exit(1)
+			}
 			fmt.Printf("\n%+v now serving\n\n", identity.Name)
 			listener, err = context.ListenWithOptions(service, &options)
 			if err != nil {
@@ -205,7 +207,11 @@ func main() {
 			}
 		} else {
 			context := ziti.NewContext()
-			identity, _ := context.GetCurrentIdentity()
+			identity, err := context.GetCurrentIdentity()
+			if err != nil {
+				logrus.WithError(err).Error("Error resolving local Identity")
+				os.Exit(1)
+			}
 			fmt.Printf("\n%+v now serving\n\n", identity.Name)
 			listener, err = context.ListenWithOptions(service, &options)
 			if err != nil {
@@ -220,7 +226,6 @@ func main() {
 				logrus.WithError(err).Error("Problem accepting connection, sleeping for 5 Seconds")
 				time.Sleep(time.Duration(5) * time.Second)
 			}
-			fmt.Println(err)
 			logger.Infof("new connection")
 			fmt.Println()
 			go handlePing(conn)
