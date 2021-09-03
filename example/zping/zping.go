@@ -17,14 +17,18 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/ziti/enroll"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"html"
+	"io/ioutil"
 	"math"
 	"math/rand"
 	"net"
@@ -35,6 +39,89 @@ import (
 	"syscall"
 	"time"
 )
+
+func processEnrollment(jwtpath, outpath string) error {
+	var keyAlg config.KeyAlgVar = "RSA"
+	var keyPath, certPath, idname, caOverride string
+
+	if strings.TrimSpace(outpath) == "" {
+		out, outErr := outPathFromJwt(jwtpath)
+		if outErr != nil {
+			return fmt.Errorf("could not set the output path: %s", outErr)
+		}
+		outpath = out
+	}
+
+	if jwtpath != "" {
+		if _, err := os.Stat(jwtpath); os.IsNotExist(err) {
+			return fmt.Errorf("the provided jwt file does not exist: %s", jwtpath)
+		}
+	}
+
+	if caOverride != "" {
+		if _, err := os.Stat(caOverride); os.IsNotExist(err) {
+			return fmt.Errorf("the provided ca file does not exist: %s", caOverride)
+		}
+	}
+
+	if strings.TrimSpace(outpath) == strings.TrimSpace(jwtpath) {
+		return fmt.Errorf("the output path must not be the same as the jwt path")
+	}
+
+	tokenStr, _ := ioutil.ReadFile(jwtpath)
+
+	pfxlog.Logger().Debugf("jwt to parse: %s", tokenStr)
+	tkn, _, err := enroll.ParseToken(string(tokenStr))
+
+	if err != nil {
+		return fmt.Errorf("failed to parse JWT: %s", err.Error())
+	}
+
+	flags := enroll.EnrollmentFlags{
+		CertFile:      certPath,
+		KeyFile:       keyPath,
+		KeyAlg:        keyAlg,
+		Token:         tkn,
+		IDName:        idname,
+		AdditionalCAs: caOverride,
+	}
+
+	conf, err := enroll.Enroll(flags)
+	if err != nil {
+		return fmt.Errorf("failed to enroll: %v", err)
+	}
+
+	output, err := os.Create(outpath)
+	if err != nil {
+		return fmt.Errorf("failed to open file '%s': %s", outpath, err.Error())
+	}
+	defer func() { _ = output.Close() }()
+
+	enc := json.NewEncoder(output)
+	enc.SetEscapeHTML(false)
+	encErr := enc.Encode(&conf)
+
+	if encErr == nil {
+		pfxlog.Logger().Infof("enrolled successfully. identity file written to: %s", outpath)
+		return nil
+	} else {
+		return fmt.Errorf("enrollment successful but the identity file was not able to be written to: %s [%s]", outpath, encErr)
+	}
+}
+
+func outPathFromJwt(jwt string) (string, error) {
+	outFlag := "out"
+	if strings.HasSuffix(jwt, ".jwt") {
+		return jwt[:len(jwt)-len(".jwt")] + ".json", nil
+	} else if strings.HasSuffix(jwt, ".json") {
+		//ugh - so that makes things a bit uglier but ok fine. we'll return an error in this situation
+		return "", errors.Errorf("unexpected configuration. cannot infer '%s' flag if the jwt file "+
+			"ends in .json. rename jwt file or provide the '%s' flag", outFlag, outFlag)
+	} else {
+		//doesn't end with .jwt - so just slap a .json on the end and call it a day
+		return jwt + ".json", nil
+	}
+}
 
 type ping_session struct {
 	roundtrip []float64
@@ -132,7 +219,9 @@ func main() {
 	lengthPtr := flag.Int("l", 100, "Length of data to send")
 	timeoutPtr := flag.Int("t", 2, "delay in seconds between ping attempts")
 	countPtr := flag.Int("n", 0, "number of pings to send, default is 0 for continuous")
-	modePtr := flag.String("mode", "client", " 'client'(default) or  'server'")
+	modePtr := flag.String("mode", "client", " 'client','server' or 'enroll")
+	jwtPtr := flag.String("j", "", " 'path of jwt file'")
+	jsonPtr := flag.String("o", "", " '(optional:enroll path/name of output identity file)'")
 
 	flag.Parse()
 
@@ -148,9 +237,23 @@ func main() {
 		finite = false
 	}
 
-	if (*modePtr != "client") && (*modePtr != "server") {
-		fmt.Fprintf(os.Stderr, "-mode must be either client(default) or server\n")
+	if (*modePtr != "client") && (*modePtr != "server") && (*modePtr != "enroll") {
+		fmt.Fprintf(os.Stderr, "-mode must be either client(default), server or enroll\n")
 		os.Exit(2)
+	}
+
+	if *modePtr == "enroll" {
+		if len(*jwtPtr) > 0 {
+			err := processEnrollment(*jwtPtr, *jsonPtr)
+			if err != nil {
+				logrus.WithError(err).Error("Error enrolling")
+				os.Exit(1)
+			}
+			os.Exit(0)
+		} else {
+			fmt.Fprintf(os.Stderr, "If mode is 'enroll' then must specify -j <jwt file path>\n")
+			os.Exit(2)
+		}
 	}
 
 	if *modePtr == "client" {
