@@ -18,11 +18,13 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -204,6 +206,10 @@ func (app *callApp) consoleIO() {
 		fmt.Printf("%v > ", app.identity)
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("\ngoodbye")
+				os.Exit(0)
+			}
 			panic(err)
 		}
 		line = strings.TrimSpace(line)
@@ -243,7 +249,7 @@ func (app *callApp) connectionIO() {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("err (%v)\n ", err)
+			fmt.Printf("err (%v)\n", err)
 			fmt.Printf("%v > ", app.identity)
 			app.eventC <- &disconnectEvent{}
 			return
