@@ -148,6 +148,10 @@ func (conn *edgeConn) RemoteAddr() net.Addr {
 	return &edge.Addr{MsgCh: conn.MsgChannel}
 }
 
+func (conn *edgeConn) SourceIdentifier() string {
+	return conn.sourceIdentity
+}
+
 func (conn *edgeConn) SetDeadline(t time.Time) error {
 	if err := conn.SetReadDeadline(t); err != nil {
 		return err
