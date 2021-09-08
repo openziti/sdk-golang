@@ -83,11 +83,13 @@ type SessionListener interface {
 type CloseWriter interface {
 	CloseWrite() error
 }
+
 type ServiceConn interface {
 	net.Conn
 	CloseWriter
 	IsClosed() bool
 	GetAppData() []byte
+	SourceIdentifier() string
 }
 
 type Conn interface {

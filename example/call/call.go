@@ -18,12 +18,13 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
-	"net"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -32,10 +33,11 @@ import (
 type callApp struct {
 	context     ziti.Context
 	service     string
+	identity    string
 	listener    edge.Listener
 	eventC      chan event
-	pending     net.Conn
-	current     net.Conn
+	pending     edge.Conn
+	current     edge.Conn
 	currentName string
 }
 
@@ -44,7 +46,7 @@ type event interface {
 }
 
 type connectEvent struct {
-	conn net.Conn
+	conn edge.Conn
 }
 
 func (event *connectEvent) handle(app *callApp) {
@@ -53,12 +55,13 @@ func (event *connectEvent) handle(app *callApp) {
 		fmt.Printf("New incoming connection, dropping existing unanswered connection request\n")
 		_ = app.pending.Close()
 	}
-	connInfo := "from " + event.conn.RemoteAddr().String()
+	connInfo := "from " + event.conn.SourceIdentifier()
 	if edgeConn, ok := event.conn.(edge.Conn); ok {
 		appData := edgeConn.GetAppData()
 		connInfo += " with appData '" + string(appData) + "'"
 	}
-	fmt.Printf("Incoming connection %v. Type /accept to accept the connection\n> ", connInfo)
+	fmt.Printf("Incoming connection %v. Type /accept to accept the connection\n", connInfo)
+	fmt.Printf("%v > ", app.identity)
 	app.pending = event.conn
 }
 
@@ -68,7 +71,7 @@ func (app *callApp) waitForCalls() {
 		if err != nil {
 			panic(err)
 		}
-		app.eventC <- &connectEvent{conn: conn}
+		app.eventC <- &connectEvent{conn: conn.(edge.Conn)}
 	}
 }
 
@@ -90,15 +93,15 @@ func (event *userInputEvent) handle(app *callApp) {
 
 		if app.pending != nil {
 			app.current = app.pending
-			app.currentName = app.current.RemoteAddr().String()
+			app.currentName = app.current.SourceIdentifier()
 			if app.currentName == "" {
 				app.currentName = "Anonymous"
 			}
 			go app.connectionIO()
 			app.pending = nil
-			fmt.Printf("call accepted and in progress...\n> ")
+			fmt.Printf("\ncall accepted and in progress...\n%v > ", app.identity)
 		} else {
-			fmt.Printf("no current incoming call, nothing to accept\n> ")
+			fmt.Printf("no current incoming call, nothing to accept\n%v > ", app.identity)
 		}
 		return
 	}
@@ -115,7 +118,7 @@ func (event *userInputEvent) handle(app *callApp) {
 			fmt.Printf("closing open connection before dialing %v...\n", identity)
 			app.disconnectCurrent()
 		}
-		fmt.Printf("calling %v...", identity)
+		fmt.Printf("calling %v...\n", identity)
 		dialOptions := &ziti.DialOptions{
 			Identity:       identity,
 			ConnectTimeout: 1 * time.Minute,
@@ -123,9 +126,11 @@ func (event *userInputEvent) handle(app *callApp) {
 		}
 		conn, err := app.context.DialWithOptions(app.service, dialOptions)
 		if err != nil {
-			fmt.Printf("dial error (%v), unable to connect to %v\n> ", err, identity)
+			fmt.Printf("dial error (%v), unable to connect to %v\n", err, identity)
+			fmt.Printf("%v > ", app.identity)
 		} else {
-			fmt.Printf("connected to %v\n> ", identity)
+			fmt.Printf("connected to %v\n", identity)
+			fmt.Printf("%v > ", app.identity)
 			app.current = conn
 			app.currentName = identity
 			go app.connectionIO()
@@ -135,11 +140,13 @@ func (event *userInputEvent) handle(app *callApp) {
 
 	if app.current != nil {
 		if _, err := app.current.Write([]byte(event.input + "\n")); err != nil {
-			fmt.Printf("write error, closing connection %v\n> ", err)
+			fmt.Printf("write error, closing connection %v\n", err)
+			fmt.Printf("%v > ", app.identity)
 			_ = app.current.Close()
 		}
 	} else {
-		fmt.Printf("not connected, input ignore\n> ")
+		fmt.Printf("not connected, input ignore\n")
+		fmt.Printf("%v > ", app.identity)
 	}
 }
 
@@ -148,7 +155,15 @@ type remoteDataEvent struct {
 }
 
 func (event *remoteDataEvent) handle(app *callApp) {
-	fmt.Printf("\n%v: %v\n> ", app.currentName, event.input)
+	fmt.Printf("\n%v: %v", app.currentName, event.input)
+	fmt.Printf("%v > ", app.identity)
+}
+
+type disconnectEvent struct{}
+
+func (event *disconnectEvent) handle(app *callApp) {
+	app.current = nil
+	app.currentName = ""
 }
 
 func (app *callApp) run() {
@@ -167,6 +182,12 @@ func (app *callApp) run() {
 		panic(err)
 	}
 
+	identity, err := app.context.GetCurrentIdentity()
+	if err != nil {
+		panic(err)
+	}
+	app.identity = identity.Name
+
 	go app.waitForCalls()
 	go app.consoleIO()
 
@@ -176,14 +197,35 @@ func (app *callApp) run() {
 }
 
 func (app *callApp) consoleIO() {
+	// wait briefly to allow connections to be established to edge router(s)
+	// so output doesn't get overlapped. Could use SessionListener API to wait for connections,
+	// but want to keep example code simpler
+	time.Sleep(250 * time.Millisecond)
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("> ")
+		fmt.Printf("%v > ", app.identity)
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("\ngoodbye")
+				os.Exit(0)
+			}
 			panic(err)
 		}
-		app.eventC <- &userInputEvent{input: strings.TrimSpace(line)}
+		line = strings.TrimSpace(line)
+
+		if line == "/list" {
+			l, _, err := app.context.GetServiceTerminators(app.service, 0, 100)
+			if err != nil {
+				fmt.Printf("error listing call identities %v\n", err)
+			} else {
+				for idx, l := range l {
+					fmt.Printf("%v: %v\n", idx+1, l.Identity)
+				}
+			}
+		} else {
+			app.eventC <- &userInputEvent{input: line}
+		}
 	}
 }
 
@@ -194,9 +236,11 @@ func (app *callApp) disconnectCurrent() {
 		}
 		app.current = nil
 		app.currentName = "Anonymous"
-		fmt.Printf("disconnected...\n> ")
+		fmt.Printf("disconnected...\n")
+		fmt.Printf("%v > ", app.identity)
 	} else {
-		fmt.Printf("no active call, nothing to disconnect\n> ")
+		fmt.Printf("no active call, nothing to disconnect\n")
+		fmt.Printf("%v > ", app.identity)
 	}
 }
 
@@ -205,7 +249,9 @@ func (app *callApp) connectionIO() {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("err (%v)\n> ", err)
+			fmt.Printf("err (%v)\n", err)
+			fmt.Printf("%v > ", app.identity)
+			app.eventC <- &disconnectEvent{}
 			return
 		}
 		app.eventC <- &remoteDataEvent{input: line}

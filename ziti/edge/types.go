@@ -92,6 +92,13 @@ type Service struct {
 	Tags           map[string]string                 `json:"tags"`
 }
 
+type Terminator struct {
+	Id        string `json:"id"`
+	ServiceId string `json:"serviceId"`
+	RouterId  string `json:"routerId"`
+	Identity  string `json:"Identity"`
+}
+
 type PostureQueries struct {
 	IsPassing      bool `json:"isPassing"`
 	PostureQueries []PostureQuery

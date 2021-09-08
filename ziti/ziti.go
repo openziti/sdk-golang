@@ -63,7 +63,7 @@ type Context interface {
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
-
+	GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error)
 	GetSession(id string) (*edge.Session, error)
 
 	Metrics() metrics.Registry
@@ -838,6 +838,14 @@ func (context *contextImpl) GetServices() ([]edge.Service, error) {
 
 func (context *contextImpl) getServices() ([]*edge.Service, error) {
 	return context.ctrlClt.GetServices()
+}
+
+func (context *contextImpl) GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error) {
+	service, found := context.GetService(serviceName)
+	if !found {
+		return nil, 0, errors.Errorf("did not find service named %v", serviceName)
+	}
+	return context.ctrlClt.GetServiceTerminators(service, offset, limit)
 }
 
 func (context *contextImpl) GetSession(serviceId string) (*edge.Session, error) {

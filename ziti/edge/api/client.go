@@ -65,6 +65,7 @@ type RestClient interface {
 	Login(info map[string]interface{}) (*edge.ApiSession, error)
 	Refresh() (*time.Time, error)
 	GetServices() ([]*edge.Service, error)
+	GetServiceTerminators(service *edge.Service, offset, limit int) ([]*edge.Terminator, int, error)
 	IsServiceListUpdateAvailable() (bool, error)
 	CreateSession(svcId string, kind edge.SessionType) (*edge.Session, error)
 	RefreshSession(id string) (*edge.Session, error)
@@ -752,6 +753,68 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 
 	c.lastServiceRefresh = c.lastServiceUpdate
 	return services, nil
+}
+
+func (c *ctrlClient) GetServiceTerminators(service *edge.Service, offset, limit int) ([]*edge.Terminator, int, error) {
+	terminatorsUrl, err := url.Parse(fmt.Sprintf("/services/%v/terminators", service.Id))
+	if err != nil {
+		return nil, 0, err
+	}
+	servReq, _ := http.NewRequest("GET", c.zitiUrl.ResolveReference(terminatorsUrl).String(), nil)
+
+	if c.apiSession.Token == "" {
+		return nil, 0, errors.New("apiSession apiSession token is empty")
+	} else {
+		pfxlog.Logger().Debugf("using apiSession apiSession token %v", c.apiSession.Token)
+	}
+	servReq.Header.Set(constants.ZitiSession, c.apiSession.Token)
+
+	var terminators []*edge.Terminator
+	q := servReq.URL.Query()
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("offset", strconv.Itoa(offset))
+	servReq.URL.RawQuery = q.Encode()
+	resp, err := c.clt.Do(servReq)
+
+	if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+		if body, err := ioutil.ReadAll(resp.Body); err != nil {
+			pfxlog.Logger().Debugf("error response: %v", body)
+		}
+		_ = resp.Body.Close()
+		return nil, 0, errors.New("unauthorized")
+	}
+
+	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, 0, err
+	}
+
+	terminator := &[]*edge.Terminator{}
+	meta, err := edge.ApiResponseDecode(terminator, resp.Body)
+
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	if meta == nil {
+		// shouldn't happen
+		return nil, 0, errors.Errorf("nil metadata in response to GET /services/%v/terminators", service.Id)
+	}
+	if meta.Pagination == nil {
+		return nil, 0, errors.Errorf("nil pagination in response to GET /services/%v/terminators", service.Id)
+	}
+
+	if terminators == nil {
+		terminators = make([]*edge.Terminator, 0, meta.Pagination.TotalCount)
+	}
+
+	for _, svc := range *terminator {
+		terminators = append(terminators, svc)
+	}
+
+	return terminators, meta.Pagination.TotalCount, nil
 }
 
 func decodeSession(resp *http.Response) (*edge.Session, error) {
