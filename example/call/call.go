@@ -195,6 +195,9 @@ func (app *callApp) run() {
 }
 
 func (app *callApp) consoleIO() {
+	// wait briefly to allow connections to be established to edge router(s)
+	// so output doesn't get overlapped. Could use SessionListener API to wait for connections,
+	// but want to keep example code simpler
 	time.Sleep(250 * time.Millisecond)
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -206,7 +209,7 @@ func (app *callApp) consoleIO() {
 		line = strings.TrimSpace(line)
 
 		if line == "/list" {
-			l, err := app.context.GetServiceTerminators(app.service)
+			l, _, err := app.context.GetServiceTerminators(app.service, 0, 100)
 			if err != nil {
 				fmt.Printf("error listing call identities %v\n", err)
 			} else {
