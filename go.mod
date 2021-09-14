@@ -17,7 +17,7 @@ require (
 	github.com/influxdata/line-protocol v0.0.0-20210311194329-9aa0e372d097 // indirect
 	github.com/michaelquigley/pfxlog v0.6.1
 	github.com/mitchellh/go-ps v1.0.0
-	github.com/mitchellh/mapstructure v1.4.1
+	github.com/mitchellh/mapstructure v1.4.2
 	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/foundation v0.15.75
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
