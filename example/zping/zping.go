@@ -373,14 +373,19 @@ func main() {
 			//send ping message into ziti connection
 			input := []byte(pingData)
 			if _, err := conn.Write(input); err != nil {
-				panic(err)
+				logrus.WithError(err).Error("Error Writing to Server")
+				_ = conn.Close()
+				psession.finish()
+				os.Exit(1)
 			}
 			buf := make([]byte, 1500)
 			//read ping response from ziti connection
 			n, err := conn.Read(buf)
 			if err != nil {
+				logrus.WithError(err).Error("Error Reading from Server")
 				_ = conn.Close()
-				return
+				psession.finish()
+				os.Exit(1)
 			}
 			recData := string(buf[:n])
 			recBytes := len(buf[:n])
