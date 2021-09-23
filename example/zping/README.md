@@ -39,31 +39,28 @@ Linux:
 
 1. Create or use an existing ziti network with at least one edge router.
 
-1. Create at least two ziti identities and give them a common identity role i.e. #ping 
+2. Create at least two ziti identities and give them a common identity role i.e. #ping 
 
       e.g. zitiendpoint1, zitiendpoint2
 
-1. Create a simple sdk service named “ziti-ping” this is the default service zping looks for but can be          
+3. Create a simple sdk service named “ziti-ping” this is the default service zping looks for but can be          
 
    overriden  with the -s command line flag.
 
-1. Create a bind policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
+4. Create a bind policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
 
-1. Create a dial service policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
+5. Create a dial service policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
 
-1. Ensure that you have created appropriate edge-router and service-edge-router policies allowing the identities access
+6. Ensure that you have created appropriate edge-router and service-edge-router policies allowing the identities access
    edge-router(s) and the edge-routers access to the service.
-   
 
-1. Create an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
+7. reate an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
 
+8. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
 
+9. Distribute the zping binary to the endpoint(s) you wish to run on
 
-1. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
-
-1. Distribute the zping binary to the endpoint(s) you wish to run on
-
-1. Enroll the endpoints with the zping binary i.e. 
+10. Enroll the endpoints with the zping binary i.e. 
 ```
     $ ./zping enroll -j zitiendpoint1.jwt
 
@@ -77,9 +74,8 @@ Linux:
       INFO[0000] generating 4096 bit RSA key                  
 
       INFO[0002] enrolled successfully. identity file written to: zpingendpoint2.json
-```  
-
-1. On each machine in run either in background or a separate window in server mode
+```
+11. On each machine in run either in background or a separate window in server mode
 ```
     $ ./zping server -c zpingendpoint1.json &
       [1] 4123
@@ -98,7 +94,7 @@ Linux:
 
       INFO[0000] connection to edge router using token d472f74c-97af-426a-a07f-7ecd907a2013 
 ```
-1. Send 5 zpings from zpingclient2 to zpingclient1
+12. Send 5 zpings from zpingclient2 to zpingclient1
 ```
       $ ./zping client -c zitiendpoint2.json -i zitiendpoint1 -n 5
         INFO[0000] connection to edge router using token b78cab88-fa22-4d49-906f-ddf101b63b88 
