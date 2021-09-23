@@ -141,13 +141,4 @@ func init() {
 	rootCmd.AddCommand(enrollCmd)
 	enrollCmd.Flags().StringP("jwt", "j", "", "Name/Location of jwt file")
 	enrollCmd.Flags().StringP("out", "o", "", "Optional: Name/Location of output identity file")
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// enrollCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// enrollCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

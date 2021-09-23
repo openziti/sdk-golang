@@ -35,9 +35,6 @@ a ziti network and like icmp ping will provide the following metrics upon comple
 of the ping session: min, max and mean latency and standard deviation as well as % loss.
 zping uses the addressable terminator function of ziti to direct ping requests to
 specific ziti identities.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	//Run: func(cmd *cobra.Command, args []string) {fmt.Println("hello cli") },
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -48,16 +45,6 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
-
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	//rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.zping.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	//rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.
