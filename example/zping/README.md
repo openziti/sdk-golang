@@ -54,7 +54,7 @@ Linux:
 6. Ensure that you have created appropriate edge-router and service-edge-router policies allowing the identities access
    edge-router(s) and the edge-routers access to the service.
 
-7. reate an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
+7. Create an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
 
 8. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
 
