@@ -30,7 +30,7 @@ Linux:
    $ cd sdk-golang/example/zping
 ```
 ```
-   $ go build zping.go
+   $ go build zping
 ```
 
 # Setup the Network and the Ziti Service :
