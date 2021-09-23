@@ -59,7 +59,7 @@ Linux:
 
 
 
-8.Download the zpingendpoint1.jwt, zpingendpoint2.jwt
+8. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
 
 9. Distribute the zping binary to the endpoint(s) you wish to run on
 
