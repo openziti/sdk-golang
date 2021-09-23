@@ -48,7 +48,7 @@ func handlePing(conn net.Conn) {
 // serverCmd represents the server command
 var serverCmd = &cobra.Command{
 	Use:   "server",
-	Short: "zping client command",
+	Short: "zping server command",
 	Long: `This command runs zping in server mode which responds to ziti probe
 	messages which are sent to it's associated ziti identity by zping clients`,
 	Run: func(cmd *cobra.Command, args []string) {
