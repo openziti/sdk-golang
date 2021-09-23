@@ -219,7 +219,7 @@ in server mode`,
 			recData := string(buf[:n])
 			recBytes := len(buf[:n])
 			//get timestamp at receipt of response from hosting identity
-			ms := time.Since(start).Seconds()*1000
+			ms := time.Since(start).Seconds() * 1000
 			psession.roundtrip = append(psession.roundtrip, ms)
 			seq = strings.Split(recData, ":")[0]
 			if recData == pingData {
