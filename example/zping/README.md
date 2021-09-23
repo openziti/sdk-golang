@@ -27,7 +27,7 @@ Linux:
    $ git clone https://github.com/openziti/sdk-golang.git
 ```
 ```
-   $ cd sdk-golang/example
+   $ cd sdk-golang/example/zping
 ```
 ```
    $ go build zping.go
@@ -55,33 +55,33 @@ Linux:
    edge-router(s) and the edge-routers access to the service.
    
 
-5. Create an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
+7. Create an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
 
 
 
-6. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
+8.Download the zpingendpoint1.jwt, zpingendpoint2.jwt
 
-7. Distribute the zping binary to the endpoint(s) you wish to run on
+9. Distribute the zping binary to the endpoint(s) you wish to run on
 
-8. Enroll the endpoints with the zping binary i.e. 
+10. Enroll the endpoints with the zping binary i.e. 
 ```
-    $ ./zping -mode enroll -j zpingendpoint1.jwt
+    $ ./zping enroll -j zitiendpoint1.jwt
 
       INFO[0000] generating 4096 bit RSA key                  
 
       INFO[0002] enrolled successfully. identity file written to: zpingendpoint1.json
 ```    
 ```
-    $ ./zping -mode enroll -j zpingendpoint2.jwt
+    $ ./zping enroll -j zpingendpoint2.jwt
 
       INFO[0000] generating 4096 bit RSA key                  
 
       INFO[0002] enrolled successfully. identity file written to: zpingendpoint2.json
 ```  
 
-7.  On each machine in run either in background or a separate window in server mode
+11. On each machine in run either in background or a separate window in server mode
 ```
-    $ ./zping -mode server -c zpingendpoint1.json &
+    $ ./zping server -c zpingendpoint1.json &
       [1] 4123
       INFO[0000] binding service ziti-ping
       
@@ -90,7 +90,7 @@ Linux:
       INFO[0000] connection to edge router using token 1de2f02e-62fe-44fb-bebb-e2d21a82d13f            
 ```
 ```
-    $ ./zping -mode server -c zpingendpoint2.json &
+    $ ./zping server -c zpingendpoint2.json &
       [1] 5176
       INFO[0000] binding service ziti-ping                    
 
@@ -98,9 +98,9 @@ Linux:
 
       INFO[0000] connection to edge router using token d472f74c-97af-426a-a07f-7ecd907a2013 
 ```
-8.  Send 5 zpings from zpingclient2 to zpingclient1
+12. Send 5 zpings from zpingclient2 to zpingclient1
 ```
-      $ ./zping -mode client -c zpingendpoint2.json -i zpingendpoint1 -n 5
+      $ ./zping client -c zitiendpoint2.json -i zitiendpoint1 -n 5
         INFO[0000] connection to edge router using token b78cab88-fa22-4d49-906f-ddf101b63b88 
         INFO[0566] new connection                               
 
