@@ -104,8 +104,8 @@ var clientCmd = &cobra.Command{
 	Use:   "client",
 	Short: "zping client command",
 	Long: `This command runs zping in client mode which generates ziti probe
-messages which are sent to a specified ziti endpoint running zping in 
-server mode`,
+messages which are sent to a specified ziti endpoint running zping 
+in server mode`,
 	Run: func(cmd *cobra.Command, args []string) {
 		sflag, _ := cmd.Flags().GetString("service")
 		cflag, _ := cmd.Flags().GetString("config")
@@ -219,8 +219,7 @@ server mode`,
 			recData := string(buf[:n])
 			recBytes := len(buf[:n])
 			//get timestamp at receipt of response from hosting identity
-			duration := time.Since(start)
-			ms, _ := strconv.ParseFloat(duration.String()[0:len(duration.String())-2], 64)
+			ms := time.Since(start).Seconds() * 1000
 			psession.roundtrip = append(psession.roundtrip, ms)
 			seq = strings.Split(recData, ":")[0]
 			if recData == pingData {
