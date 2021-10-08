@@ -18,6 +18,7 @@ package impl
 
 import (
 	"fmt"
+	"github.com/openziti/foundation/util/info"
 	"github.com/sirupsen/logrus"
 	"io"
 	"net"
@@ -105,6 +106,31 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 	case ConnTypeDial:
 		if msg.ContentType == edge.ContentTypeStateClosed {
 			conn.sentFIN.Set(true) // if we're not closing until all reads are done, at least prevent more writes
+		}
+
+		if msg.ContentType == edge.ContentTypeTraceRoute {
+			hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+			if hops > 0 {
+				hops--
+				msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+			}
+
+			ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+			connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+			resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk", "golang")
+
+			sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+			resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+			
+			if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+				resp.Headers[edge.UUIDHeader] = msgUUID
+			}
+
+			if err := conn.Send(resp); err != nil {
+				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+					Error("failed to send trace route response")
+			}
+			return
 		}
 
 		if err := conn.readQ.PutSequenced(0, msg); err != nil {
@@ -571,6 +597,33 @@ func (conn *edgeConn) CompleteAcceptFailed(err error) {
 		conn.acceptCompleteHandler.dialFailed(err)
 		conn.acceptCompleteHandler = nil
 	}
+}
+
+func (conn *edgeConn) TraceRoute(hops uint32, timeout time.Duration) (*edge.TraceRouteResult, error) {
+	msg := edge.NewTraceRouteMsg(conn.Id(), hops, uint64(info.NowInMilliseconds()))
+	resp, err := conn.Channel.SendAndWaitWithTimeout(msg, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ContentType != edge.ContentTypeTraceRouteResponse {
+		return nil, errors.Errorf("unexpected response: %v", resp.ContentType)
+	}
+	hops, _ = resp.GetUint32Header(edge.TraceHopCountHeader)
+	ts, _ := resp.GetUint64Header(edge.TimestampHeader)
+	elapsed := time.Duration(0)
+	if ts > 0 {
+		elapsed = time.Duration(info.NowInMilliseconds()-int64(ts)) * time.Millisecond
+	}
+	hopType, _ := resp.GetStringHeader(edge.TraceHopTypeHeader)
+	hopId, _ := resp.GetStringHeader(edge.TraceHopIdHeader)
+
+	result := &edge.TraceRouteResult{
+		Hops:    hops,
+		Time:    elapsed,
+		HopType: hopType,
+		HopId:   hopId,
+	}
+	return result, nil
 }
 
 type newConnHandler struct {

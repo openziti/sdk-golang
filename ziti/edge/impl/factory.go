@@ -69,6 +69,11 @@ func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner Route
 		Handler: connFactory.msgMux.HandleReceive,
 	})
 
+	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
+		Type:    edge.ContentTypeTraceRoute,
+		Handler: connFactory.msgMux.HandleReceive,
+	})
+
 	// Since data is the common message type, it gets to be dispatched directly
 	ch.AddReceiveHandler(connFactory.msgMux)
 	ch.AddCloseHandler(connFactory.msgMux)

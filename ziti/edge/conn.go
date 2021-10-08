@@ -90,6 +90,7 @@ type ServiceConn interface {
 	IsClosed() bool
 	GetAppData() []byte
 	SourceIdentifier() string
+	TraceRoute(hops uint32, timeout time.Duration) (*TraceRouteResult, error)
 }
 
 type Conn interface {
@@ -105,6 +106,13 @@ type MsgChannel struct {
 	msgIdSeq      *sequence.Sequence
 	writeDeadline time.Time
 	trace         bool
+}
+
+type TraceRouteResult struct {
+	Hops    uint32
+	Time    time.Duration
+	HopType string
+	HopId   string
 }
 
 func NewEdgeMsgChannel(ch channel2.Channel, connId uint32) *MsgChannel {
