@@ -117,11 +117,11 @@ func (conn *edgeConn) Accept(msg *channel2.Message) {
 
 			ts, _ := msg.GetUint64Header(edge.TimestampHeader)
 			connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-			resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk", "golang")
+			resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
 
 			sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
 			resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-			
+
 			if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
 				resp.Headers[edge.UUIDHeader] = msgUUID
 			}

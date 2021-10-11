@@ -360,8 +360,8 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.13.0/go.mod h1:lRk9szgn8TxENtWd0Tp4c3wjlRfMTMH27I+3Je41yGY=
 github.com/openzipkin/zipkin-go v0.1.1/go.mod h1:NtoC/o8u3JlF1lSlyPNswIbeQH9bJTmOf0Erfk+hxe8=
 github.com/openziti/dilithium v0.3.3/go.mod h1:vsCjI2AU/hon9e+dLhUFbCNGesJDj2ASgkySOcpmvjo=
-github.com/openziti/foundation v0.15.77-0.20211008191139-3c764b47c679 h1:+qFV2FfDvo8HAQ5KVyCV1qdUrifhKXFajUyvE0bqTpk=
-github.com/openziti/foundation v0.15.77-0.20211008191139-3c764b47c679/go.mod h1:O0LhAdPlQonsca60t5zgZWSI023+T8Qfhb7FsTkb5j4=
+github.com/openziti/foundation v0.15.81 h1:zQFba0AMFukPSH1tM9WD73rz2XjIr1R3YXgENMSaILc=
+github.com/openziti/foundation v0.15.81/go.mod h1:ruy6cSHAJ40DIOb9232INkrn4wsWeGmZWLJbTycoNNc=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6 h1:lNCW6THrCKBiJBpz8kbVGjC7MgdCGKwuvBgc7LoD6sw=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
