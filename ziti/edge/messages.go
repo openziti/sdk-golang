@@ -25,19 +25,21 @@ import (
 )
 
 const (
-	ContentTypeConnect           = 60783
-	ContentTypeStateConnected    = 60784
-	ContentTypeStateClosed       = 60785
-	ContentTypeData              = 60786
-	ContentTypeDial              = 60787
-	ContentTypeDialSuccess       = 60788
-	ContentTypeDialFailed        = 60789
-	ContentTypeBind              = 60790
-	ContentTypeUnbind            = 60791
-	ContentTypeStateSessionEnded = 60792
-	ContentTypeProbe             = 60793
-	ContentTypeUpdateBind        = 60794
-	ContentTypeHealthEvent       = 60795
+	ContentTypeConnect            = 60783
+	ContentTypeStateConnected     = 60784
+	ContentTypeStateClosed        = 60785
+	ContentTypeData               = 60786
+	ContentTypeDial               = 60787
+	ContentTypeDialSuccess        = 60788
+	ContentTypeDialFailed         = 60789
+	ContentTypeBind               = 60790
+	ContentTypeUnbind             = 60791
+	ContentTypeStateSessionEnded  = 60792
+	ContentTypeProbe              = 60793
+	ContentTypeUpdateBind         = 60794
+	ContentTypeHealthEvent        = 60795
+	ContentTypeTraceRoute         = 60796
+	ContentTypeTraceRouteResponse = 60797
 
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
@@ -54,6 +56,11 @@ const (
 	RouterProvidedConnId           = 1012
 	HealthStatusHeader             = 1013
 	ErrorCodeHeader                = 1014
+	TimestampHeader                = 1015
+	TraceHopCountHeader            = 1016
+	TraceHopTypeHeader             = 1017
+	TraceHopIdHeader               = 1018
+	TraceSourceRequestIdHeader     = 1019
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -174,6 +181,25 @@ func NewDataMsg(connId uint32, seq uint32, data []byte) *channel2.Message {
 
 func NewProbeMsg() *channel2.Message {
 	return channel2.NewMessage(ContentTypeProbe, nil)
+}
+
+func NewTraceRouteMsg(connId uint32, hops uint32, timestamp uint64) *channel2.Message {
+	msg := channel2.NewMessage(ContentTypeTraceRoute, nil)
+	msg.PutUint32Header(ConnIdHeader, connId)
+	msg.PutUint32Header(TraceHopCountHeader, hops)
+	msg.PutUint64Header(TimestampHeader, timestamp)
+	return msg
+}
+
+func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopType, hopId string) *channel2.Message {
+	msg := channel2.NewMessage(ContentTypeTraceRouteResponse, nil)
+	msg.PutUint32Header(ConnIdHeader, connId)
+	msg.PutUint32Header(TraceHopCountHeader, hops)
+	msg.PutUint64Header(TimestampHeader, timestamp)
+	msg.Headers[TraceHopTypeHeader] = []byte(hopType)
+	msg.Headers[TraceHopIdHeader] = []byte(hopId)
+
+	return msg
 }
 
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel2.Message {
