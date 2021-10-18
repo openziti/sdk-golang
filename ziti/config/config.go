@@ -24,12 +24,12 @@ import (
 )
 
 type Config struct {
-	ZtAPI       string                  `json:"ztAPI"`
-	ID          identity.IdentityConfig `json:"id"`
-	ConfigTypes []string                `json:"configTypes"`
+	ZtAPI       string          `json:"ztAPI"`
+	ID          identity.Config `json:"id"`
+	ConfigTypes []string        `json:"configTypes"`
 }
 
-func New(ztApi string, idConfig identity.IdentityConfig) *Config {
+func New(ztApi string, idConfig identity.Config) *Config {
 	return &Config{
 		ZtAPI: ztApi,
 		ID:    idConfig,
