@@ -3,12 +3,31 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
+
+var (
+	// Create a summary to track fictional interservice RPC latencies for three
+	// distinct services with different latency distributions. These services are
+	// differentiated via a "service" label.
+	connections = prometheus.NewCounter(prometheus.CounterOpts(prometheus.Opts{
+		Namespace: "reflect",
+		Name:      "total_connections",
+		Help:      "number of connections established",
+	}))
+)
+
+func init() {
+	prometheus.MustRegister(connections)
+	prometheus.MustRegister(collectors.NewBuildInfoCollector())
+}
 
 func Server(zitiCfg *config.Config, serviceName string) {
 	listener, err := ziti.NewContextWithConfig(zitiCfg).Listen(serviceName)
@@ -41,6 +60,7 @@ func accept(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	rw := bufio.NewReadWriter(reader, writer)
 	//line delimited
+	connections.Inc()
 	for {
 		line, err := rw.ReadString('\n')
 		if err != nil {
