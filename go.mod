@@ -3,7 +3,6 @@ module github.com/openziti/sdk-golang
 go 1.16
 
 //replace github.com/openziti/foundation => ../foundation
-//replace github.com/openziti/sdk-golang => ./
 
 require (
 	github.com/Jeffail/gabs v1.4.0
