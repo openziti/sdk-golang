@@ -4,19 +4,20 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
-	// Create a summary to track fictional interservice RPC latencies for three
-	// distinct services with different latency distributions. These services are
-	// differentiated via a "service" label.
+	// prometheus metric to track the total number of connections established
 	connections = prometheus.NewCounter(prometheus.CounterOpts(prometheus.Opts{
 		Namespace: "reflect",
 		Name:      "total_connections",
@@ -29,7 +30,12 @@ func init() {
 	prometheus.MustRegister(collectors.NewBuildInfoCollector())
 }
 
-func Server(zitiCfg *config.Config, serviceName string) {
+func Server(zitiCfg *config.Config, serviceName string, prometheusServiceName string) {
+	// if no prometheusServiceName was provided, don't attempt to serve the metrics end point
+	if prometheusServiceName != "" {
+		go serverPrometheusCollector(zitiCfg, prometheusServiceName)
+	}
+
 	listener, err := ziti.NewContextWithConfig(zitiCfg).Listen(serviceName)
 	if err != nil {
 		log.Panic(err)
@@ -41,6 +47,28 @@ func Server(zitiCfg *config.Config, serviceName string) {
 	case s := <-sig:
 		log.Infof("received %s: shutting down...", s)
 	}
+}
+
+// function for exposing the prometheus metrics over ziti
+func serverPrometheusCollector(zitiCfg *config.Config, prometheusServiceName string) {
+	options := &ziti.ListenOptions{
+		ConnectTimeout:        5 * time.Minute,
+		MaxConnections:        3,
+		BindUsingEdgeIdentity: true,
+	}
+
+	listener, err := ziti.NewContextWithConfig(zitiCfg).ListenWithOptions(prometheusServiceName, options)
+	if err != nil {
+		log.Fatalf("failed to create a listener: %v", err)
+	}
+
+	log.Fatal(http.Serve(listener, promhttp.HandlerFor(
+		prometheus.DefaultGatherer,
+		promhttp.HandlerOpts{
+			// Opt into OpenMetrics to support exemplars.
+			EnableOpenMetrics: true,
+		},
+	)))
 }
 
 func serve(listener net.Listener) {

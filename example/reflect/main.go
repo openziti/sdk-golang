@@ -1,16 +1,9 @@
 package main
 
 import (
-	"net/http"
-	"time"
-
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/example/reflect/cmd"
-	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +31,7 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().StringP("identity", "i", "", "REQUIRED: Path to JSON file that contains an enrolled identity")
 	rootCmd.PersistentFlags().StringP("serviceName", "s", "", "REQUIRED: The service to host")
+	rootCmd.PersistentFlags().StringP("prometheusServiceName", "p", "", "The name of the service to host the prometheus metrics endpoint")
 
 	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "identity")
 	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "serviceName")
@@ -46,7 +40,7 @@ func main() {
 		Use:   "server",
 		Short: "run the process as a server",
 		Run: func(subcmd *cobra.Command, args []string) {
-			cmd.Server(getConfig(), rootCmd.Flag("serviceName").Value.String())
+			cmd.Server(getConfig(), rootCmd.Flag("serviceName").Value.String(), rootCmd.Flag("prometheusServiceName").Value.String())
 		},
 	}
 
@@ -61,19 +55,6 @@ func main() {
 	rootCmd.AddCommand(clientCmd, serverCmd)
 	_ = rootCmd.Execute()
 
-	listener, err := getZitiListener()
-
-	if err != nil {
-		log.Fatalf("failed to create a litener: %v", err)
-	}
-
-	log.Fatal(http.Serve(listener, promhttp.HandlerFor(
-		prometheus.DefaultGatherer,
-		promhttp.HandlerOpts{
-			// Opt into OpenMetrics to support exemplars.
-			EnableOpenMetrics: true,
-		},
-	)))
 }
 
 func getConfig() (zitiCfg *config.Config) {
@@ -86,12 +67,4 @@ func getConfig() (zitiCfg *config.Config) {
 		"ziti-tunneler-client.v1",
 	}
 	return zitiCfg
-}
-
-func getZitiListener() (edge.Listener, error) {
-	options := ziti.ListenOptions{
-		ConnectTimeout: 5 * time.Minute,
-		MaxConnections: 3,
-	}
-	return ziti.NewContext().ListenWithOptions("service", &options)
 }
