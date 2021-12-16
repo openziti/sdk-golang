@@ -11,7 +11,7 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.3.0
 	github.com/influxdata/influxdb-client-go/v2 v2.6.0
-	github.com/michaelquigley/pfxlog v0.6.3
+	github.com/michaelquigley/pfxlog v0.6.7
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/netfoundry/secretstream v0.1.2
