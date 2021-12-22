@@ -366,7 +366,7 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 	}
 
 	logrus.
-		WithField("apiSession", apiSessionResp.Id).
+		WithField("apiSessionId", apiSessionResp.Id).
 		Debugf("logged in as %s/%s", apiSessionResp.Identity.Name, apiSessionResp.Identity.Id)
 
 	c.apiSession = apiSessionResp

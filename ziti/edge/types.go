@@ -117,13 +117,14 @@ type PostureQueryProcess struct {
 }
 
 func (service *Service) GetConfigOfType(configType string, target interface{}) (bool, error) {
+	logger := pfxlog.Logger().WithField("serviceId", service.Id).WithField("serviceName", service.Name)
 	if service.Configs == nil {
-		pfxlog.Logger().Debugf("no service configs defined for service %v", service.Name)
+		logger.Debug("no service configs defined for service")
 		return false, nil
 	}
 	configMap, found := service.Configs[configType]
 	if !found {
-		pfxlog.Logger().Debugf("no service config of type %v defined for service %v", configType, service.Name)
+		logger.Debugf("no service config of type %v defined for service", configType)
 		return false, nil
 	}
 
@@ -133,12 +134,12 @@ func (service *Service) GetConfigOfType(configType string, target interface{}) (
 	})
 
 	if err != nil {
-		pfxlog.Logger().WithError(err).Debugf("unable to setup decoder for service configuration for type %v defined for service %v", configType, service.Name)
+		logger.WithError(err).Debugf("unable to setup decoder for service configuration for type %v defined for service", configType)
 		return true, errors.Wrap(err, "unable to setup decoder for service config structure")
 	}
 
 	if err := decoder.Decode(configMap); err != nil {
-		pfxlog.Logger().WithError(err).Debugf("unable to decode service configuration for type %v defined for service %v", configType, service.Name)
+		logger.WithError(err).Debugf("unable to decode service configuration for type %v defined for service", configType)
 		return true, errors.Wrap(err, "unable to decode service config structure")
 	}
 	return true, nil
