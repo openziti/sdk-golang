@@ -614,7 +614,7 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 }
 
 func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edge.ConnOptions) (edge.RouterConn, error) {
-	logger := pfxlog.Logger().WithField("sessionToken", session.Token)
+	logger := pfxlog.Logger().WithField("sessionId", session.Id)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
 		if _, isNotFound := err.(api.NotFound); isNotFound {

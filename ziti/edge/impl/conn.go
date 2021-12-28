@@ -205,9 +205,7 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 }
 
 func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).
-		WithField("sessionId", session.Id).
-		WithField("sessionToken", session.Token)
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.Id)
 
 	var pub []byte
 	if conn.crypto {
@@ -305,7 +303,7 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
 		WithField("serviceName", service.Name).
-		WithField("sessionToken", session.Token)
+		WithField("sessionId", session.Id)
 
 	listener := &edgeListener{
 		baseListener: baseListener{
