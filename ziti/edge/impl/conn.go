@@ -205,7 +205,7 @@ func (conn *edgeConn) HandleClose(channel2.Channel) {
 }
 
 func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id())
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.Id)
 
 	var pub []byte
 	if conn.crypto {
@@ -235,7 +235,6 @@ func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) 
 		method, _ := replyMsg.GetByteHeader(edge.CryptoMethodHeader)
 		hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
 		if hostPubKey != nil {
-			logger = logger.WithField("session", session.Id)
 			logger.Debug("setting up end-to-end encryption")
 			if err = conn.establishClientCrypto(conn.keyPair, hostPubKey, edge.CryptoMethod(method)); err != nil {
 				logger.WithError(err).Error("crypto failure")
@@ -303,8 +302,8 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, options *edge.ListenOptions) (edge.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
-		WithField("service", service.Name).
-		WithField("session", session.Token)
+		WithField("serviceName", service.Name).
+		WithField("sessionId", session.Id)
 
 	listener := &edgeListener{
 		baseListener: baseListener{
@@ -470,7 +469,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
 		if err := listener.Close(); err != nil {
-			log.WithError(err).Errorf("failed to close listener for service %v", listener.service.Name)
+			log.WithError(err).WithField("serviceName", listener.service.Name).Error("failed to close listener")
 		}
 		return true
 	})

@@ -534,7 +534,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 			}
 			continue
 		}
-		pfxlog.Logger().Debugf("connecting via session id [%s] token [%s]", session.Id, session.Token)
+		pfxlog.Logger().WithField("sessionId", session.Id).WithField("sessionToken", session.Token).Debug("connecting with session")
 		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
 			if _, refreshErr := context.refreshSession(session.Id); refreshErr != nil {
@@ -614,7 +614,7 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 }
 
 func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edge.ConnOptions) (edge.RouterConn, error) {
-	logger := pfxlog.Logger().WithField("ns", session.Token)
+	logger := pfxlog.Logger().WithField("sessionId", session.Id)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
 		if _, isNotFound := err.(api.NotFound); isNotFound {
@@ -707,7 +707,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Infof("connection to edge router using token %v", context.ctrlClt.GetCurrentApiSession().Token)
+	pfxlog.Logger().Infof("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
 	dialer := channel2.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
 		edge.SessionTokenHeader: []byte(context.ctrlClt.GetCurrentApiSession().Token),
 	})
