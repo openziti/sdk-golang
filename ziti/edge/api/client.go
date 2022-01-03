@@ -45,6 +45,15 @@ func (e NotAccessible) Error() string {
 	return fmt.Sprintf("unable to create apiSession. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
+type ServiceNotAccessible struct {
+	httpCode int
+	msg      string
+}
+
+func (e ServiceNotAccessible) Error() string {
+	return fmt.Sprintf("unable to create session. http status code: %v, msg: %v", e.httpCode, e.msg)
+}
+
 type Errors struct {
 	Errors []error
 }
@@ -826,7 +835,7 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 			return nil, NotAuthorized
 		}
 		if resp.StatusCode == http.StatusBadRequest {
-			return nil, NotAccessible{
+			return nil, ServiceNotAccessible{
 				httpCode: resp.StatusCode,
 				msg:      string(respBody),
 			}
