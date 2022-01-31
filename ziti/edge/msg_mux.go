@@ -18,7 +18,7 @@ package edge
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
 	"math"
@@ -29,12 +29,12 @@ import (
 type MsgSink interface {
 	HandleMuxClose() error
 	Id() uint32
-	Accept(msg *channel2.Message)
+	Accept(msg *channel.Message)
 }
 
 type MsgMux interface {
-	channel2.ReceiveHandler
-	channel2.CloseHandler
+	channel.TypedReceiveHandler
+	channel.CloseHandler
 	AddMsgSink(sink MsgSink) error
 	RemoveMsgSink(sink MsgSink)
 	RemoveMsgSinkById(sinkId uint32)
@@ -82,7 +82,7 @@ func (mux *CowMapMsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *CowMapMsgMux) HandleReceive(msg *channel2.Message, ch channel2.Channel) {
+func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
@@ -97,7 +97,7 @@ func (mux *CowMapMsgMux) HandleReceive(msg *channel2.Message, ch channel2.Channe
 	}
 }
 
-func (mux *CowMapMsgMux) HandleClose(channel2.Channel) {
+func (mux *CowMapMsgMux) HandleClose(channel.Channel) {
 	mux.Close()
 }
 
