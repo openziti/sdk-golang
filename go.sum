@@ -456,10 +456,9 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/onsi/gomega v1.13.0/go.mod h1:lRk9szgn8TxENtWd0Tp4c3wjlRfMTMH27I+3Je41yGY=
 github.com/openzipkin/zipkin-go v0.1.1/go.mod h1:NtoC/o8u3JlF1lSlyPNswIbeQH9bJTmOf0Erfk+hxe8=
-github.com/openziti/channel v0.18.3 h1:ORA8rGdX6LV4iBDDSCJ/qct1zmOxpPOrJLs2Tc4dVSA=
-github.com/openziti/channel v0.18.3/go.mod h1:wmpGSNQranDE7jsiT+Cv31UzOO3z+m69JxE2tzYwkyY=
+github.com/openziti/channel v0.18.5 h1:XRsFOozgW6pbCsmEyKBPISKdc4QxttZOKnKVsCHiRHY=
+github.com/openziti/channel v0.18.5/go.mod h1:pjoD6e9QgDGnaiakRA+s8YT/FzUHWDhJJF573oOJkXg=
 github.com/openziti/dilithium v0.3.3/go.mod h1:vsCjI2AU/hon9e+dLhUFbCNGesJDj2ASgkySOcpmvjo=
-github.com/openziti/foundation v0.16.17/go.mod h1:D8IchItaO2SvK/fc/JpX9yF0vNymmOw2gzeNqwHz4+g=
 github.com/openziti/foundation v0.17.1 h1:SC0AJq8AfmvNObBX+avzITp1mMh2jnPy19menT7Pe7g=
 github.com/openziti/foundation v0.17.1/go.mod h1:qzctNeCrOrPDQDr9g70IPHw+awal87qPqRe3UJLwNXw=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6 h1:lNCW6THrCKBiJBpz8kbVGjC7MgdCGKwuvBgc7LoD6sw=
@@ -617,7 +616,6 @@ github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1
 github.com/yusufpapurcu/wmi v1.2.2 h1:KBNDSne4vP5mbSWnJbO+51IMOXJB67QiYCSBrubbPRg=
 github.com/yusufpapurcu/wmi v1.2.2/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
-go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50/go.mod h1:G5EMThwa9y8QZGBClrRx5EY+Yw9kAhnjy3bSjsnlVTQ=
 go.etcd.io/bbolt v1.3.6/go.mod h1:qXsaaIqmgQH0T+OPdb99Bf+PKfBBQVAdyD6TY9G8XM4=
 go.etcd.io/etcd/api/v3 v3.5.0/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=
 go.etcd.io/etcd/api/v3 v3.5.1/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=
