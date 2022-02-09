@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	target := "httpsvc"
+	target := os.Args[2]
 	helloUrl := fmt.Sprintf("http://%s/hello", target)
 	httpClient := createZitifiedHttpClient(os.Args[1])
 	resp, e := httpClient.Get(helloUrl)
@@ -35,6 +35,7 @@ func main() {
 }
 
 var zitiContext ziti.Context
+
 func Dial(_ context.Context, _ string, addr string) (net.Conn, error) {
 	service := strings.Split(addr, ":")[0] // will always get passed host:port
 	return zitiContext.Dial(service)
@@ -46,6 +47,6 @@ func createZitifiedHttpClient(idFile string) http.Client {
 	}
 	zitiContext = ziti.NewContextWithConfig(cfg)
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
-	zitiTransport.DialContext = Dial //zitiDialContext.Dial
+	zitiTransport.DialContext = Dial                                 //zitiDialContext.Dial
 	return http.Client{Transport: zitiTransport}
 }
