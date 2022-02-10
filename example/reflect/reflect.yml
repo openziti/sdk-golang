@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reflect
+spec:
+  selector:
+    matchLabels:
+      app: reflect
+  template:
+    metadata:
+      labels: 
+        app: reflect
+    spec:
+      containers:
+      - name: reflect
+        image: nfnpieros/reflect
+        env:
+        - name: PROMETHEUS_SERVICE_NAME
+          value: "metrics"

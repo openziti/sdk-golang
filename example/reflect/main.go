@@ -14,6 +14,7 @@ var verbose bool
 var rootCmd = &cobra.Command{Use: "app"}
 
 func main() {
+
 	logrus.SetFormatter(&logrus.TextFormatter{
 		ForceColors:      true,
 		DisableTimestamp: true,
@@ -30,6 +31,7 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().StringP("identity", "i", "", "REQUIRED: Path to JSON file that contains an enrolled identity")
 	rootCmd.PersistentFlags().StringP("serviceName", "s", "", "REQUIRED: The service to host")
+	rootCmd.PersistentFlags().StringP("prometheusServiceName", "p", "", "The name of the service to host the prometheus metrics endpoint")
 
 	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "identity")
 	_ = cobra.MarkFlagRequired(rootCmd.PersistentFlags(), "serviceName")
@@ -38,7 +40,7 @@ func main() {
 		Use:   "server",
 		Short: "run the process as a server",
 		Run: func(subcmd *cobra.Command, args []string) {
-			cmd.Server(getConfig(), rootCmd.Flag("serviceName").Value.String())
+			cmd.Server(getConfig(), rootCmd.Flag("serviceName").Value.String(), rootCmd.Flag("prometheusServiceName").Value.String())
 		},
 	}
 
@@ -52,6 +54,7 @@ func main() {
 
 	rootCmd.AddCommand(clientCmd, serverCmd)
 	_ = rootCmd.Execute()
+
 }
 
 func getConfig() (zitiCfg *config.Config) {
