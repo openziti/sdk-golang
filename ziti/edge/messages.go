@@ -18,7 +18,7 @@ package edge
 
 import (
 	"encoding/binary"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
 	"github.com/openziti/foundation/util/uuidz"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -126,14 +126,14 @@ type MsgEvent struct {
 	ConnId  uint32
 	Seq     uint32
 	MsgUUID []byte
-	Msg     *channel2.Message
+	Msg     *channel.Message
 }
 
 func (event *MsgEvent) GetSequence() uint32 {
 	return event.Seq
 }
 
-func UnmarshalMsgEvent(msg *channel2.Message) (*MsgEvent, error) {
+func UnmarshalMsgEvent(msg *channel.Message) (*MsgEvent, error) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		return nil, errors.Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
@@ -168,31 +168,31 @@ func (event *MsgEvent) GetLoggerFields() logrus.Fields {
 	return fields
 }
 
-func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel2.Message {
-	msg := channel2.NewMessage(contentType, data)
+func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel.Message {
+	msg := channel.NewMessage(contentType, data)
 	msg.PutUint32Header(ConnIdHeader, connId)
 	msg.PutUint32Header(SeqHeader, seq)
 	return msg
 }
 
-func NewDataMsg(connId uint32, seq uint32, data []byte) *channel2.Message {
+func NewDataMsg(connId uint32, seq uint32, data []byte) *channel.Message {
 	return newMsg(ContentTypeData, connId, seq, data)
 }
 
-func NewProbeMsg() *channel2.Message {
-	return channel2.NewMessage(ContentTypeProbe, nil)
+func NewProbeMsg() *channel.Message {
+	return channel.NewMessage(ContentTypeProbe, nil)
 }
 
-func NewTraceRouteMsg(connId uint32, hops uint32, timestamp uint64) *channel2.Message {
-	msg := channel2.NewMessage(ContentTypeTraceRoute, nil)
+func NewTraceRouteMsg(connId uint32, hops uint32, timestamp uint64) *channel.Message {
+	msg := channel.NewMessage(ContentTypeTraceRoute, nil)
 	msg.PutUint32Header(ConnIdHeader, connId)
 	msg.PutUint32Header(TraceHopCountHeader, hops)
 	msg.PutUint64Header(TimestampHeader, timestamp)
 	return msg
 }
 
-func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopType, hopId string) *channel2.Message {
-	msg := channel2.NewMessage(ContentTypeTraceRouteResponse, nil)
+func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopType, hopId string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeTraceRouteResponse, nil)
 	msg.PutUint32Header(ConnIdHeader, connId)
 	msg.PutUint32Header(TraceHopCountHeader, hops)
 	msg.PutUint64Header(TimestampHeader, timestamp)
@@ -202,7 +202,7 @@ func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopT
 	return msg
 }
 
-func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel2.Message {
+func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel.Message {
 	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
@@ -221,21 +221,21 @@ func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOpti
 	return msg
 }
 
-func NewStateConnectedMsg(connId uint32) *channel2.Message {
+func NewStateConnectedMsg(connId uint32) *channel.Message {
 	return newMsg(ContentTypeStateConnected, connId, 0, nil)
 }
 
-func NewStateClosedMsg(connId uint32, message string) *channel2.Message {
+func NewStateClosedMsg(connId uint32, message string) *channel.Message {
 	return newMsg(ContentTypeStateClosed, connId, 0, []byte(message))
 }
 
-func NewDialMsg(connId uint32, token string, callerId string) *channel2.Message {
+func NewDialMsg(connId uint32, token string, callerId string) *channel.Message {
 	msg := newMsg(ContentTypeDial, connId, 0, []byte(token))
 	msg.Headers[CallerIdHeader] = []byte(callerId)
 	return msg
 }
 
-func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel2.Message {
+func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
@@ -262,11 +262,11 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 	return msg
 }
 
-func NewUnbindMsg(connId uint32, token string) *channel2.Message {
+func NewUnbindMsg(connId uint32, token string) *channel.Message {
 	return newMsg(ContentTypeUnbind, connId, 0, []byte(token))
 }
 
-func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Precedence) *channel2.Message {
+func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Precedence) *channel.Message {
 	msg := newMsg(ContentTypeUpdateBind, connId, 0, []byte(token))
 	if cost != nil {
 		msg.PutUint16Header(CostHeader, *cost)
@@ -277,24 +277,24 @@ func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Pre
 	return msg
 }
 
-func NewHealthEventMsg(connId uint32, token string, pass bool) *channel2.Message {
+func NewHealthEventMsg(connId uint32, token string, pass bool) *channel.Message {
 	msg := newMsg(ContentTypeHealthEvent, connId, 0, []byte(token))
 	msg.PutBoolHeader(HealthStatusHeader, pass)
 	return msg
 }
 
-func NewDialSuccessMsg(connId uint32, newConnId uint32) *channel2.Message {
+func NewDialSuccessMsg(connId uint32, newConnId uint32) *channel.Message {
 	newConnIdBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(newConnIdBytes, newConnId)
 	msg := newMsg(ContentTypeDialSuccess, connId, 0, newConnIdBytes)
 	return msg
 }
 
-func NewDialFailedMsg(connId uint32, message string) *channel2.Message {
+func NewDialFailedMsg(connId uint32, message string) *channel.Message {
 	return newMsg(ContentTypeDialFailed, connId, 0, []byte(message))
 }
 
-func NewStateSessionEndedMsg(reason string) *channel2.Message {
+func NewStateSessionEndedMsg(reason string) *channel.Message {
 	return newMsg(ContentTypeStateSessionEnded, 0, 0, []byte(reason))
 }
 
@@ -305,7 +305,7 @@ type DialResult struct {
 	Message   string
 }
 
-func UnmarshalDialResult(msg *channel2.Message) (*DialResult, error) {
+func UnmarshalDialResult(msg *channel.Message) (*DialResult, error) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		return nil, errors.Errorf("received edge message with no connection id header")
@@ -334,7 +334,7 @@ func UnmarshalDialResult(msg *channel2.Message) (*DialResult, error) {
 	return nil, errors.Errorf("unexpected response. received %v instead of dial result message", msg.ContentType)
 }
 
-func GetLoggerFields(msg *channel2.Message) logrus.Fields {
+func GetLoggerFields(msg *channel.Message) logrus.Fields {
 	msgUUID := uuidz.ToString(msg.Headers[UUIDHeader])
 
 	connId, _ := msg.GetUint32Header(ConnIdHeader)

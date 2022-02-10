@@ -19,7 +19,7 @@ package impl
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream/kx"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
 	"github.com/openziti/foundation/util/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 )
@@ -31,7 +31,7 @@ type RouterConnOwner interface {
 type routerConn struct {
 	routerName string
 	key        string
-	ch         channel2.Channel
+	ch         channel.Channel
 	msgMux     edge.MsgMux
 	owner      RouterConnOwner
 }
@@ -44,42 +44,36 @@ func (conn *routerConn) GetRouterName() string {
 	return conn.routerName
 }
 
-func (conn *routerConn) HandleClose(channel2.Channel) {
+func (conn *routerConn) HandleClose(channel.Channel) {
 	if conn.owner != nil {
 		conn.owner.OnClose(conn)
 	}
 }
 
-func NewEdgeConnFactory(routerName, key string, ch channel2.Channel, owner RouterConnOwner) edge.RouterConn {
+func NewEdgeConnFactory(routerName, key string, owner RouterConnOwner) edge.RouterConn {
 	connFactory := &routerConn{
 		key:        key,
 		routerName: routerName,
-		ch:         ch,
 		msgMux:     edge.NewCowMapMsgMux(),
 		owner:      owner,
 	}
 
-	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
-		Type:    edge.ContentTypeDial,
-		Handler: connFactory.msgMux.HandleReceive,
-	})
+	return connFactory
+}
 
-	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
-		Type:    edge.ContentTypeStateClosed,
-		Handler: connFactory.msgMux.HandleReceive,
-	})
+func (conn *routerConn) BindChannel(binding channel.Binding) error {
+	conn.ch = binding.GetChannel()
 
-	ch.AddReceiveHandler(&edge.FunctionReceiveAdapter{
-		Type:    edge.ContentTypeTraceRoute,
-		Handler: connFactory.msgMux.HandleReceive,
-	})
+	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
-	ch.AddReceiveHandler(connFactory.msgMux)
-	ch.AddCloseHandler(connFactory.msgMux)
-	ch.AddCloseHandler(connFactory)
+	binding.AddTypedReceiveHandler(conn.msgMux)
+	binding.AddCloseHandler(conn.msgMux)
+	binding.AddCloseHandler(conn)
 
-	return connFactory
+	return nil
 }
 
 func (conn *routerConn) NewConn(service *edge.Service, connType ConnType) *edgeConn {

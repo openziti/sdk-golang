@@ -45,6 +45,15 @@ func (e NotAccessible) Error() string {
 	return fmt.Sprintf("unable to create apiSession. http status code: %v, msg: %v", e.httpCode, e.msg)
 }
 
+type ServiceNotAccessible struct {
+	httpCode int
+	msg      string
+}
+
+func (e ServiceNotAccessible) Error() string {
+	return fmt.Sprintf("unable to create session. http status code: %v, msg: %v", e.httpCode, e.msg)
+}
+
 type Errors struct {
 	Errors []error
 }
@@ -366,7 +375,7 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 	}
 
 	logrus.
-		WithField("apiSession", apiSessionResp.Id).
+		WithField("apiSessionId", apiSessionResp.Id).
 		Debugf("logged in as %s/%s", apiSessionResp.Identity.Name, apiSessionResp.Identity.Id)
 
 	c.apiSession = apiSessionResp
@@ -826,7 +835,7 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 			return nil, NotAuthorized
 		}
 		if resp.StatusCode == http.StatusBadRequest {
-			return nil, NotAccessible{
+			return nil, ServiceNotAccessible{
 				httpCode: resp.StatusCode,
 				msg:      string(respBody),
 			}

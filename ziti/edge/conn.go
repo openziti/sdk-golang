@@ -26,11 +26,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
 	"github.com/openziti/foundation/transport"
 	"github.com/openziti/foundation/transport/tls"
 	"github.com/openziti/foundation/util/sequence"
-	"github.com/pkg/errors"
 )
 
 type addrParser struct {
@@ -51,6 +50,7 @@ type RouterClient interface {
 }
 
 type RouterConn interface {
+	channel.BindHandler
 	io.Closer
 	RouterClient
 	IsClosed() bool
@@ -101,7 +101,7 @@ type Conn interface {
 }
 
 type MsgChannel struct {
-	channel2.Channel
+	channel.Channel
 	id            uint32
 	msgIdSeq      *sequence.Sequence
 	writeDeadline time.Time
@@ -115,7 +115,7 @@ type TraceRouteResult struct {
 	HopId   string
 }
 
-func NewEdgeMsgChannel(ch channel2.Channel, connId uint32) *MsgChannel {
+func NewEdgeMsgChannel(ch channel.Channel, connId uint32) *MsgChannel {
 	traceEnabled := strings.EqualFold("true", os.Getenv("ZITI_TRACE_ENABLED"))
 	if traceEnabled {
 		pfxlog.Logger().Info("Ziti message tracing ENABLED")
@@ -168,7 +168,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	if ec.writeDeadline.IsZero() {
 		err = ec.Channel.Send(msg)
 	} else {
-		err = ec.Channel.SendWithTimeout(msg, time.Until(ec.writeDeadline))
+		err = msg.WithTimeout(time.Until(ec.writeDeadline)).SendAndWaitForWire(ec.Channel)
 	}
 
 	if err != nil {
@@ -178,23 +178,13 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	return len(data), nil
 }
 
-func (ec *MsgChannel) SendState(msg *channel2.Message) error {
+func (ec *MsgChannel) SendState(msg *channel.Message) error {
 	msg.PutUint32Header(SeqHeader, ec.msgIdSeq.Next())
 	ec.TraceMsg("SendState", msg)
-	syncC, err := ec.SendAndSyncWithPriority(msg, channel2.Standard)
-	if err != nil {
-		return err
-	}
-
-	select {
-	case err = <-syncC:
-		return err
-	case <-time.After(time.Second * 5):
-		return errors.New("timed out waiting for close message send to complete")
-	}
+	return msg.WithTimeout(5 * time.Second).SendAndWaitForWire(ec.Channel)
 }
 
-func (ec *MsgChannel) TraceMsg(source string, msg *channel2.Message) {
+func (ec *MsgChannel) TraceMsg(source string, msg *channel.Message) {
 	msgUUID, found := msg.Headers[UUIDHeader]
 	if ec.trace && !found {
 		newUUID, err := uuid.NewRandom()

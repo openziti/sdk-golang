@@ -114,7 +114,7 @@ func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *
 	logger.Debug("sending update bind request to edge router")
 	request := edge.NewUpdateBindMsg(listener.edgeChan.Id(), listener.token, cost, precedence)
 	listener.edgeChan.TraceMsg("updateCostAndPrecedence", request)
-	return listener.edgeChan.SendWithTimeout(request, 5*time.Second)
+	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(listener.edgeChan.Channel)
 }
 
 func (listener *edgeListener) SendHealthEvent(pass bool) error {
@@ -127,7 +127,7 @@ func (listener *edgeListener) SendHealthEvent(pass bool) error {
 	logger.Debug("sending health event to edge router")
 	request := edge.NewHealthEventMsg(listener.edgeChan.Id(), listener.token, pass)
 	listener.edgeChan.TraceMsg("healthEvent", request)
-	return listener.edgeChan.SendWithTimeout(request, 5*time.Second)
+	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(listener.edgeChan.Channel)
 }
 
 func (listener *edgeListener) Close() error {
@@ -155,7 +155,7 @@ func (listener *edgeListener) Close() error {
 
 	unbindRequest := edge.NewUnbindMsg(edgeChan.Id(), listener.token)
 	listener.edgeChan.TraceMsg("close", unbindRequest)
-	if err := edgeChan.SendWithTimeout(unbindRequest, time.Second*5); err != nil {
+	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(edgeChan.Channel); err != nil {
 		logger.WithError(err).Error("unable to unbind session for conn")
 		return err
 	}

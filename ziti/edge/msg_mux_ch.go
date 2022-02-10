@@ -2,7 +2,7 @@ package edge
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/pkg/errors"
 	"math"
@@ -45,7 +45,7 @@ func (mux *ChMsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *ChMsgMux) HandleReceive(msg *channel2.Message, _ channel2.Channel) {
+func (mux *ChMsgMux) HandleReceive(msg *channel.Message, _ channel.Channel) {
 	if event, err := UnmarshalMsgEvent(msg); err != nil {
 		pfxlog.Logger().WithError(err).Errorf("error unmarshaling edge message headers. content type: %v", msg.ContentType)
 	} else {
@@ -97,7 +97,7 @@ func (mux *ChMsgMux) IsClosed() bool {
 	return mux.closed.Get()
 }
 
-func (mux *ChMsgMux) HandleClose(_ channel2.Channel) {
+func (mux *ChMsgMux) HandleClose(_ channel.Channel) {
 	mux.Close()
 }
 

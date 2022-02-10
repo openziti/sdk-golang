@@ -21,7 +21,8 @@ import (
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/channel2"
+	"github.com/openziti/channel"
+	"github.com/openziti/channel/latency"
 	"github.com/openziti/foundation/common"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
@@ -141,7 +142,7 @@ func DefaultListenOptions() *ListenOptions {
 var globalAppId = ""
 var globalAppVersion = ""
 
-//Set the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
+//SetAppInfo sets the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
 func SetAppInfo(appId, appVersion string) {
 	globalAppId = appId
 	globalAppVersion = appVersion
@@ -534,7 +535,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 			}
 			continue
 		}
-		pfxlog.Logger().Debugf("connecting via session id [%s] token [%s]", session.Id, session.Token)
+		pfxlog.Logger().WithField("sessionId", session.Id).WithField("sessionToken", session.Token).Debug("connecting with session")
 		conn, err = context.dialSession(service, session, edgeDialOptions)
 		if err != nil {
 			if _, refreshErr := context.refreshSession(session.Id); refreshErr != nil {
@@ -614,7 +615,7 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 }
 
 func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edge.ConnOptions) (edge.RouterConn, error) {
-	logger := pfxlog.Logger().WithField("ns", session.Token)
+	logger := pfxlog.Logger().WithField("sessionId", session.Id)
 
 	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
 		if _, isNotFound := err.(api.NotFound); isNotFound {
@@ -707,13 +708,14 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Infof("connection to edge router using token %v", context.ctrlClt.GetCurrentApiSession().Token)
-	dialer := channel2.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
+	pfxlog.Logger().Infof("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
+	dialer := channel.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
 		edge.SessionTokenHeader: []byte(context.ctrlClt.GetCurrentApiSession().Token),
 	})
 
 	start := time.Now().UnixNano()
-	ch, err := channel2.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, nil)
+	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, context)
+	ch, err := channel.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, edgeConn, nil)
 	if err != nil {
 		logger.Error(err)
 		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
@@ -722,7 +724,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	connectTime := time.Duration(time.Now().UnixNano() - start)
 	logger.Debugf("routerConn[%s@%s] connected in %d ms", routerName, ingressUrl, connectTime.Milliseconds())
 
-	if versionHeader, found := ch.Underlay().Headers()[channel2.HelloVersionHeader]; found {
+	if versionHeader, found := ch.Underlay().Headers()[channel.HelloVersionHeader]; found {
 		versionInfo, err := common.StdVersionEncDec.Decode(versionHeader)
 		if err != nil {
 			pfxlog.Logger().Errorf("could not parse hello version header: %v", err)
@@ -737,7 +739,6 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		}
 	}
 
-	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, ch, context)
 	logger.Debugf("connected to %s", ingressUrl)
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
@@ -753,7 +754,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 			h := context.metrics.Histogram("latency." + ingressUrl)
 			h.Update(int64(connectTime))
 
-			latencyProbeConfig := &metrics.LatencyProbeConfig{
+			latencyProbeConfig := &latency.ProbeConfig{
 				Channel:  ch,
 				Interval: LatencyCheckInterval,
 				Timeout:  LatencyCheckTimeout,
@@ -773,7 +774,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 				},
 			}
 
-			go metrics.ProbeLatencyConfigurable(latencyProbeConfig)
+			go latency.ProbeLatencyConfigurable(latencyProbeConfig)
 			return newV
 		})
 
@@ -1293,8 +1294,8 @@ type ContextImplTest struct {
 }
 
 func (self *ContextImplTest) getInternal() (*contextImpl, error) {
-	if impl, ok := self.Context.(*contextImpl); ok {
-		return impl, nil
+	if ctxImpl, ok := self.Context.(*contextImpl); ok {
+		return ctxImpl, nil
 	}
 
 	return nil, fmt.Errorf("invalid type, got %T", self.Context)
