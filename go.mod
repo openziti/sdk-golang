@@ -10,7 +10,7 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.3.0
-	github.com/influxdata/influxdb-client-go/v2 v2.7.0
+	github.com/influxdata/influxdb-client-go/v2 v2.8.0
 	github.com/michaelquigley/pfxlog v0.6.3
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.4.3
