@@ -461,8 +461,8 @@ github.com/openziti/channel v0.18.15 h1:t5D/NBQMjOpoGrPlbuQRtyPoOWrRwk9ES5CNleFa
 github.com/openziti/channel v0.18.15/go.mod h1:F370DYbKEKpIEhRaZVbEK6xN+pirSZx4qnwbObQAV2I=
 github.com/openziti/dilithium v0.3.3/go.mod h1:vsCjI2AU/hon9e+dLhUFbCNGesJDj2ASgkySOcpmvjo=
 github.com/openziti/foundation v0.17.8/go.mod h1:dTaJgdO5OqnKpV+0OPHpnTnqfPpqNGbhJv8O6pMot6o=
-github.com/openziti/foundation v0.17.9 h1:d9sXwYqJrzGFXNmorReTzS+OU2ESSPbTFoZif8ammpE=
-github.com/openziti/foundation v0.17.9/go.mod h1:2wUj+Kcvi8RsgP2wvPtmMLmk0OtIKD+3IVQj2pGZCrs=
+github.com/openziti/foundation v0.17.10 h1:fjSHJg9hzyTXCXL74X4X2czNGwd4vfhB6itH+V4H/1k=
+github.com/openziti/foundation v0.17.10/go.mod h1:2wUj+Kcvi8RsgP2wvPtmMLmk0OtIKD+3IVQj2pGZCrs=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6 h1:lNCW6THrCKBiJBpz8kbVGjC7MgdCGKwuvBgc7LoD6sw=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
