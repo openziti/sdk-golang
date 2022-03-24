@@ -16,7 +16,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/channel v0.18.18
-	github.com/openziti/foundation v0.17.16
+	github.com/openziti/foundation v0.17.17
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
@@ -42,7 +42,6 @@ require (
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
-	github.com/onsi/gomega v1.13.0 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20210416104105-e2d188152601 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/speps/go-hashids v2.0.0+incompatible // indirect
