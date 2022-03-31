@@ -1,2 +1,0 @@
-before_script:
-  - ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
