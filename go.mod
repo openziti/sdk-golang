@@ -16,7 +16,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/channel v0.18.20
-	github.com/openziti/foundation v0.17.20
+	github.com/openziti/foundation v0.17.21
 	github.com/openziti/transport v0.1.0
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
