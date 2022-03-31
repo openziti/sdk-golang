@@ -26,7 +26,7 @@ import (
 	"github.com/openziti/foundation/common"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
-	"github.com/openziti/foundation/transport"
+	"github.com/openziti/transport"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
