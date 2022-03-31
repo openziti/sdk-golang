@@ -27,8 +27,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
-	"github.com/openziti/foundation/transport"
-	"github.com/openziti/foundation/transport/tls"
+	"github.com/openziti/transport"
+	"github.com/openziti/transport/tls"
 	"github.com/openziti/foundation/util/sequence"
 )
 
