@@ -23,7 +23,7 @@ ziti-controller run "path-to-controller-config.yaml"
 
 Start up your router (which is also automatically set up by the express install).
 
-* If you used the express install then simply run `startZitiController`
+* If you used the express install then simply run `startExpressEdgeRouter`
 * Otherwise, the command would be as follows
 ```
 ziti-router run "path-to-edge-router-config.yaml"
