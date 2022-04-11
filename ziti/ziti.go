@@ -26,7 +26,6 @@ import (
 	"github.com/openziti/foundation/common"
 	"github.com/openziti/foundation/identity/identity"
 	"github.com/openziti/foundation/metrics"
-	"github.com/openziti/transport"
 	"github.com/openziti/foundation/util/concurrenz"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -35,6 +34,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
+	"github.com/openziti/transport"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
@@ -708,7 +708,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Infof("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
 	dialer := channel.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
 		edge.SessionTokenHeader: []byte(context.ctrlClt.GetCurrentApiSession().Token),
 	})
