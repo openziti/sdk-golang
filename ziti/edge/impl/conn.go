@@ -17,7 +17,6 @@
 package impl
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/openziti/foundation/util/info"
 	"github.com/sirupsen/logrus"
@@ -50,7 +49,7 @@ var _ edge.Conn = &edgeConn{}
 type edgeConn struct {
 	edge.MsgChannel
 	readQ                 sequencer.Sequencer
-	readBuffer            bytes.Buffer
+	leftover              []byte
 	msgMux                edge.MsgMux
 	hosting               sync.Map
 	closed                concurrenz.AtomicBoolean
@@ -364,14 +363,11 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 	}
 
 	log.Tracef("read buffer = %d bytes", len(p))
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	read, _ := conn.readBuffer.Read(p)
-	if read > 0 {
-		log.Debugf("read %d readBuffer bytes, %d bytes readBuffer", read, conn.readBuffer.Len())
-		return read, nil
+	if len(conn.leftover) > 0 {
+		log.Tracef("found %d leftover bytes", len(conn.leftover))
+		n := copy(p, conn.leftover)
+		conn.leftover = conn.leftover[n:]
+		return n, nil
 	}
 
 	for {
@@ -423,15 +419,16 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			if conn.receiver != nil {
 				d, _, err = conn.receiver.Pull(d)
 				if err != nil {
-					log.WithFields(edge.GetLoggerFields(msg)).Errorf("crypto failed on msg of size=%v, headers=%+v err=(%v)",
-						len(msg.Body), msg.Headers, err)
+					log.WithFields(edge.GetLoggerFields(msg)).Errorf("crypto failed on msg of size=%v, headers=%+v err=(%v)", len(msg.Body), msg.Headers, err)
 					return 0, err
 				}
 			}
-			conn.readBuffer.Write(d)
-			read, _ = conn.readBuffer.Read(p)
-			log.Debugf("reading %d bytes, %d bytes readBuffer", read, conn.readBuffer.Len())
-			return read, nil
+			n := copy(p, d)
+			conn.leftover = d[n:]
+
+			log.Tracef("saving %d bytes for leftover", len(conn.leftover))
+			log.Debugf("reading %v bytes", n)
+			return n, nil
 
 		default:
 			log.WithField("type", msg.ContentType).Error("unexpected message")
