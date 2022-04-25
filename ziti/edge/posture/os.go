@@ -17,10 +17,11 @@
 package posture
 
 import (
-	"github.com/shirou/gopsutil/host"
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/shirou/gopsutil/v3/host"
 )
 
 type OsInfo struct {

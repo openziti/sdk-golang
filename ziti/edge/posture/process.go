@@ -19,12 +19,13 @@ package posture
 import (
 	"crypto/sha512"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/mitchellh/go-ps"
-	"github.com/shirou/gopsutil/process"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/mitchellh/go-ps"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 type ProcessInfo struct {
