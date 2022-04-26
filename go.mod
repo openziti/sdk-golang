@@ -13,7 +13,7 @@ require (
 	github.com/influxdata/influxdb-client-go/v2 v2.8.2
 	github.com/michaelquigley/pfxlog v0.6.9
 	github.com/mitchellh/go-ps v1.0.0
-	github.com/mitchellh/mapstructure v1.4.3
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.2
 	github.com/openziti/channel v0.18.28
 	github.com/openziti/foundation v0.17.22
