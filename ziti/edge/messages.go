@@ -61,6 +61,7 @@ const (
 	TraceHopTypeHeader             = 1017
 	TraceHopIdHeader               = 1018
 	TraceSourceRequestIdHeader     = 1019
+	TraceError                     = 1020
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
