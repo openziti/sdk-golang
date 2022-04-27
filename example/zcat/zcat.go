@@ -61,7 +61,7 @@ var root = &cobra.Command{
 			// let logrus do its own thing
 		}
 	},
-	Args: cobra.MinimumNArgs(1),
+	Args: cobra.RangeArgs(1,2),
 	Run:  runFunc,
 }
 
