@@ -61,7 +61,7 @@ var root = &cobra.Command{
 			// let logrus do its own thing
 		}
 	},
-	Args: cobra.ExactArgs(1),
+	Args: cobra.RangeArgs(1,2),
 	Run:  runFunc,
 }
 
@@ -77,7 +77,13 @@ func runFunc(_ *cobra.Command, args []string) {
 
 	context := ziti.NewContext()
 	for {
-		conn, err := context.Dial(service)
+		opts := &ziti.DialOptions{
+			ConnectTimeout: 5 * time.Second,
+		}
+		if len(args) >= 2 {
+			opts.Identity = args[1]
+		}
+		conn, err := context.DialWithOptions(service, opts)
 		if err != nil {
 			if retry {
 				log.WithError(err).Errorf("unable to dial service: '%v'", service)
