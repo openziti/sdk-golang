@@ -613,12 +613,14 @@ func (conn *edgeConn) TraceRoute(hops uint32, timeout time.Duration) (*edge.Trac
 	}
 	hopType, _ := resp.GetStringHeader(edge.TraceHopTypeHeader)
 	hopId, _ := resp.GetStringHeader(edge.TraceHopIdHeader)
+	hopErr, _ := resp.GetStringHeader(edge.TraceError)
 
 	result := &edge.TraceRouteResult{
 		Hops:    hops,
 		Time:    elapsed,
 		HopType: hopType,
 		HopId:   hopId,
+		Error:   hopErr,
 	}
 	return result, nil
 }

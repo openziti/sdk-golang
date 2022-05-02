@@ -523,36 +523,39 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 
 	edgeDialOptions.CallerId = context.ctrlClt.GetCurrentApiSession().Identity.Name
 
-	var conn edge.Conn
-	var err error
-	for attempt := 0; attempt < 2; attempt++ {
-		var session *edge.Session
-		session, err = context.GetSession(service.Id)
-		if err != nil {
-			context.deleteServiceSessions(service.Id)
-			if _, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
-				break
-			}
-			continue
+	session, err := context.GetSession(service.Id)
+	if err != nil {
+		context.deleteServiceSessions(service.Id)
+		if session, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
+			return nil, errors.Wrapf(err, "unable to dial service '%v'", serviceName)
 		}
-		pfxlog.Logger().WithField("sessionId", session.Id).WithField("sessionToken", session.Token).Debug("connecting with session")
-		conn, err = context.dialSession(service, session, edgeDialOptions)
-		if err != nil {
-			if _, refreshErr := context.refreshSession(session.Id); refreshErr != nil {
-				context.deleteServiceSessions(service.Id)
-				if _, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
-					break
-				}
-			}
-			continue
-		}
-		return conn, err
 	}
 
-	if err != nil {
+	pfxlog.Logger().WithField("sessionId", session.Id).WithField("sessionToken", session.Token).Debug("connecting with session")
+	conn, err := context.dialSession(service, session, edgeDialOptions)
+	if err == nil {
+		return conn, nil
+	}
+
+	var refreshErr error
+	if session, refreshErr = context.refreshSession(session.Id); refreshErr == nil {
+		// if the session wasn't expired, no reason to try again, return the failure
 		return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 	}
-	return nil, errors.Errorf("unable to dial service '%s'", serviceName)
+
+	context.deleteServiceSessions(service.Id)
+	if session, refreshErr = context.createSessionWithBackoff(service, edge.SessionDial, options); refreshErr != nil {
+		// couldn't create a new session, report the error
+		return nil, errors.Wrapf(refreshErr, "unable to dial service '%s'", serviceName)
+	}
+
+	// retry with new session
+	conn, err = context.dialSession(service, session, edgeDialOptions)
+	if err == nil {
+		return conn, nil
+	}
+
+	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 }
 
 func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
