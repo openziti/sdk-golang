@@ -15,7 +15,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/channel v0.18.28
+	github.com/openziti/channel v0.18.29
 	github.com/openziti/foundation v0.17.22
 	github.com/openziti/transport v0.1.5
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
