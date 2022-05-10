@@ -28,8 +28,8 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
 	"github.com/openziti/foundation/util/sequence"
-	"github.com/openziti/transport"
-	"github.com/openziti/transport/tls"
+	"github.com/openziti/transport/v2"
+	"github.com/openziti/transport/v2/tls"
 )
 
 type addrParser struct {
