@@ -27,9 +27,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
+	"github.com/openziti/foundation/util/sequence"
 	"github.com/openziti/transport"
 	"github.com/openziti/transport/tls"
-	"github.com/openziti/foundation/util/sequence"
 )
 
 type addrParser struct {
@@ -113,6 +113,7 @@ type TraceRouteResult struct {
 	Time    time.Duration
 	HopType string
 	HopId   string
+	Error   string
 }
 
 func NewEdgeMsgChannel(ch channel.Channel, connId uint32) *MsgChannel {
