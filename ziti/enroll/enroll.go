@@ -29,16 +29,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/Jeffail/gabs"
-	"github.com/fullsailor/pkcs7"
-	"github.com/golang-jwt/jwt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/identity/certtools"
-	"github.com/openziti/foundation/identity/identity"
-	nfpem "github.com/openziti/foundation/util/pem"
-	"github.com/openziti/foundation/util/x509"
-	"github.com/openziti/sdk-golang/ziti/config"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -46,6 +36,17 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/Jeffail/gabs"
+	"github.com/fullsailor/pkcs7"
+	"github.com/golang-jwt/jwt"
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/foundation/identity/certtools"
+	"github.com/openziti/foundation/identity/identity"
+	nfpem "github.com/openziti/foundation/util/pem"
+	nfx509 "github.com/openziti/foundation/util/x509"
+	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/pkg/errors"
 )
 
 type EnrollmentFlags struct {
@@ -235,7 +236,7 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 			urlErr, ok := enrollErr.(*url.Error)
 			if ok {
 				_, okx509 := urlErr.Err.(x509.UnknownAuthorityError)
-				if okx509 && shouldFetchCerts {
+				if (okx509 || strings.Contains(urlErr.Err.Error(), "x509")) && shouldFetchCerts {
 					// don't try to fetch certs again
 					shouldFetchCerts = false
 
