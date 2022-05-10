@@ -269,12 +269,12 @@ github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7J
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
 github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7mt48=
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
-github.com/openziti/channel v0.18.32 h1:w03gT+JIXx8K8v1x/AMkgzd8d7N3D3qKDn8dD7eCkf0=
-github.com/openziti/channel v0.18.32/go.mod h1:XtZ8eNCfbcNBMpD64FPPe6Q9vkCc5AF2k1q/O8508yQ=
+github.com/openziti/channel v0.18.33 h1:bWdQJLfRJc9o8DL+YGErDAaD3M9WtqeCcWHsrBDnO8o=
+github.com/openziti/channel v0.18.33/go.mod h1:EsvVrWKm9K3dYw6B33Ucsxj+4Q4MVByBHhXjFGTJcLI=
 github.com/openziti/foundation v0.17.23 h1:vmgxhCFYTkovrcV6ULODnYDIvw29OMbjjKwRTwcMNeo=
 github.com/openziti/foundation v0.17.23/go.mod h1:YMalQrbDP3S5ptEcob4v3F+pyCngabaG/hQVoT9Pcxo=
-github.com/openziti/transport v0.1.5 h1:+MgLyUDOsDdixm7GT9TgHd2pBIREf2AHsPa2D6mMNhY=
-github.com/openziti/transport v0.1.5/go.mod h1:NK1wWR16q1IBgvItzruGtvDc2C7AaJpRQqryC2tGIgA=
+github.com/openziti/transport/v2 v2.0.0 h1:iFAEwX3M/qn/Td1bnYqsxw4BqDl5LFFg+9vKkgD19HA=
+github.com/openziti/transport/v2 v2.0.0/go.mod h1:0NH0ct7JXp9aJADyNW9kmiTkTXZBRgVZLuXS69BcSe4=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6 h1:lNCW6THrCKBiJBpz8kbVGjC7MgdCGKwuvBgc7LoD6sw=
 github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20220111122524-cb78842db373 h1:CUvH4JL/8OVy023LMER3dB/MerNQ6OIz4QV3E/JQ3UY=
