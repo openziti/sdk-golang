@@ -378,8 +378,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/onsi/gomega v1.13.0/go.mod h1:lRk9szgn8TxENtWd0Tp4c3wjlRfMTMH27I+3Je41yGY=
 github.com/openzipkin/zipkin-go v0.1.1/go.mod h1:NtoC/o8u3JlF1lSlyPNswIbeQH9bJTmOf0Erfk+hxe8=
-github.com/openziti/channel v0.18.35 h1:UzVDRv7PK6wAbBCxSW13nXSbo70i4TxbnkAt2yT/drU=
-github.com/openziti/channel v0.18.35/go.mod h1:7jhiB1oevdYMv1mXw86pkZ5QSB4jX90N26HyE7LVV7c=
+github.com/openziti/channel v0.18.36 h1:x7TgEpw3ecIpginDsqAMGBTdhtCdMx2BR9m9wzXmZhY=
+github.com/openziti/channel v0.18.36/go.mod h1:97VgqsQ8BV9KZ9zKiaeCM9rTOn2Kft6yaS1c+fdec9A=
 github.com/openziti/dilithium v0.3.3/go.mod h1:vsCjI2AU/hon9e+dLhUFbCNGesJDj2ASgkySOcpmvjo=
 github.com/openziti/foundation v0.17.25 h1:s7E7LIYHGeJQQqmQI1uLA2Ml3L2dgGbeTN+rD6Woo78=
 github.com/openziti/foundation v0.17.25/go.mod h1:YMalQrbDP3S5ptEcob4v3F+pyCngabaG/hQVoT9Pcxo=
