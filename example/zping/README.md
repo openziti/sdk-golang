@@ -4,7 +4,7 @@ What is zping?  zping replaces the function of icmp ping tool in a ziti network.
 
 It provides an end to end latency measurment between any two ziti identities in a ziti network and like icmp ping will provide the following metrics upon completion of the ping session:
 
-min, max and mean latency and standard deviation as well as % loss.
+min, max and mean latency and standard deviation.
 
 zping uses the addressable terminator function of ziti to direct ping requests to specific identities.
 
