@@ -13,6 +13,11 @@ zping uses the addressable terminator function of ziti to direct ping requests t
 Compile from source:
 
 Install golang for your platform follow instructions at https://golang.org
+and ensure you set you gopath properly for your platform. i.e
+Ubuntu linux:
+
+export GOPATH=$HOME/go
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 
 Linux:
 
@@ -30,7 +35,7 @@ Linux:
    $ cd sdk-golang/example/zping
 ```
 ```
-   $ go build zping
+   $ go install zping
 ```
 
 # Setup the Network and the Ziti Service :
@@ -62,14 +67,14 @@ Linux:
 
 10. Enroll the endpoints with the zping binary i.e. 
 ```
-    $ ./zping enroll -j zitiendpoint1.jwt
+    $ zping enroll -j zitiendpoint1.jwt
 
       INFO[0000] generating 4096 bit RSA key                  
 
       INFO[0002] enrolled successfully. identity file written to: zpingendpoint1.json
 ```    
 ```
-    $ ./zping enroll -j zpingendpoint2.jwt
+    $ zping enroll -j zpingendpoint2.jwt
 
       INFO[0000] generating 4096 bit RSA key                  
 
@@ -77,7 +82,7 @@ Linux:
 ```
 11. On each machine in run either in background or a separate window in server mode
 ```
-    $ ./zping server -c zpingendpoint1.json &
+    $ zping server -c zpingendpoint1.json &
       [1] 4123
       INFO[0000] binding service ziti-ping
       
@@ -86,7 +91,7 @@ Linux:
       INFO[0000] connection to edge router using token 1de2f02e-62fe-44fb-bebb-e2d21a82d13f            
 ```
 ```
-    $ ./zping server -c zpingendpoint2.json &
+    $ zping server -c zpingendpoint2.json &
       [1] 5176
       INFO[0000] binding service ziti-ping                    
 
@@ -96,7 +101,7 @@ Linux:
 ```
 12. Send 5 zpings from zpingclient2 to zpingclient1
 ```
-      $ ./zping client -c zitiendpoint2.json -i zitiendpoint1 -n 5
+      $ zping client -c zitiendpoint2.json -i zitiendpoint1 -n 5
         INFO[0000] connection to edge router using token b78cab88-fa22-4d49-906f-ddf101b63b88 
         INFO[0566] new connection                               
 
