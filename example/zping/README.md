@@ -16,8 +16,11 @@ Install golang for your platform follow instructions at https://golang.org
 and ensure you set you gopath properly for your platform. i.e
 Ubuntu linux:
 
+```
 export GOPATH=$HOME/go
+```
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+```
 
 Linux:
 
