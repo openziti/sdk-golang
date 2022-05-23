@@ -1,6 +1,6 @@
 module github.com/openziti/sdk-golang
 
-go 1.17
+go 1.18
 
 //replace github.com/openziti/foundation => ../foundation
 
@@ -15,9 +15,9 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/channel v0.18.36
+	github.com/openziti/channel v0.18.37
 	github.com/openziti/foundation v0.17.25
-	github.com/openziti/transport/v2 v2.0.1
+	github.com/openziti/transport/v2 v2.0.2
 	github.com/orcaman/concurrent-map v0.0.0-20190826125027-8c72a8bb44f6
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
