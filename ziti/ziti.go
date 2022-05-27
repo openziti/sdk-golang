@@ -35,7 +35,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
 	"github.com/openziti/transport/v2"
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
@@ -152,7 +152,7 @@ var _ Context = &contextImpl{}
 
 type contextImpl struct {
 	options           *Options
-	routerConnections cmap.ConcurrentMap
+	routerConnections cmap.ConcurrentMap[edge.RouterConn]
 
 	ctrlClt api.Client
 
@@ -208,7 +208,7 @@ func NewContextWithOpts(cfg *config.Config, options *Options) Context {
 	}
 
 	result := &contextImpl{
-		routerConnections: cmap.New(),
+		routerConnections: cmap.New[edge.RouterConn](),
 		options:           options,
 		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
 		closeNotify:       make(chan struct{}),
@@ -440,11 +440,11 @@ func (context *contextImpl) Authenticate() error {
 	}
 
 	// router connections are establishing using the api token. If we re-authenticate we must re-establish connections
-	context.routerConnections.IterCb(func(key string, v interface{}) {
-		_ = v.(edge.RouterConn).Close()
+	context.routerConnections.IterCb(func(key string, conn edge.RouterConn) {
+		_ = conn.Close()
 	})
 
-	context.routerConnections = cmap.New()
+	context.routerConnections = cmap.New[edge.RouterConn]()
 
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
@@ -745,10 +745,10 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	logger.Debugf("connected to %s", ingressUrl)
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
-		func(exist bool, oldV interface{}, newV interface{}) interface{} {
+		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
 			if exist { // use the routerConnection already in the map, close new one
 				go func() {
-					if err := newV.(edge.RouterConn).Close(); err != nil {
+					if err := newV.Close(); err != nil {
 						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
 					}
 				}()

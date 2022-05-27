@@ -22,13 +22,13 @@ import (
 	"github.com/openziti/foundation/util/stringz"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"sync"
 	"time"
 )
 
 type CacheData struct {
-	Processes    cmap.ConcurrentMap // map[processPath]ProcessInfo
+	Processes    cmap.ConcurrentMap[ProcessInfo] // map[processPath]ProcessInfo
 	MacAddresses []string
 	Os           OsInfo
 	Domain       string
@@ -37,7 +37,7 @@ type CacheData struct {
 
 func NewCacheData() *CacheData {
 	return &CacheData{
-		Processes:    cmap.New(),
+		Processes:    cmap.New[ProcessInfo](),
 		MacAddresses: []string{},
 		Os: OsInfo{
 			Type:    "",
@@ -51,12 +51,12 @@ type Cache struct {
 	currentData  *CacheData
 	previousData *CacheData
 
-	watchedProcesses cmap.ConcurrentMap //map[processPath]struct{}{}
+	watchedProcesses cmap.ConcurrentMap[struct{}] //map[processPath]struct{}{}
 
 	serviceQueryMap map[string]map[string]edge.PostureQuery //map[serviceId]map[queryId]query
-	activeServices  cmap.ConcurrentMap                      // map[serviceId]
+	activeServices  cmap.ConcurrentMap[struct{}]            // map[serviceId]
 
-	lastSent   cmap.ConcurrentMap //map[type|processQueryId]time.Time
+	lastSent   cmap.ConcurrentMap[time.Time] //map[type|processQueryId]time.Time
 	ctrlClient api.Client
 
 	startOnce           sync.Once
@@ -70,10 +70,10 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
 		currentData:      NewCacheData(),
 		previousData:     NewCacheData(),
-		watchedProcesses: cmap.New(),
+		watchedProcesses: cmap.New[struct{}](),
 		serviceQueryMap:  map[string]map[string]edge.PostureQuery{},
-		activeServices:   cmap.New(),
-		lastSent:         cmap.New(),
+		activeServices:   cmap.New[struct{}](),
+		lastSent:         cmap.New[time.Time](),
 		ctrlClient:       ctrlClient,
 		startOnce:        sync.Once{},
 		closeNotify:      closeNotify,
@@ -95,7 +95,7 @@ func (cache *Cache) setWatchedProcesses(processPaths []string) {
 	}
 
 	var processesToRemove []string
-	cache.watchedProcesses.IterCb(func(processPath string, _ interface{}) {
+	cache.watchedProcesses.IterCb(func(processPath string, _ struct{}) {
 		if _, ok := processMap[processPath]; !ok {
 			processesToRemove = append(processesToRemove, processPath)
 		}
@@ -123,7 +123,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 	}
 
 	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
-	cache.activeServices.IterCb(func(serviceId string, _ interface{}) {
+	cache.activeServices.IterCb(func(serviceId string, _ struct{}) {
 		queryMap, ok := cache.serviceQueryMap[serviceId]
 
 		for queryId, query := range queryMap {
@@ -185,30 +185,20 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		}
 	}
 
-	cache.currentData.Processes.IterCb(func(processPath string, processInfoVal interface{}) {
-		curState, ok := processInfoVal.(ProcessInfo)
-		if !ok {
-			return
-		}
-
+	cache.currentData.Processes.IterCb(func(processPath string, curState ProcessInfo) {
 		queryId, isActive := activeQueryTypes[processPath]
 
 		if !isActive {
 			return
 		}
 
-		prevVal, ok := cache.previousData.Processes.Get(processPath)
+		prevState, ok := cache.previousData.Processes.Get(processPath)
 
 		sendResponse := false
 		if !ok {
 			//no prev state send
 			sendResponse = true
 		} else {
-			prevState, ok := prevVal.(ProcessInfo)
-			if !ok {
-				sendResponse = true
-			}
-
 			sendResponse = prevState.IsRunning != curState.IsRunning || prevState.Hash != curState.Hash || !stringz.EqualSlices(prevState.SignerFingerprints, curState.SignerFingerprints)
 		}
 
@@ -246,7 +236,7 @@ func (cache *Cache) Refresh() {
 }
 
 // SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
-// to provide data for on a per service basis.
+// to provide data for on a per-service basis.
 func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
 	cache.serviceQueryMap = serviceQueryMap
 
