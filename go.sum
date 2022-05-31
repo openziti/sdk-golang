@@ -271,8 +271,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/openziti/channel v0.18.38 h1:iE5pbXoAFYfu/LpFR3CZDJ/yri3ZrwY61sGr11qFTa0=
 github.com/openziti/channel v0.18.38/go.mod h1:IoDeXk9O7MWTiCJ9on9xbCPhSQRbtb2YlI8d1IOiKhs=
-github.com/openziti/foundation v0.17.26 h1:UQwRcFDAipm2HvL++OqbHyTzcPoge0GofiNp7ZRwoFk=
-github.com/openziti/foundation v0.17.26/go.mod h1:obk269ZljgJzdziLAHcoAW+otWSqGYH57XupgkiIsj0=
+github.com/openziti/foundation v0.17.27 h1:RKvHQHNIxfME0LnxB+LF14HS19V+wE3NvSse0G5fnAE=
+github.com/openziti/foundation v0.17.27/go.mod h1:obk269ZljgJzdziLAHcoAW+otWSqGYH57XupgkiIsj0=
 github.com/openziti/transport/v2 v2.0.3 h1:uK/LqKM6iEaGsYa4K46xuBXdQQ/bEJrxS8Xl4VF0BKE=
 github.com/openziti/transport/v2 v2.0.3/go.mod h1:cpcnxiv5pSzGtLfQCxbZI62J7o6rREjTUYSdIcBENuo=
 github.com/orcaman/concurrent-map/v2 v2.0.0 h1:iSMwuBQvQ1nX5i9gYuGMiSy0fjWHmazdjF+NdSO9JzI=
