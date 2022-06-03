@@ -29,11 +29,11 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -548,7 +548,7 @@ func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certif
 		pfxlog.Logger().WithError(err).WithField("url", urlRoot).Panic("could not parse base url to retrieve CA store")
 	}
 
-	certStoreUrl.Path = path.Join(certStoreUrl.Path, ".well-known/est/cacerts") //specified by rfc7030
+	certStoreUrl = certStoreUrl.ResolveReference(api.WellKnownCaStoreUrl)
 
 	resp, respErr := client.Get(certStoreUrl.String())
 

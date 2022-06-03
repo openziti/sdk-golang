@@ -20,7 +20,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net/url"
-	"path"
 	"reflect"
 
 	"github.com/golang-jwt/jwt"
@@ -28,6 +27,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 )
+
+var EnrollUrl, _ = url.Parse("/edge/client/v1/enroll")
 
 type Versions struct {
 	Api           string `json:"api"`
@@ -53,7 +54,8 @@ func (t *EnrollmentClaims) EnrolmentUrl() string {
 		pfxlog.Logger().WithError(err).WithField("url", t.Issuer).Panic("could not parse issuer as URL")
 	}
 
-	enrollmentUrl.Path = path.Join(enrollmentUrl.Path, "enroll")
+	enrollmentUrl = enrollmentUrl.ResolveReference(EnrollUrl)
+
 	query := enrollmentUrl.Query()
 	query.Add("method", t.EnrollmentMethod)
 	query.Add("token", t.Id)
