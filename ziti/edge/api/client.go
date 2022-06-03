@@ -109,18 +109,19 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config, configTypes []string) (RestCli
 	}, nil
 }
 
-var authUrl, _ = url.Parse("/authenticate?method=cert")
-var authMfaUrl, _ = url.Parse("/authenticate/mfa")
-var currSess, _ = url.Parse("/current-api-session")
-var currIdentity, _ = url.Parse("/current-identity")
-var serviceUpdate, _ = url.Parse("/current-api-session/service-updates")
-var servicesUrl, _ = url.Parse("/services")
-var sessionUrl, _ = url.Parse("/sessions")
-var postureResponseUrl, _ = url.Parse("/posture-response")
-var postureResponseBulkUrl, _ = url.Parse("/posture-response-bulk")
-var currentIdentityMfa, _ = url.Parse("/current-identity/mfa")
-var currentIdentityMfaVerify, _ = url.Parse("/current-identity/mfa/verify")
-var currentIdentityMfaRecoveryCodes, _ = url.Parse("/current-identity/mfa/recovery-codes")
+var AuthUrl, _ = url.Parse("/edge/client/v1/authenticate?method=cert")
+var AuthMfaUrl, _ = url.Parse("/edge/client/v1/authenticate/mfa")
+var CurrSessUrl, _ = url.Parse("/edge/client/v1/current-api-session")
+var CurrIdentityUrl, _ = url.Parse("/edge/client/v1/current-identity")
+var ServiceUpdateUrl, _ = url.Parse("/edge/client/v1/current-api-session/service-updates")
+var ServicesUrl, _ = url.Parse("/edge/client/v1/services")
+var SessionUrl, _ = url.Parse("/edge/client/v1/sessions")
+var PostureResponseUrl, _ = url.Parse("/edge/client/v1/posture-response")
+var PostureResponseBulkUrl, _ = url.Parse("/edge/client/v1/posture-response-bulk")
+var CurrentIdentityMfaUrl, _ = url.Parse("/edge/client/v1/current-identity/mfa")
+var CurrentIdentityMfaVerifyUrl, _ = url.Parse("/edge/client/v1/current-identity/mfa/verify")
+var CurrentIdentityMfaRecoveryCodesUrl, _ = url.Parse("/edge/client/v1/current-identity/mfa/recovery-codes")
+var WellKnownCaStoreUrl, _ = url.Parse("/edge/client/v1/.well-known/est/cacerts")
 
 type ctrlClient struct {
 	configTypes        []string
@@ -143,7 +144,7 @@ func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("getting current identity information")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(currIdentity).String(), nil)
+	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(CurrIdentityUrl).String(), nil)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new HTTP request")
@@ -180,7 +181,7 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("checking if service list update is available")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(serviceUpdate).String(), nil)
+	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(ServiceUpdateUrl).String(), nil)
 
 	if err != nil {
 		return false, errors.Wrap(err, "failed to create new HTTP request")
@@ -230,7 +231,7 @@ func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.S
 	body := fmt.Sprintf(`{"serviceId":"%s", "type": "%s"}`, svcId, kind)
 	reqBody := bytes.NewBufferString(body)
 
-	fullSessionUrl := c.zitiUrl.ResolveReference(sessionUrl).String()
+	fullSessionUrl := c.zitiUrl.ResolveReference(SessionUrl).String()
 	pfxlog.Logger().Debugf("requesting session from %v", fullSessionUrl)
 	req, _ := http.NewRequest("POST", fullSessionUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -259,7 +260,7 @@ func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error
 	if err != nil {
 		return err
 	}
-	fullUrl := c.zitiUrl.ResolveReference(postureResponseBulkUrl).String()
+	fullUrl := c.zitiUrl.ResolveReference(PostureResponseBulkUrl).String()
 	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	req.Header.Set("content-type", "application/json")
@@ -294,7 +295,7 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 	if err != nil {
 		return err
 	}
-	fullUrl := c.zitiUrl.ResolveReference(postureResponseUrl).String()
+	fullUrl := c.zitiUrl.ResolveReference(PostureResponseUrl).String()
 	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	req.Header.Set("content-type", "application/json")
@@ -319,8 +320,7 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 }
 
 func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
-	sessionLookupUrl, _ := url.Parse(fmt.Sprintf("/sessions/%v", id))
-	sessionLookupUrlStr := c.zitiUrl.ResolveReference(sessionLookupUrl).String()
+	sessionLookupUrlStr := c.zitiUrl.ResolveReference(SessionUrl).String() + "/" + id
 	pfxlog.Logger().Debugf("requesting session from %v", sessionLookupUrlStr)
 	req, _ := http.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -350,7 +350,7 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 	if err := json.NewEncoder(req).Encode(reqMap); err != nil {
 		return nil, err
 	}
-	resp, err := c.clt.Post(c.zitiUrl.ResolveReference(authUrl).String(), "application/json", req)
+	resp, err := c.clt.Post(c.zitiUrl.ResolveReference(AuthUrl).String(), "application/json", req)
 	if err != nil {
 		pfxlog.Logger().Errorf("failure to post auth %+v", err)
 		return nil, err
@@ -391,7 +391,7 @@ func (c *ctrlClient) VerifyMfa(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
-	mfaVerifyUrl := c.zitiUrl.ResolveReference(currentIdentityMfaVerify).String()
+	mfaVerifyUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaVerifyUrl).String()
 	pfxlog.Logger().Debugf("verifying MFA: POST %v", mfaVerifyUrl)
 
 	req, _ := http.NewRequest("POST", mfaVerifyUrl, reqBody)
@@ -420,7 +420,7 @@ func (c *ctrlClient) AuthenticateMFA(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
-	mfaAuthUrl := c.zitiUrl.ResolveReference(authMfaUrl).String()
+	mfaAuthUrl := c.zitiUrl.ResolveReference(AuthMfaUrl).String()
 	pfxlog.Logger().Debugf("authenticating MFA: POST %v", mfaAuthUrl)
 
 	req, _ := http.NewRequest("POST", mfaAuthUrl, reqBody)
@@ -454,7 +454,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	body := `{}`
 	reqBody := bytes.NewBufferString(body)
 
-	mfaUrl := c.zitiUrl.ResolveReference(currentIdentityMfa).String()
+	mfaUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaUrl).String()
 	pfxlog.Logger().Debugf("enrolling in mfa: POST %v", mfaUrl)
 	req, _ := http.NewRequest("POST", mfaUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -516,7 +516,7 @@ func (c *ctrlClient) RemoveMfa(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
-	mfaUrl := c.zitiUrl.ResolveReference(currentIdentityMfa).String()
+	mfaUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaUrl).String()
 	pfxlog.Logger().Debugf("removing mfa: DELETE %v", mfaUrl)
 	req, _ := http.NewRequest("DELETE", mfaUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -542,7 +542,7 @@ func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
-	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(currentIdentityMfaRecoveryCodes).String()
+	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaRecoveryCodesUrl).String()
 	pfxlog.Logger().Debugf("generating new MFA recovery codes: POST %v", mfaRecoveryCodesUrl)
 	req, _ := http.NewRequest("POST", mfaRecoveryCodesUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -569,7 +569,7 @@ func (c *ctrlClient) GetMfaRecoveryCodes(code string) ([]string, error) {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
-	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(currentIdentityMfaRecoveryCodes).String()
+	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaRecoveryCodesUrl).String()
 	pfxlog.Logger().Debugf("retrieving MFA recovery codes: GET %v", mfaRecoveryCodesUrl)
 	req, _ := http.NewRequest("GET", mfaRecoveryCodesUrl, reqBody)
 	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
@@ -653,7 +653,7 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("refreshing apiSession")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(currSess).String(), nil)
+	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(CurrSessUrl).String(), nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new HTTP request during refresh: %v", err)
@@ -697,7 +697,7 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 }
 
 func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
-	servReq, _ := http.NewRequest("GET", c.zitiUrl.ResolveReference(servicesUrl).String(), nil)
+	servReq, _ := http.NewRequest("GET", c.zitiUrl.ResolveReference(ServicesUrl).String(), nil)
 
 	if c.apiSession.Token == "" {
 		return nil, errors.New("apiSession apiSession token is empty")
