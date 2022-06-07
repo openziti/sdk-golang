@@ -24,7 +24,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.22.4
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.4.0
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.7.2
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
 )
@@ -55,5 +55,5 @@ require (
 	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
