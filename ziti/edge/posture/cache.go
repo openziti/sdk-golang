@@ -53,8 +53,8 @@ type Cache struct {
 
 	watchedProcesses cmap.ConcurrentMap[struct{}] //map[processPath]struct{}{}
 
-	serviceQueryMap map[string]map[string]edge.PostureQuery //map[serviceId]map[queryId]query
-	activeServices  cmap.ConcurrentMap[struct{}]            // map[serviceId]
+	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]edge.PostureQuery] //map[serviceId]map[queryId]query
+	activeServices  cmap.ConcurrentMap[struct{}]                                    // map[serviceId]
 
 	lastSent   cmap.ConcurrentMap[time.Time] //map[type|processQueryId]time.Time
 	ctrlClient api.Client
@@ -64,6 +64,7 @@ type Cache struct {
 	closeNotify         <-chan struct{}
 
 	DomainFunc func() string
+	lock       sync.Mutex
 }
 
 func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
@@ -71,7 +72,6 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 		currentData:      NewCacheData(),
 		previousData:     NewCacheData(),
 		watchedProcesses: cmap.New[struct{}](),
-		serviceQueryMap:  map[string]map[string]edge.PostureQuery{},
 		activeServices:   cmap.New[struct{}](),
 		lastSent:         cmap.New[time.Time](),
 		ctrlClient:       ctrlClient,
@@ -79,6 +79,7 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 		closeNotify:      closeNotify,
 		DomainFunc:       Domain,
 	}
+	cache.serviceQueryMap.Store(map[string]map[string]edge.PostureQuery{})
 	cache.start()
 
 	return cache
@@ -86,7 +87,6 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 
 //Set the current list of processes paths that are being observed
 func (cache *Cache) setWatchedProcesses(processPaths []string) {
-
 	processMap := map[string]struct{}{}
 
 	for _, processPath := range processPaths {
@@ -108,6 +108,9 @@ func (cache *Cache) setWatchedProcesses(processPaths []string) {
 
 // Evaluate refreshes all posture data and determines if new posture responses should be sent out
 func (cache *Cache) Evaluate() {
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
+
 	cache.Refresh()
 	if responses := cache.GetChangedResponses(); len(responses) > 0 {
 		if err := cache.SendResponses(responses); err != nil {
@@ -124,7 +127,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 
 	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
 	cache.activeServices.IterCb(func(serviceId string, _ struct{}) {
-		queryMap, ok := cache.serviceQueryMap[serviceId]
+		queryMap, ok := cache.serviceQueryMap.Load()[serviceId]
 
 		for queryId, query := range queryMap {
 			if query.QueryType != api.PostureCheckTypeProcess {
@@ -238,7 +241,7 @@ func (cache *Cache) Refresh() {
 // SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
 // to provide data for on a per-service basis.
 func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
-	cache.serviceQueryMap = serviceQueryMap
+	cache.serviceQueryMap.Store(serviceQueryMap)
 
 	var processPaths []string
 	for _, queryMap := range serviceQueryMap {
