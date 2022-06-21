@@ -37,8 +37,8 @@ ziti edge create service reflectService --role-attributes reflect-service
 echo Create and enroll two identities
 ziti edge create identity device reflect-client -a clients -o reflect-client.jwt
 ziti edge create identity device reflect-server -a servers -o reflect-server.jwt
-ziti edge enroll -j reflect-client.jwt
-ziti edge enroll reflect-server.jwt
+ziti edge enroll --jwt reflect-client.jwt
+ziti edge enroll --jwt reflect-server.jwt
 
 echo Create service policies
 ziti edge create service-policy reflect-client-dial Dial --identity-roles '#clients' --service-roles '#reflect-service'
