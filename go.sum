@@ -269,8 +269,8 @@ github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7J
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
 github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7mt48=
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
-github.com/openziti/channel v0.18.40 h1:70MUo9U3EfXwm7Hv1JLC+fEQ94YQeyOMXi+nqizvuoo=
-github.com/openziti/channel v0.18.40/go.mod h1:9ZZKcC57bbb5Wdy76AD1XLoXHU4Uz05i8y6k3r8y13s=
+github.com/openziti/channel v0.18.41 h1:14AsuA/63BRS/VGRik7lfu6brFruLks1dVCwc2SHZQU=
+github.com/openziti/channel v0.18.41/go.mod h1:9ZZKcC57bbb5Wdy76AD1XLoXHU4Uz05i8y6k3r8y13s=
 github.com/openziti/foundation v0.17.28 h1:ckYnd6SUaRPS9HU+lr5AosU7h4W37Wg01DlM5+BlG4s=
 github.com/openziti/foundation v0.17.28/go.mod h1:CaXG0+mgwq25wHCUy35aIbB01ph7U+BoUW8+P5F235o=
 github.com/openziti/transport/v2 v2.0.5 h1:rPnkA7Z04cO6QFJWM4cBmD1P7/8I89VblABD46F8l18=
