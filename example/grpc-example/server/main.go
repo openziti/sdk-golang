@@ -30,7 +30,7 @@ func main() {
 	flag.Parse()
 	cfg, err := config.NewFromFile(*identity)
 	if err != nil {
-		log.Fatalf("failed to load ziti identity{%s}", identity)
+		log.Fatalf("failed to load ziti identity{%v}: %v", identity, err)
 	}
 
 	ztx := ziti.NewContextWithConfig(cfg)
