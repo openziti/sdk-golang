@@ -33,6 +33,10 @@ func main() {
 	}
 
 	ztx := ziti.NewContextWithConfig(cfg)
+	err = ztx.Authenticate()
+	if err != nil {
+		log.Fatalf("failed to authenticate: %v", err)
+	}
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(*service,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

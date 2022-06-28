@@ -21,7 +21,7 @@ type server struct {
 }
 
 // SayHello implements helloworld.GreeterServer
-func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
 	log.Printf("Received: %v", in.GetName())
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
@@ -34,6 +34,10 @@ func main() {
 	}
 
 	ztx := ziti.NewContextWithConfig(cfg)
+	err = ztx.Authenticate()
+	if err != nil {
+		log.Fatalf("failed to authenticate: %v", err)
+	}
 
 	lis, err := ztx.Listen(*service)
 	if err != nil {
