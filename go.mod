@@ -27,6 +27,8 @@ require (
 	github.com/stretchr/testify v1.7.4
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
+	google.golang.org/grpc v1.38.0
+	google.golang.org/grpc/examples v0.0.0-20220621225137-28de4866ce74
 )
 
 require (
@@ -34,6 +36,7 @@ require (
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/emirpasic/gods v1.17.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/influxdata/influxdb1-client v0.0.0-20191209144304-8bf82d3c094d // indirect
 	github.com/influxdata/line-protocol v0.0.0-20210311194329-9aa0e372d097 // indirect
@@ -53,6 +56,8 @@ require (
 	golang.org/x/crypto v0.0.0-20220511200225-c6db032c6c88 // indirect
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171 // indirect
+	golang.org/x/text v0.3.7 // indirect
+	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
