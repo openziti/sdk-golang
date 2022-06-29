@@ -27,7 +27,7 @@ require (
 	github.com/stretchr/testify v1.7.5
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
-	google.golang.org/grpc v1.38.0
+	google.golang.org/grpc v1.47.0
 	google.golang.org/grpc/examples v0.0.0-20220621225137-28de4866ce74
 )
 
