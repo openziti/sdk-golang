@@ -270,12 +270,12 @@ github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7J
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
 github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7mt48=
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
-github.com/openziti/channel v0.18.45 h1:iwcXYTyd7EQUC1FhQ9OZ1NunzPjaCQFokJjnNmRkkzs=
-github.com/openziti/channel v0.18.45/go.mod h1:LicIbguZXzYckl9KjsW0mAcV0J6N2vsxWZVrkcZDQyg=
+github.com/openziti/channel v0.18.46 h1:MF8lkiPydMWFfFEiLYUZZt+8OcQRozE4NF+wjnhLKfY=
+github.com/openziti/channel v0.18.46/go.mod h1:ztchrsHW/Rhe0OHvqtEEHgk+P66RpOVS4SBNFi1Xir4=
 github.com/openziti/foundation v0.17.31 h1:rLuoBhH/YKy7HTKDTiBzEIXffZq7nr+waJvepdwBWNE=
 github.com/openziti/foundation v0.17.31/go.mod h1:yOn4gl8cAv5r98fd3pvQFj57hrG4V9R8r4AAgYes/Lw=
-github.com/openziti/transport/v2 v2.0.9 h1:RZHBuaFAO6fxsomegvDTqBnlOXvzASanvfh8awcFmT0=
-github.com/openziti/transport/v2 v2.0.9/go.mod h1:+Lo/SPmXAY6toSm4l5GBQYTWFbEs6INZXFQgk6HTQ8g=
+github.com/openziti/transport/v2 v2.0.10 h1:x9FmccmF+f1hhplBzbVH5IIOVznIiBzxUzvB5xNWMm4=
+github.com/openziti/transport/v2 v2.0.10/go.mod h1:5Y6lrnyhJGekQ3tWGNs1Sl8zMee8vL4UY2AEbaMjv54=
 github.com/orcaman/concurrent-map/v2 v2.0.0 h1:iSMwuBQvQ1nX5i9gYuGMiSy0fjWHmazdjF+NdSO9JzI=
 github.com/orcaman/concurrent-map/v2 v2.0.0/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20220111122524-cb78842db373 h1:CUvH4JL/8OVy023LMER3dB/MerNQ6OIz4QV3E/JQ3UY=
