@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/openziti/foundation/identity/identity"
+	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"

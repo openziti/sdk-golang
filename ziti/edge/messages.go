@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 NetFoundry, Inc.
+	Copyright 2019 NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package edge
 import (
 	"encoding/binary"
 	"github.com/openziti/channel"
-	"github.com/openziti/foundation/util/uuidz"
+	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
