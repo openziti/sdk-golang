@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 NetFoundry, Inc.
+	Copyright 2019 NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -23,10 +23,10 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
 	"github.com/openziti/channel/latency"
-	"github.com/openziti/foundation/common"
-	"github.com/openziti/foundation/identity/identity"
-	"github.com/openziti/foundation/metrics"
-	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/versions"
+	"github.com/openziti/identity"
+	"github.com/openziti/metrics"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
@@ -728,7 +728,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	logger.Debugf("routerConn[%s@%s] connected in %d ms", routerName, ingressUrl, connectTime.Milliseconds())
 
 	if versionHeader, found := ch.Underlay().Headers()[channel.HelloVersionHeader]; found {
-		versionInfo, err := common.StdVersionEncDec.Decode(versionHeader)
+		versionInfo, err := versions.StdVersionEncDec.Decode(versionHeader)
 		if err != nil {
 			pfxlog.Logger().Errorf("could not parse hello version header: %v", err)
 		} else {

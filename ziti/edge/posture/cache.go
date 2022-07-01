@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 NetFoundry, Inc.
+	Copyright 2019 NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ package posture
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/util/concurrenz"
-	"github.com/openziti/foundation/util/stringz"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/stringz"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	cmap "github.com/orcaman/concurrent-map/v2"

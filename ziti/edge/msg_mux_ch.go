@@ -3,7 +3,7 @@ package edge
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
-	"github.com/openziti/foundation/util/concurrenz"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/pkg/errors"
 	"math"
 	"sync/atomic"

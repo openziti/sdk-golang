@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 NetFoundry, Inc.
+	Copyright 2019 NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel"
-	"github.com/openziti/foundation/util/sequence"
+	"github.com/openziti/foundation/v2/sequence"
 	"github.com/openziti/transport/v2"
 	"github.com/openziti/transport/v2/tls"
 )

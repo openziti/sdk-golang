@@ -3,9 +3,9 @@ package impl
 import (
 	"crypto/x509"
 	"github.com/openziti/channel"
-	"github.com/openziti/foundation/identity/identity"
-	"github.com/openziti/foundation/util/concurrenz"
-	"github.com/openziti/foundation/util/sequencer"
+	"github.com/openziti/identity"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
 	"testing"
