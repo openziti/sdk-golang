@@ -17,7 +17,7 @@ require (
 	github.com/openziti/channel v0.18.58
 	github.com/openziti/foundation/v2 v2.0.2
 	github.com/openziti/identity v1.0.5
-	github.com/openziti/metrics v1.0.2
+	github.com/openziti/metrics v1.0.3
 	github.com/openziti/transport/v2 v2.0.20
 	github.com/orcaman/concurrent-map/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
@@ -51,6 +51,6 @@ require (
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/protobuf v1.28.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
