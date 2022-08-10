@@ -64,6 +64,7 @@ type Context interface {
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
+	RefreshServices() error
 	GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error)
 	GetSession(id string) (*edge.Session, error)
 
@@ -314,6 +315,17 @@ func (context *contextImpl) refreshSessions() {
 	for u, name := range edgeRouters {
 		go context.connectEdgeRouter(name, u, nil)
 	}
+}
+
+func (context *contextImpl) RefreshServices() error {
+	log := pfxlog.Logger()
+	log.Debug("refreshing services")
+	services, err := context.getServices()
+	if err != nil {
+		return err
+	}
+	context.processServiceUpdates(services)
+	return nil
 }
 
 func (context *contextImpl) runSessionRefresh() {
