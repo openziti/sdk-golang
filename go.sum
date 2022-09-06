@@ -244,8 +244,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/openziti/channel v0.18.66 h1:5IwWtOJovqqMor3t4QBENHbPtZFhmM5LQiv1GQmwa7I=
 github.com/openziti/channel v0.18.66/go.mod h1:fTNduY+aIpoh1TX04/Bh2xfjlS7MDIaZlayg4efumm8=
-github.com/openziti/foundation/v2 v2.0.3 h1:qI7nusD4Yi6cOTwhzDan7LNcYWaRai9xZCxVePhmVMk=
-github.com/openziti/foundation/v2 v2.0.3/go.mod h1:L75kwCC5WTUPqxuAd3G+WMBompaElMb/nYlJjR1sJ9Q=
+github.com/openziti/foundation/v2 v2.0.4 h1:QnpbNgRzPTnbu/QIqdNhYJl4nrhxrX7VXiIF5yIqQhc=
+github.com/openziti/foundation/v2 v2.0.4/go.mod h1:L75kwCC5WTUPqxuAd3G+WMBompaElMb/nYlJjR1sJ9Q=
 github.com/openziti/identity v1.0.9 h1:yXZnYo4nJgVKumbYFIwAGvnAm3ka4WXh+9PVkzPHHNs=
 github.com/openziti/identity v1.0.9/go.mod h1:7kQeDRILyeWHBfYbnGC/zitjQ9seyQ1O9w2NNrMi3Xg=
 github.com/openziti/metrics v1.0.6 h1:/ZIM10fwDvDE8ew2L9h1Z1KrdHpBSbmIKuPcrjiGUDw=
