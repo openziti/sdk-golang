@@ -3,9 +3,9 @@ package impl
 import (
 	"crypto/x509"
 	"github.com/openziti/channel"
-	"github.com/openziti/identity"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequencer"
+	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -122,6 +122,11 @@ func BenchmarkSequencer(b *testing.B) {
 }
 
 type NoopTestChannel struct {
+}
+
+func (ch *NoopTestChannel) TrySend(s channel.Sendable) (bool, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (ch *NoopTestChannel) Underlay() channel.Underlay {
