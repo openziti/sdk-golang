@@ -34,6 +34,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
+	"github.com/openziti/transport/v2"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
