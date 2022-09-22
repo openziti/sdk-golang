@@ -143,7 +143,7 @@ func DefaultListenOptions() *ListenOptions {
 var globalAppId = ""
 var globalAppVersion = ""
 
-//SetAppInfo sets the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
+// SetAppInfo sets the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
 func SetAppInfo(appId, appVersion string) {
 	globalAppId = appId
 	globalAppVersion = appVersion
@@ -1269,7 +1269,7 @@ type routerConnectionListenFailedEvent struct {
 }
 
 func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
-	pfxlog.Logger().Infof("child listener connection closed. parent listener closed: %v", mgr.listener.IsClosed())
+	pfxlog.Logger().Debugf("child listener connection closed. parent listener closed: %v", mgr.listener.IsClosed())
 	delete(mgr.routerConnections, event.router)
 	now := time.Now()
 	if len(mgr.routerConnections) == 0 {
