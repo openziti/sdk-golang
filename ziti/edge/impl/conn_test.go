@@ -2,10 +2,9 @@ package impl
 
 import (
 	"crypto/x509"
-	"github.com/openziti/channel"
+	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequencer"
-	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -137,7 +136,7 @@ func (ch *NoopTestChannel) Underlay() channel.Underlay {
 func (ch *NoopTestChannel) StartRx() {
 }
 
-func (ch *NoopTestChannel) Id() *identity.TokenId {
+func (ch *NoopTestChannel) Id() string {
 	panic("implement Id()")
 }
 
