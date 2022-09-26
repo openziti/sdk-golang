@@ -18,7 +18,7 @@ package edge
 
 import (
 	"encoding/binary"
-	"github.com/openziti/channel"
+	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"

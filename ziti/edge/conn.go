@@ -26,7 +26,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel"
+	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/sequence"
 	"github.com/openziti/transport/v2"
 	"github.com/openziti/transport/v2/tls"
