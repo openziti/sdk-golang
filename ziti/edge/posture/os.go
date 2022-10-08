@@ -30,7 +30,7 @@ type OsInfo struct {
 }
 
 func Os() OsInfo {
-	osType := "unknown"
+	osType := runtime.GOOS
 	osVersion := "unknown"
 
 	semVerParser := regexp.MustCompile(`^((\d+)\.(\d+)\.(\d+))`)
@@ -43,8 +43,6 @@ func Os() OsInfo {
 		} else {
 			osType = "windows"
 		}
-	} else {
-		osType = runtime.GOOS
 	}
 
 	parsedVersion := semVerParser.FindStringSubmatch(version)

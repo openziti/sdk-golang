@@ -30,7 +30,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,10 +41,10 @@ import (
 	"github.com/fullsailor/pkcs7"
 	"github.com/golang-jwt/jwt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/identity/certtools"
-	"github.com/openziti/identity"
 	nfpem "github.com/openziti/foundation/v2/pem"
 	nfx509 "github.com/openziti/foundation/v2/x509"
+	"github.com/openziti/identity"
+	"github.com/openziti/identity/certtools"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/pkg/errors"
 )
@@ -68,8 +68,8 @@ func (enFlags *EnrollmentFlags) GetCertPool() (*x509.CertPool, []*x509.Certifica
 
 	if strings.TrimSpace(enFlags.AdditionalCAs) != "" {
 		pfxlog.Logger().Debug("adding certificates from the provided ca override file")
-		caPEMs, _ := ioutil.ReadFile(enFlags.AdditionalCAs)
-		for _, xcert := range nfpem.PemToX509(string(caPEMs)) {
+		caPEMs, _ := os.ReadFile(enFlags.AdditionalCAs)
+		for _, xcert := range nfpem.PemStringToCertificates(string(caPEMs)) {
 			certs = append(certs, xcert)
 			pool.AddCert(xcert)
 		}
@@ -284,7 +284,7 @@ func generateRSAKey() (crypto.PrivateKey, error) {
 }
 
 func useSystemCasIfEmpty(caPool *x509.CertPool) *x509.CertPool {
-	if len(caPool.Subjects()) < 1 {
+	if len(caPool.Subjects()) < 1 { //nolint:staticcheck
 		pfxlog.Logger().Debugf("no cas provided in caPool. using system provided cas")
 		//this means that there were no ca's in the jwt and none fetched and added... fallback to using
 		//the system defined ca pool in this case
@@ -320,7 +320,7 @@ func enrollUpdb(username, password string, token *config.EnrollmentClaims, caPoo
 		return nil
 	}
 
-	respBody, _ := ioutil.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(resp.Body)
 
 	if respContainer, err := gabs.ParseJSON(respBody); err == nil {
 		code := respContainer.Path("error.code").Data().(string)
@@ -339,9 +339,15 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 	}
 
 	hostname, err := os.Hostname()
+	if err != nil {
+		return err
+	}
 	request, err := certtools.NewCertRequest(map[string]string{
 		"C": "US", "O": "NetFoundry", "CN": hostname,
 	}, nil)
+	if err != nil {
+		return err
+	}
 
 	csr, err := x509.CreateCertificateRequest(rand.Reader, request, pk)
 
@@ -364,7 +370,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 		return err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
 		return errors.Errorf("enroll error: %s: could not read body: %s", resp.Status, body)
@@ -498,7 +504,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.Cert
 			if resp.StatusCode == http.StatusConflict {
 				return errors.New("the provided identity has already been enrolled")
 			} else {
-				body, err := ioutil.ReadAll(resp.Body)
+				body, err := io.ReadAll(resp.Body)
 				if err != nil {
 					return errors.Errorf("enroll error: %s", resp.Status)
 				}
@@ -563,7 +569,7 @@ func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certif
 		}
 	}()
 
-	pkcs7b64, err := ioutil.ReadAll(resp.Body)
+	pkcs7b64, err := io.ReadAll(resp.Body)
 	if err != nil {
 		pfxlog.Logger().Warnf("could not read response. no certificates added from %s", urlRoot)
 		return nil

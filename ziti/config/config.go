@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"github.com/openziti/identity"
 	"github.com/pkg/errors"
-	"io/ioutil"
+	"os"
 )
 
 type Config struct {
@@ -37,7 +37,7 @@ func New(ztApi string, idConfig identity.Config) *Config {
 }
 
 func NewFromFile(confFile string) (*Config, error) {
-	conf, err := ioutil.ReadFile(confFile)
+	conf, err := os.ReadFile(confFile)
 	if err != nil {
 		return nil, errors.Errorf("config file (%s) is not found ", confFile)
 	}

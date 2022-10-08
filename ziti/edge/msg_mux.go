@@ -19,7 +19,6 @@ package edge
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/pkg/errors"
 	"math"
 	"sync"
@@ -52,12 +51,11 @@ func NewCowMapMsgMux() MsgMux {
 
 type CowMapMsgMux struct {
 	sync.Mutex
-	closed  concurrenz.AtomicBoolean
-	running concurrenz.AtomicBoolean
-	sinks   atomic.Value
-	nextId  uint32
-	minId   uint32
-	maxId   uint32
+	closed atomic.Bool
+	sinks  atomic.Value
+	nextId uint32
+	minId  uint32
+	maxId  uint32
 }
 
 func (mux *CowMapMsgMux) GetNextId() uint32 {
@@ -82,7 +80,7 @@ func (mux *CowMapMsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel) {
+func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, _ channel.Channel) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)

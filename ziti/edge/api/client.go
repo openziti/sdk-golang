@@ -12,7 +12,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -31,7 +31,7 @@ func (e AuthFailure) Error() string {
 type notAuthorized struct{}
 
 func (e notAuthorized) Error() string {
-	return fmt.Sprintf("not authorized")
+	return "not authorized"
 }
 
 var NotAuthorized = notAuthorized{}
@@ -215,7 +215,7 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 		return updateAvailable, nil
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == http.StatusNotFound {
 		return false, NotFound{
@@ -279,7 +279,7 @@ func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error
 			}
 		}
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("recieved error during bulk posture response submission, could not read body: %v", err)
 		}
@@ -309,7 +309,7 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("recieved error during posture response submission, could not read body: %v", err)
 		}
@@ -359,7 +359,7 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
-		msg, _ := ioutil.ReadAll(resp.Body)
+		msg, _ := io.ReadAll(resp.Body)
 		pfxlog.Logger().Errorf("failed to authenticate with Ziti controller, result status: %v, msg: %v", resp.StatusCode, string(msg))
 		return nil, AuthFailure{
 			httpCode: resp.StatusCode,
@@ -407,7 +407,7 @@ func (c *ctrlClient) VerifyMfa(code string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to verify MFA for enrollment [%v], response body: %v", resp.StatusCode, respBody)
 	}
 
@@ -436,7 +436,7 @@ func (c *ctrlClient) AuthenticateMFA(code string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to authenticate MFA [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 
@@ -469,7 +469,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("invalid status code returned attempting to start MFA enrollment [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 
@@ -478,6 +478,9 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	req.Header.Set("content-type", "application/json")
 
 	resp, err = c.clt.Do(req)
+	if err != nil {
+		return nil, err
+	}
 
 	respBody, err := parseApiResponseEnvelope(resp)
 
@@ -531,7 +534,7 @@ func (c *ctrlClient) RemoveMfa(code string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to remove MFA [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 	return nil
@@ -557,7 +560,7 @@ func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("invalid status code returned attempting to generate new MFA recovery codes [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 
@@ -584,7 +587,7 @@ func (c *ctrlClient) GetMfaRecoveryCodes(code string) ([]string, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("could not retrieve MFA recovery codes [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 
@@ -629,14 +632,16 @@ type ApiEnvelope struct {
 }
 
 func parseApiResponseEnvelope(resp *http.Response) (*ApiEnvelope, error) {
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 
 	if err != nil {
 		return nil, err
 	}
 
 	respEnvelope := &ApiEnvelope{}
-	json.Unmarshal(respBody, &respEnvelope)
+	if err = json.Unmarshal(respBody, &respEnvelope); err != nil {
+		return nil, err
+	}
 
 	if respEnvelope.Data == nil {
 		return nil, fmt.Errorf("data section of response not found for MFA recovery codes")
@@ -717,7 +722,7 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 		resp, err := c.clt.Do(servReq)
 
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			if body, err := ioutil.ReadAll(resp.Body); err != nil {
+			if body, err := io.ReadAll(resp.Body); err != nil {
 				pfxlog.Logger().Debugf("error response: %v", body)
 			}
 			_ = resp.Body.Close()
@@ -750,9 +755,7 @@ func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
 			services = make([]*edge.Service, 0, meta.Pagination.TotalCount)
 		}
 
-		for _, svc := range *s {
-			services = append(services, svc)
-		}
+		services = append(services, *s...)
 
 		pgOffset += pgLimit
 		if pgOffset >= meta.Pagination.TotalCount {
@@ -778,7 +781,6 @@ func (c *ctrlClient) GetServiceTerminators(service *edge.Service, offset, limit 
 	}
 	servReq.Header.Set(constants.ZitiSession, c.apiSession.Token)
 
-	var terminators []*edge.Terminator
 	q := servReq.URL.Query()
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("offset", strconv.Itoa(offset))
@@ -786,7 +788,7 @@ func (c *ctrlClient) GetServiceTerminators(service *edge.Service, offset, limit 
 	resp, err := c.clt.Do(servReq)
 
 	if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-		if body, err := ioutil.ReadAll(resp.Body); err != nil {
+		if body, err := io.ReadAll(resp.Body); err != nil {
 			pfxlog.Logger().Debugf("error response: %v", body)
 		}
 		_ = resp.Body.Close()
@@ -815,13 +817,8 @@ func (c *ctrlClient) GetServiceTerminators(service *edge.Service, offset, limit 
 		return nil, 0, errors.Errorf("nil pagination in response to GET /services/%v/terminators", service.Id)
 	}
 
-	if terminators == nil {
-		terminators = make([]*edge.Terminator, 0, meta.Pagination.TotalCount)
-	}
-
-	for _, svc := range *terminator {
-		terminators = append(terminators, svc)
-	}
+	var terminators = make([]*edge.Terminator, 0, meta.Pagination.TotalCount)
+	terminators = append(terminators, *terminator...)
 
 	return terminators, meta.Pagination.TotalCount, nil
 }
@@ -830,7 +827,7 @@ func decodeSession(resp *http.Response) (*edge.Session, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, NotAuthorized
 		}
@@ -930,7 +927,7 @@ type PostureResponseProcess struct {
 func (p PostureResponseProcess) IsPostureSubType() {}
 
 type MFACode struct {
-	Code string `json: "code"`
+	Code string `json:"code"`
 }
 
 func NewMFACodeBody(code string) []byte {

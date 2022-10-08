@@ -18,10 +18,8 @@ func Server(zitiCfg *config.Config, serviceName string) {
 	serve(listener)
 
 	sig := make(chan os.Signal)
-	select {
-	case s := <-sig:
-		log.Infof("received %s: shutting down...", s)
-	}
+	s := <-sig
+	log.Infof("received %s: shutting down...", s)
 }
 
 func serve(listener net.Listener) {

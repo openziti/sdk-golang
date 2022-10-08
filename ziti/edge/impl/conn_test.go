@@ -3,10 +3,10 @@ package impl
 import (
 	"crypto/x509"
 	"github.com/openziti/channel/v2"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -61,12 +61,12 @@ func BenchmarkConnRead(b *testing.B) {
 		serviceId:  "test",
 	}
 
-	var stop concurrenz.AtomicBoolean
-	defer stop.Set(true)
+	var stop atomic.Bool
+	defer stop.Store(true)
 
 	go func() {
 		counter := uint32(0)
-		for !stop.Get() {
+		for !stop.Load() {
 			counter += 1
 			data := make([]byte, 877)
 			msg := edge.NewDataMsg(1, counter, data)
@@ -75,7 +75,10 @@ func BenchmarkConnRead(b *testing.B) {
 				Seq:    counter,
 				Msg:    msg,
 			}
-			readQ.PutSequenced(counter, event)
+			err := readQ.PutSequenced(counter, event)
+			if err != nil {
+				panic(err)
+			}
 			// mux.HandleReceive(msg, testChannel)
 		}
 	}()
@@ -96,12 +99,12 @@ func BenchmarkConnRead(b *testing.B) {
 func BenchmarkSequencer(b *testing.B) {
 	readQ := sequencer.NewNoopSequencer(4)
 
-	var stop concurrenz.AtomicBoolean
-	defer stop.Set(true)
+	var stop atomic.Bool
+	defer stop.Store(true)
 
 	go func() {
 		counter := uint32(0)
-		for !stop.Get() {
+		for !stop.Load() {
 			counter += 1
 			data := make([]byte, 877)
 			msg := edge.NewDataMsg(1, counter, data)
@@ -110,7 +113,10 @@ func BenchmarkSequencer(b *testing.B) {
 				Seq:    counter,
 				Msg:    msg,
 			}
-			readQ.PutSequenced(counter, event)
+			err := readQ.PutSequenced(counter, event)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}()
 

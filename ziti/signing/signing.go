@@ -2,7 +2,7 @@ package signing
 
 import (
 	"crypto"
-	"crypto/dsa"
+	"crypto/dsa" //nolint:staticcheck
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"

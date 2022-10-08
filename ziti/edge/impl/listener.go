@@ -19,7 +19,6 @@ package impl
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"net"
@@ -34,7 +33,7 @@ type baseListener struct {
 	service *edge.Service
 	acceptC chan edge.Conn
 	errorC  chan error
-	closed  concurrenz.AtomicBoolean
+	closed  atomic.Bool
 }
 
 func (listener *baseListener) Network() string {
@@ -50,7 +49,7 @@ func (listener *baseListener) Addr() net.Addr {
 }
 
 func (listener *baseListener) IsClosed() bool {
-	return listener.closed.Get()
+	return listener.closed.Load()
 }
 
 func (listener *baseListener) Accept() (net.Conn, error) {
@@ -65,13 +64,13 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	for !listener.closed.Get() {
+	for !listener.closed.Load() {
 		select {
 		case conn, ok := <-listener.acceptC:
 			if ok && conn != nil {
 				return conn, nil
 			} else {
-				listener.closed.Set(true)
+				listener.closed.Store(true)
 			}
 		case <-ticker.C:
 		}
@@ -238,12 +237,6 @@ func (listener *multiListener) notifyOfConnectionChange() {
 	}
 }
 
-func (listener *multiListener) notifyOfChildError(err error) {
-	if handler := listener.GetErrorEventHandler(); handler != nil {
-		go handler(err)
-	}
-}
-
 func (listener *multiListener) GetCurrentSession() *edge.Session {
 	return listener.getSessionF()
 }
@@ -317,7 +310,7 @@ func (listener *multiListener) GetService() *edge.Service {
 }
 
 func (listener *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
-	if listener.closed.Get() {
+	if listener.closed.Load() {
 		return
 	}
 
@@ -356,7 +349,7 @@ func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
-	for !listener.closed.Get() && !edgeListener.closed.Get() {
+	for !listener.closed.Load() && !edgeListener.closed.Load() {
 		select {
 		case conn, ok := <-edgeListener.acceptC:
 			if !ok || conn == nil {
@@ -371,7 +364,7 @@ func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler 
 }
 
 func (listener *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
-	for !listener.closed.Get() {
+	for !listener.closed.Load() {
 		select {
 		case listener.acceptC <- conn:
 			return
@@ -382,7 +375,7 @@ func (listener *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
 }
 
 func (listener *multiListener) Close() error {
-	listener.closed.Set(true)
+	listener.closed.Store(true)
 
 	listener.listenerLock.Lock()
 	defer listener.listenerLock.Unlock()
@@ -412,7 +405,7 @@ func (listener *multiListener) CloseWithError(err error) {
 	default:
 	}
 
-	listener.closed.Set(true)
+	listener.closed.Store(true)
 }
 
 type MultipleErrors []error

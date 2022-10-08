@@ -32,14 +32,8 @@ type chatServer struct {
 }
 
 func (server *chatServer) run() {
-	for {
-		select {
-		case event, ok := <-server.eventC:
-			if !ok {
-				return
-			}
-			event.handle(server)
-		}
+	for event := range server.eventC {
+		event.handle(server)
 	}
 }
 

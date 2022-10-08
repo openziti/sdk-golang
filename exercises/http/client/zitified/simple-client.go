@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -20,17 +20,17 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	fmt.Println("Hello response:", string(body))
 
 	a := 1
 	b := 2
 	addUrl := fmt.Sprintf("http://%s/add?a=%d&b=%d", target, a, b)
-	resp, _ = httpClient.Get(addUrl)
+	resp, e = httpClient.Get(addUrl)
 	if e != nil {
 		panic(e)
 	}
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	fmt.Println("Add Result:", string(body))
 }
 

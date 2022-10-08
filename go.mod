@@ -1,6 +1,6 @@
 module github.com/openziti/sdk-golang
 
-go 1.18
+go 1.19
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -12,11 +12,11 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/channel/v2 v2.0.1
-	github.com/openziti/foundation/v2 v2.0.4
-	github.com/openziti/identity v1.0.13
-	github.com/openziti/metrics v1.1.0
-	github.com/openziti/transport/v2 v2.0.30
+	github.com/openziti/channel/v2 v2.0.4
+	github.com/openziti/foundation/v2 v2.0.5
+	github.com/openziti/identity v1.0.16
+	github.com/openziti/metrics v1.1.1
+	github.com/openziti/transport/v2 v2.0.33
 	github.com/orcaman/concurrent-map/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -25,7 +25,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.8.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
-	golang.org/x/sys v0.0.0-20220926163933-8cfa568d3c25
+	golang.org/x/sys v0.0.0-20221006211917-84dc82d7e875
 )
 
 require (
@@ -47,7 +47,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be // indirect
+	golang.org/x/crypto v0.0.0-20221005025214-4161e89ecf1b // indirect
 	golang.org/x/term v0.0.0-20220919170432-7a66f970e087 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect

@@ -23,7 +23,6 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/channel/v2/latency"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	"github.com/openziti/metrics"
@@ -42,6 +41,7 @@ import (
 	"math"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -103,8 +103,8 @@ func (p Precedence) String() string {
 
 const (
 	PrecedenceDefault  Precedence = 0
-	PrecedenceRequired            = 1
-	PrecedenceFailed              = 2
+	PrecedenceRequired Precedence = 1
+	PrecedenceFailed   Precedence = 2
 
 	PrecedenceDefaultLabel  = "default"
 	PrecedenceRequiredLabel = "required"
@@ -165,7 +165,7 @@ type contextImpl struct {
 	firstAuthOnce sync.Once
 
 	postureCache      *posture.Cache
-	closed            concurrenz.AtomicBoolean
+	closed            atomic.Bool
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
 }
@@ -334,7 +334,7 @@ func (context *contextImpl) runSessionRefresh() {
 	defer svcUpdateTick.Stop()
 
 	expireTime := context.ctrlClt.GetCurrentApiSession().Expires
-	sleepDuration := expireTime.Sub(time.Now()) - (10 * time.Second)
+	sleepDuration := time.Until(expireTime) - (10 * time.Second)
 
 	var serviceUpdateApiAvailable = true
 
@@ -351,7 +351,7 @@ func (context *contextImpl) runSessionRefresh() {
 				sleepDuration = 5 * time.Second
 			} else {
 				expireTime = *exp
-				sleepDuration = expireTime.Sub(time.Now()) - (10 * time.Second)
+				sleepDuration = time.Until(expireTime) - (10 * time.Second)
 				log.Debugf("apiSession refreshed, new expiration[%s]", expireTime)
 			}
 
@@ -550,7 +550,7 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	var refreshErr error
-	if session, refreshErr = context.refreshSession(session.Id); refreshErr == nil {
+	if _, refreshErr = context.refreshSession(session.Id); refreshErr == nil {
 		// if the session wasn't expired, no reason to try again, return the failure
 		return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 	}
@@ -657,7 +657,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 				h := context.metrics.Histogram("latency." + routerUrl).(metrics2.Histogram)
 				if h.Mean() < float64(bestLatency) {
 					bestLatency = time.Duration(int64(h.Mean()))
-					bestER = er.(edge.RouterConn)
+					bestER = er
 				}
 			} else {
 				unconnected = append(unconnected, edgeRouter)
@@ -706,8 +706,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		}
 	}
 
-	if edgeConn, found := context.routerConnections.Get(ingressUrl); found {
-		conn := edgeConn.(edge.RouterConn)
+	if conn, found := context.routerConnections.Get(ingressUrl); found {
 		if !conn.IsClosed() {
 			retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: conn})
 			return
@@ -793,7 +792,7 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 			return newV
 		})
 
-	retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn.(edge.RouterConn)})
+	retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn})
 }
 
 func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
@@ -939,7 +938,7 @@ func (context *contextImpl) createSession(service *edge.Service, sessionType edg
 		}
 		return nil, err
 	}
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	logger.Debugf("successfully created %v session to service %v in %vms", sessionType, service.Name, elapsed.Milliseconds())
 	return session, nil
 }
@@ -984,7 +983,7 @@ func (context *contextImpl) Close() {
 		close(context.closeNotify)
 		// remove any closed connections
 		for entry := range context.routerConnections.IterBuffered() {
-			key, val := entry.Key, entry.Val.(edge.RouterConn)
+			key, val := entry.Key, entry.Val
 			if !val.IsClosed() {
 				if err := val.Close(); err != nil {
 					pfxlog.Logger().WithError(err).Error("error while closing connection")
@@ -1110,7 +1109,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	logger := pfxlog.Logger()
 	service := mgr.listener.GetService()
 	listener, err := routerConnection.Listen(service, session, mgr.options)
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	if err == nil {
 		logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
 		mgr.listener.AddListener(listener, func() {
