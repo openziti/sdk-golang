@@ -24,6 +24,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,7 +33,7 @@ type CacheData struct {
 	MacAddresses []string
 	Os           OsInfo
 	Domain       string
-	Evaluated    concurrenz.AtomicBoolean //marks whether posture responses for this data have been sent out
+	Evaluated    atomic.Bool //marks whether posture responses for this data have been sent out
 }
 
 func NewCacheData() *CacheData {
@@ -85,7 +86,7 @@ func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
 	return cache
 }
 
-//Set the current list of processes paths that are being observed
+// Set the current list of processes paths that are being observed
 func (cache *Cache) setWatchedProcesses(processPaths []string) {
 	processMap := map[string]struct{}{}
 
@@ -127,7 +128,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 
 	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
 	cache.activeServices.IterCb(func(serviceId string, _ struct{}) {
-		queryMap, ok := cache.serviceQueryMap.Load()[serviceId]
+		queryMap := cache.serviceQueryMap.Load()[serviceId]
 
 		for queryId, query := range queryMap {
 			if query.QueryType != api.PostureCheckTypeProcess {
@@ -135,10 +136,6 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 			} else {
 				activeQueryTypes[query.Process.Path] = queryId
 			}
-		}
-
-		if !ok {
-			return
 		}
 	})
 
@@ -173,7 +170,7 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		}
 	}
 
-	if cache.previousData.Os.Version != cache.currentData.Os.Version || cache.previousData.Os.Type != cache.previousData.Os.Type {
+	if cache.previousData.Os.Version != cache.currentData.Os.Version || cache.previousData.Os.Type != cache.currentData.Os.Type {
 		if queryId, ok := activeQueryTypes[api.PostureCheckTypeOs]; ok {
 			osRes := &api.PostureResponse{
 				Id:     queryId,

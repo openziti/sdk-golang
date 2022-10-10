@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -14,16 +14,16 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	fmt.Println("Hello response:", string(body))
 
 	a := 1
 	b := 2
 	addUrl := fmt.Sprintf("http://%s/add?a=%d&b=%d", target, a, b)
-	resp, _ = httpClient.Get(addUrl)
+	resp, e = httpClient.Get(addUrl)
 	if e != nil {
 		panic(e)
 	}
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	fmt.Println("Add Result:", string(body))
 }

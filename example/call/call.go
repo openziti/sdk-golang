@@ -56,10 +56,8 @@ func (event *connectEvent) handle(app *callApp) {
 		_ = app.pending.Close()
 	}
 	connInfo := "from " + event.conn.SourceIdentifier()
-	if edgeConn, ok := event.conn.(edge.Conn); ok {
-		appData := edgeConn.GetAppData()
-		connInfo += " with appData '" + string(appData) + "'"
-	}
+	appData := event.conn.GetAppData()
+	connInfo += " with appData '" + string(appData) + "'"
 	fmt.Printf("Incoming connection %v. Type /accept to accept the connection\n", connInfo)
 	fmt.Printf("%v > ", app.identity)
 	app.pending = event.conn

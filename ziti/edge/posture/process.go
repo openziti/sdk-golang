@@ -19,7 +19,7 @@ package posture
 import (
 	"crypto/sha512"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -64,9 +64,9 @@ func Process(providedPath string) ProcessInfo {
 			continue
 		}
 
-		if strings.ToLower(executablePath) == strings.ToLower(expectedPath) {
+		if strings.EqualFold(executablePath, expectedPath) {
 			isRunning, _ := procDetails.IsRunning()
-			file, err := ioutil.ReadFile(executablePath)
+			file, err := os.ReadFile(executablePath)
 
 			if err != nil {
 				pfxlog.Logger().Warnf("could not read process executable file: %v", err)

@@ -23,13 +23,13 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream"
 	"github.com/netfoundry/secretstream/kx"
 	"github.com/openziti/channel/v2"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
@@ -52,9 +52,9 @@ type edgeConn struct {
 	leftover              []byte
 	msgMux                edge.MsgMux
 	hosting               sync.Map
-	closed                concurrenz.AtomicBoolean
-	readFIN               concurrenz.AtomicBoolean
-	sentFIN               concurrenz.AtomicBoolean
+	closed                atomic.Bool
+	readFIN               atomic.Bool
+	sentFIN               atomic.Bool
 	serviceId             string
 	sourceIdentity        string
 	readDeadline          time.Time
@@ -70,7 +70,7 @@ type edgeConn struct {
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
-	if conn.sentFIN.Get() {
+	if conn.sentFIN.Load() {
 		return 0, errors.New("calling Write() after CloseWrite()")
 	}
 
@@ -105,7 +105,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 	switch conn.connType {
 	case ConnTypeDial:
 		if msg.ContentType == edge.ContentTypeStateClosed {
-			conn.sentFIN.Set(true) // if we're not closing until all reads are done, at least prevent more writes
+			conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 		}
 
 		if msg.ContentType == edge.ContentTypeTraceRoute {
@@ -155,7 +155,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 }
 
 func (conn *edgeConn) IsClosed() bool {
-	return conn.closed.Get()
+	return conn.closed.Load()
 }
 
 func (conn *edgeConn) Network() string {
@@ -199,9 +199,9 @@ func (conn *edgeConn) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
 	conn.readQ.Close()
-	conn.closed.Set(true)
-	conn.sentFIN.Set(true)
-	conn.readFIN.Set(true)
+	conn.closed.Store(true)
+	conn.sentFIN.Store(true)
+	conn.readFIN.Store(true)
 }
 
 func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
@@ -358,7 +358,7 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 
 func (conn *edgeConn) Read(p []byte) (int, error) {
 	log := pfxlog.Logger().WithField("connId", conn.Id())
-	if conn.closed.Get() {
+	if conn.closed.Load() {
 		return 0, io.EOF
 	}
 
@@ -371,14 +371,14 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 	}
 
 	for {
-		if conn.readFIN.Get() {
+		if conn.readFIN.Load() {
 			return 0, io.EOF
 		}
 
 		next, err := conn.readQ.GetNextWithDeadline(conn.readDeadline)
 		if err == sequencer.ErrClosed {
 			log.Debug("sequencer closed, closing connection")
-			conn.closed.Set(true)
+			conn.closed.Store(true)
 			return 0, io.EOF
 		} else if err != nil {
 			log.Debugf("unexepcted sequencer err (%v)", err)
@@ -389,7 +389,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 		flags, _ := msg.GetUint32Header(edge.FlagsHeader)
 		if flags&edge.FIN != 0 {
-			conn.readFIN.Set(true)
+			conn.readFIN.Store(true)
 		}
 
 		switch msg.ContentType {
@@ -402,7 +402,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		case edge.ContentTypeData:
 			d := msg.Body
 			log.Tracef("got buffer from sequencer %d bytes", len(d))
-			if len(d) == 0 && conn.readFIN.Get() {
+			if len(d) == 0 && conn.readFIN.Load() {
 				return 0, io.EOF
 			}
 
@@ -412,6 +412,9 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 					return 0, errors.Errorf("failed to receive crypto header bytes: read[%d]", len(d))
 				}
 				conn.receiver, err = secretstream.NewDecryptor(conn.rxKey, d)
+				if err != nil {
+					return 0, errors.Wrap(err, "failed to init decryptor")
+				}
 				conn.rxKey = nil
 				continue
 			}
@@ -447,8 +450,8 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	if !conn.closed.CompareAndSwap(false, true) {
 		return
 	}
-	conn.readFIN.Set(true)
-	conn.sentFIN.Set(true)
+	conn.readFIN.Store(true)
+	conn.sentFIN.Store(true)
 
 	log := pfxlog.Logger().WithField("connId", conn.Id())
 	log.Debug("close: begin")

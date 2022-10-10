@@ -76,15 +76,15 @@ const (
 	ErrorCodeEncryptionDataMissing       = 11
 
 	PrecedenceDefault  Precedence = 0
-	PrecedenceRequired            = 1
-	PrecedenceFailed              = 2
+	PrecedenceRequired Precedence = 1
+	PrecedenceFailed   Precedence = 2
 
 	// Put this in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
 
 	// Crypto Methods
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
-	CryptoMethodSSL                    = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
+	CryptoMethodSSL       CryptoMethod = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
 
 	// Edge Payload flags
 	FIN = 0x1

@@ -31,24 +31,18 @@ func (f *KeyAlgVar) String() string {
 func (f *KeyAlgVar) Set(value string) error {
 	value = strings.ToUpper(value)
 	if value != "EC" && value != "RSA" {
-		return errors.New("Invalid option -- must specify either 'EC' or 'RSA'")
+		return errors.New("invalid option -- must specify either 'EC' or 'RSA'")
 	}
 	*f = KeyAlgVar(value)
 	return nil
 }
 
 func (f *KeyAlgVar) EC() bool {
-	if string(*f) == "EC" {
-		return true
-	}
-	return false
+	return f.Get() == "EC"
 }
 
 func (f *KeyAlgVar) RSA() bool {
-	if string(*f) == "RSA" {
-		return true
-	}
-	return false
+	return f.Get() == "RSA"
 }
 
 func (f *KeyAlgVar) Get() string {
