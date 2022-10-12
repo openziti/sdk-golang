@@ -15,7 +15,7 @@ require (
 	github.com/openziti/channel/v2 v2.0.5
 	github.com/openziti/foundation/v2 v2.0.5
 	github.com/openziti/identity v1.0.16
-	github.com/openziti/metrics v1.1.2
+	github.com/openziti/metrics v1.1.3
 	github.com/openziti/transport/v2 v2.0.33
 	github.com/orcaman/concurrent-map/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
