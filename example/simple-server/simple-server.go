@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"
@@ -49,7 +50,7 @@ func serve(listener net.Listener, serverType string) {
 	}
 }
 
-func plain(listenAddr string) {
+func httpServer(listenAddr string) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		panic(err)
@@ -58,17 +59,37 @@ func plain(listenAddr string) {
 	serve(listener, "plain-internet")
 }
 
-func withZiti(service string) {
+func zitifiedServer() {
 	options := ziti.ListenOptions{
 		ConnectTimeout: 5 * time.Minute,
 		MaxConnections: 3,
 	}
-	listener, err := ziti.NewContext().ListenWithOptions(service, &options)
+	//listener, err := ziti.NewContextWithConfig(config).ListenWithOptions(service, &options)
+	//if err != nil {
+	//	fmt.Printf("Error binding service %+v\n", err)
+	//	panic(err)
+	//}
+	//fmt.Printf("listening for requests for Ziti service %v\n", service)
+
+	// Get identity config
+	cfg, err := config.NewFromFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+
+	// Get service name (defaults to "simpleService")
+	serviceName := "simpleService"
+	if len(os.Args) > 2 {
+		serviceName = os.Args[2]
+	}
+
+	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(serviceName, &options)
 	if err != nil {
 		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)
 	}
-	fmt.Printf("listening for requests for Ziti service %v\n", service)
+
+	fmt.Printf("listening for requests for Ziti service %v\n", serviceName)
 	serve(listener, "ziti")
 }
 
@@ -78,11 +99,7 @@ func main() {
 		pfxlog.Logger().Debugf("debug enabled")
 	}
 
-	serviceName := "simple"
-	if len(os.Args) > 1 {
-		serviceName = os.Args[1]
-	}
-
-	go withZiti(serviceName)
-	plain("localhost:8080")
+	// Startup zitified server and plain http server
+	go zitifiedServer()
+	httpServer("localhost:8080")
 }
