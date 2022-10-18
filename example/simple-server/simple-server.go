@@ -64,12 +64,6 @@ func zitifiedServer() {
 		ConnectTimeout: 5 * time.Minute,
 		MaxConnections: 3,
 	}
-	//listener, err := ziti.NewContextWithConfig(config).ListenWithOptions(service, &options)
-	//if err != nil {
-	//	fmt.Printf("Error binding service %+v\n", err)
-	//	panic(err)
-	//}
-	//fmt.Printf("listening for requests for Ziti service %v\n", service)
 
 	// Get identity config
 	cfg, err := config.NewFromFile(os.Args[1])
