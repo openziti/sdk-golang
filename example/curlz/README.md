@@ -66,21 +66,22 @@ $ ./curlz https://www.google.com curlz.json
 These steps will utilize the service and identities created in simple-server to provide an example of using cURLz with a zitified endpoint
 
 Steps:
-1. Follow all steps in the simple-service example but **do not** enroll the `simple-client` identity with the Ziti Desktop Edge client
-1. cd back into the curlz directory
+1. Follow all steps in the simple-service example up to, and including, running the server but **do not** enroll the 
+`simple-client` identity with the Ziti Desktop Edge client. We will do that with the CLI for this example
+1. Open a new terminal and cd into the curlz directory
 
        cd <repo-root-dir>/sdk-golang/example/curlz/
 1. Run this script to create everything you need.
 
        echo Copy the identity jwt into the current working directory
-       cp ../simple-server/simple-client.json .
+       cp ../simple-server/simple-client.jwt .
 
        echo Enroll the simple-client identity
        ziti edge enroll --jwt simple-client.jwt
 
 1. Run the cURLz example for www.google.com
 
-       ./curlz https://www.google.com curlz.json
+       ./curlz http://simpleService simple-client.json
 
 ## Example Output
 The following is the output you'll see from the cURLz request to www.google.com.
@@ -111,4 +112,4 @@ ziti edge delete identity curlz
 echo Removing service
 ziti edge delete service www.google.com
 ```
-If you followed the cURLz to the zitified simple-server endpoint, refer to Teardown in that example README
+NOTE: If you followed the cURLz to the zitified simple-server endpoint, refer to Teardown in that example README
