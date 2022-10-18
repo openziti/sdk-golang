@@ -18,7 +18,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/config"
 	"io"
 	"net"
 	"net/http"
@@ -36,13 +38,24 @@ func (dc *ZitiDialContext) Dial(_ context.Context, _ string, addr string) (net.C
 }
 
 func newZitiClient() *http.Client {
-	zitiDialContext := ZitiDialContext{context: ziti.NewContext()}
+	// Get identity config
+	cfg, err := config.NewFromFile(os.Args[2])
+	if err != nil {
+		panic(err)
+	}
+
+	zitiDialContext := ZitiDialContext{context: ziti.NewContextWithConfig(cfg)}
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
 	return &http.Client{Transport: zitiTransport}
 }
 
 func main() {
+	if len(os.Args) < 3 {
+		fmt.Printf("Insufficient arguments provided\n\nUsage: ./curlz <serviceName> <identityFile>\n\n")
+		return
+	}
+
 	resp, err := newZitiClient().Get(os.Args[1])
 	if err != nil {
 		panic(err)
