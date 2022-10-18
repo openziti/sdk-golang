@@ -30,6 +30,7 @@ These steps will configure the service using the OpenZiti CLI. At the end of the
 * a service called `simpleService`
 * an identity to host (bind) the service
 * an identity to connect to (dial) the service
+* the service configs to connect the service to the overlay
 * the service policies required to authorize the identities for bind and dial
 
 Steps:
