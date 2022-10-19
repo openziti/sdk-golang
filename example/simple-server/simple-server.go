@@ -75,6 +75,9 @@ func zitifiedServer() {
 	serviceName := "simpleService"
 	if len(os.Args) > 2 {
 		serviceName = os.Args[2]
+		fmt.Printf("Using the provided service name [%v]", serviceName)
+	} else {
+		fmt.Printf("Using the default service [%v]", serviceName)
 	}
 
 	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(serviceName, &options)
