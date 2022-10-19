@@ -1,28 +1,21 @@
 # Overview
-This example is a simple server showing how to create server side code in an OpenZiti Network. A server is spun up to 
-serve plain HTTP requests and a Zitified server is spun up to serve zitified requests. This example attaches one server 
-to the underlay (HTTP server) and a second server on the overlay (Ziti Service).
+This example illustrates how to embed zero trust connectivity into your server-side code. The server now listens on the 
+OpenZiti overlay network and not on the layer 3, IP-based network.
 
 This example demonstrates:
 * Binding a service and listening for HTTP connections
 * Accessing the service via a tunneler
-  * [Ziti Desktop Edge for Windows](https://github.com/openziti/desktop-edge-win/releases)
-  * [Ziti Desktop Edge for Mac](https://apps.apple.com/app/id1460484572)
-  * [Ziti Desktop Edge for Linux](https://openziti.github.io/ziti/clients/linux.html)
 
 # Requirements
 * go 1.19 or later
-* an OpenZiti network. If you do not have one, the [quickstart](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) works well
+* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
-* Have the appropriate Ziti Desktop Edge for your operating system
-  * [Ziti Desktop Edge for Windows](https://github.com/openziti/desktop-edge-win/releases)
-  * [Ziti Desktop Edge for Mac](https://apps.apple.com/app/id1460484572)
-  * [Ziti Desktop Edge for Linux](https://openziti.github.io/ziti/clients/linux.html)
+* Have the appropriate [Ziti Desktop Edge](https://openziti.github.io/ziti/clients/which-client.html) for your operating system
 
 # Build the example
 ```
 cd <repo-root-dir>/sdk-golang/example/simple-server/
-go build main.go
+go build simple-server.go
 ```
 
 # Setup using the OpenZiti CLI
@@ -66,10 +59,7 @@ Steps:
        ./simple-server simple-server.json simpleService
 
 1. Enroll the client identity
-   1. Open your Ziti Desktop Edge application
-   1. Choose to add an identity
-   1. Navigate to, and select, the `jwt` of the client identity (simple-client.jwt)
-   1. Click the Enroll button to enroll the client identity.
+   1. Refer to [enrolling documentation](https://openziti.github.io/ziti/identities/enrolling.html) for details
 
 1. Issue cURL commands to see the server side responses in action
    1. curl http://localhost:8080?name=client
@@ -89,6 +79,7 @@ Saying hello to client, coming in from ziti
 ```
 $ curl http://localhost:8080\?name\=client
 Hello, client, from plain-internet
+
 $ curl http://simpleService.ziti:8080?name=client
 Hello, client, from ziti
 ```
