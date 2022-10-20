@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"net"
 	"os"
@@ -116,17 +117,29 @@ func main() {
 
 	logger := pfxlog.Logger()
 
-	service := "chat"
-	if len(os.Args) > 1 {
-		service = os.Args[1]
+	if len(os.Args) < 2 {
+		fmt.Printf("Insufficient arguments provided\n\nUsage: ./chat-server <identityFile> <optional_serviceName>\n\n")
+		return
+	}
+
+	// Get identity config
+	cfg, err := config.NewFromFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+
+	// Get service name (defaults to "chat")
+	serviceName := "chat"
+	if len(os.Args) > 2 {
+		serviceName = os.Args[2]
 	}
 
 	options := ziti.ListenOptions{
 		ConnectTimeout: 5 * time.Minute,
 		MaxConnections: 3,
 	}
-	logger.Infof("binding service %v\n", service)
-	listener, err := ziti.NewContext().ListenWithOptions(service, &options)
+	logger.Infof("binding service %v\n", serviceName)
+	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(serviceName, &options)
 	if err != nil {
 		logrus.Errorf("Error binding service %+v", err)
 		panic(err)
