@@ -15,8 +15,10 @@ This example demonstrates:
 ## Build the examples
 ```shell
 cd <repo-root-dir>/sdk-golang/example/grpc-example/
-go build -o grpc-server grpc-server/main.go
-go build -o grpc-client grpc-client/main.go
+cd grpc-server
+go mod tidy && go build -o grpc-server main.go
+cd ../grpc-client
+go mod tidy && go build -o grpc-client main.go && cd ..
 ```
 
 ## Setup using the OpenZiti CLI
