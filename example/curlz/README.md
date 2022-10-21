@@ -1,23 +1,29 @@
 # Overview
-This example is a zitified cURL (cURLz) example. In this example, a call will be made to a non-zitified endpoint which 
-will be utilizing an edge router to offload data. A call to a zitified endpoint is also included in this example.
+This example is a zitified cURL (cURLz) example. In part 1 of this example, a call will be made to an endpoint which 
+is not on the overlay network. In part 2, a call is made to an endpoint that *is* on the overlay network.
 
 This example demonstrates:
-* Binding a service
+* Dialing a service
 
-# Requirements
+## Requirements
 * go 1.19 or later
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 
-# Build the example
+## Build the example
 ```
 cd <repo-root-dir>/sdk-golang/example/curlz/
 go build curlz.go
 ```
 
-# Setup a cURLz to a non-zitified endpoint
-These steps will configure the service using the OpenZiti CLI. At the end of these steps you will have created:
+## Part 1: Set up a cURLz to a non-zitified endpoint
+These steps will configure the service using the OpenZiti CLI. In this example, the traffic starts on the overlay zero 
+trust network and then is offloaded onto the underlay network. 
+
+### Part 1 Architecture Overview
+![image](cURLz Ziti App to Non-Ziti Network Access.png)
+
+At the end of these steps you will have created:
 * a service called `web.endpoint`
 * an identity to connect to (dial) the service
 * the service config to connect the service to the overlay
@@ -57,7 +63,7 @@ Steps:
 
        ./curlz https://web.endpoint curlz.json
 
-## Example Output
+### Example Output
 The following is the output you'll see from the cURLz request to `web.endpoint`.
 ```
 $ ./curlz https://web.endpoint curlz.json
@@ -66,8 +72,16 @@ $ ./curlz https://web.endpoint curlz.json
 </body></html>
 ```
 
-# Setup a cURLz to a zitified endpoint
-These steps will utilize the service and identities created in simple-server to provide an example of using cURLz with a zitified endpoint
+## Part 2: Set up a cURLz to a zitified endpoint
+These steps will utilize the service and identities created in simple-server to provide an example of using cURLz with 
+a zitified endpoint. In this example, the traffic never leaves the zero trust overlay. 
+
+### Part 2 Architecture Overview
+![image](cURLz Ziti App to Ziti App Access.png)
+
+At the end of these steps you 
+will have created:
+* an identity to connect to (dial) the service
 
 Steps:
 1. Follow all steps in the simple-service example up to, and including, running the server but **do not** enroll the 
@@ -87,14 +101,14 @@ Steps:
 
        ./curlz http://simpleService simple-client.json
 
-## Example Output
+### Example Output
 The following is the output you'll see from the cURLz request to `simpleService`.
 ```
 $ ./curlz http://simpleService.ziti simple-client.json
 Who are you?
 ```
 
-# Teardown
+## Teardown
 Done with the example? This script will remove everything created during setup.
 ```
 ziti edge login localhost:1280 -u admin -p admin
