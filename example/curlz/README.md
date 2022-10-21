@@ -21,7 +21,7 @@ These steps will configure the service using the OpenZiti CLI. In this example, 
 trust network and then is offloaded onto the underlay network. 
 
 ### Part 1 Architecture Overview
-![image](cURLz Ziti App to Non-Ziti Network Access.png)
+![image](unzitified.png)
 
 At the end of these steps you will have created:
 * a service called `web.endpoint`
@@ -77,7 +77,7 @@ These steps will utilize the service and identities created in simple-server to 
 a zitified endpoint. In this example, the traffic never leaves the zero trust overlay. 
 
 ### Part 2 Architecture Overview
-![image](cURLz Ziti App to Ziti App Access.png)
+![image](zitified.png)
 
 At the end of these steps you 
 will have created:
