@@ -27,6 +27,8 @@ Steps:
        ziti edge login localhost:1280 -u admin -p admin
 1. Run this script to create everything you need.
 
+       cd <repo-root-dir>/example/build
+
        echo Create the service
        ziti edge create service grpc --role-attributes grpc-service
 
@@ -48,10 +50,10 @@ Steps:
        ziti edge policy-advisor services
 1. Run the server.
 
-       ./grpc-server/server --identity grpc.server.json --service grpc 
+       ./grpc-server --identity grpc.server.json --service grpc 
 1. Run the client
 
-       ./grpc-client/client --identity grpc.client.json --service grpc --name World
+       ./grpc-client --identity grpc.client.json --service grpc --name World
 ### Example output
 The following is the output you'll see from the server and client side after running the previous commands.
 **Server**
