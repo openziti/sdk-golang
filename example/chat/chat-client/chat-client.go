@@ -19,21 +19,34 @@ package main
 import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/config"
 	"io"
 	"os"
 )
 
 func main() {
-	service := "chat"
-	if len(os.Args) < 2 {
-		fmt.Println("must specify username on command line")
+	if len(os.Args) < 3 {
+		fmt.Printf("Insufficient arguments provided\n\nUsage: ./chat-client <username> <identityFile> <optional_serviceName>\n\n")
 		return
 	}
 	name := os.Args[1]
-	context := ziti.NewContext()
-	conn, err := context.Dial(service)
+
+	// Get identity config
+	cfg, err := config.NewFromFile(os.Args[2])
 	if err != nil {
-		fmt.Printf("failed to dial service %v, err: %+v\n", service, err)
+		panic(err)
+	}
+
+	// Get service name (defaults to "chat")
+	serviceName := "chat"
+	if len(os.Args) > 3 {
+		serviceName = os.Args[3]
+	}
+
+	context := ziti.NewContextWithConfig(cfg)
+	conn, err := context.Dial(serviceName)
+	if err != nil {
+		fmt.Printf("failed to dial service %v, err: %+v\n", serviceName, err)
 		panic(err)
 	}
 

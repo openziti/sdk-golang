@@ -6,19 +6,15 @@ This example demonstrates:
 * Binding a service and listening for HTTP connections
 * Accessing the service via a tunneler
 
-# Requirements
-* go 1.19 or later
+## Requirements
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 * Have the appropriate [Ziti Desktop Edge](https://openziti.github.io/ziti/clients/which-client.html) for your operating system
 
-# Build the example
-```
-cd <repo-root-dir>/sdk-golang/example/simple-server/
-go build simple-server.go
-```
+## Build the example
+Refer to the [example README](../README.md) to build the SDK examples
 
-# Setup using the OpenZiti CLI
+## Setup using the OpenZiti CLI
 These steps will configure the service using the OpenZiti CLI. At the end of these steps you will have created:
 * a service called `simpleService`
 * an identity to host (bind) the service
@@ -31,6 +27,8 @@ Steps:
 
        ziti edge login localhost:1280 -u admin -p admin
 1. Run this script to create everything you need.
+
+       cd <repo-root-dir>/example/build
 
        echo Create the service configs
        ziti edge create config simple.hostv1 host.v1 '{"protocol":"tcp", "address":"localhost","port":'8080'}'
@@ -65,7 +63,7 @@ Steps:
    1. curl http://localhost:8080?name=client
    2. curl http://simpleService.ziti:8080?name=client
 
-## Example output
+### Example output
 The following is the output you'll see from the server and client side after running the previous commands.
 **Server**
 ```
@@ -84,7 +82,7 @@ $ curl http://simpleService.ziti:8080?name=client
 Hello, client, from ziti
 ```
 
-# Teardown
+## Teardown
 Done with the example? This script will remove everything created during setup.
 You will have to manually remove the identity from your Ziti Desktop Edge application.
 ```
