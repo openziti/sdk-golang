@@ -7,16 +7,12 @@ This example demonstrates:
 * Accessing the service via a tunneler
 
 ## Requirements
-* go 1.19 or later
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 * Have the appropriate [Ziti Desktop Edge](https://openziti.github.io/ziti/clients/which-client.html) for your operating system
 
 ## Build the example
-```
-cd <repo-root-dir>/sdk-golang/example/simple-server/
-go build simple-server.go
-```
+Refer to the [example README](../README.md) to build the SDK examples
 
 ## Setup using the OpenZiti CLI
 These steps will configure the service using the OpenZiti CLI. At the end of these steps you will have created:
@@ -31,6 +27,8 @@ Steps:
 
        ziti edge login localhost:1280 -u admin -p admin
 1. Run this script to create everything you need.
+
+       cd <repo-root-dir>/example/build
 
        echo Create the service configs
        ziti edge create config simple.hostv1 host.v1 '{"protocol":"tcp", "address":"localhost","port":'8080'}'
