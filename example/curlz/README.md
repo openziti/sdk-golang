@@ -6,15 +6,11 @@ This example demonstrates:
 * Dialing a service
 
 ## Requirements
-* go 1.19 or later
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 
 ## Build the example
-```
-cd <repo-root-dir>/sdk-golang/example/curlz/
-go build curlz.go
-```
+Refer to the [example README](../README.md) to build the SDK examples
 
 ## Part 1: Set up a cURLz to a non-zitified endpoint
 These steps will configure the service using the OpenZiti CLI. In this example, the traffic starts on the overlay zero 
@@ -38,6 +34,8 @@ Steps:
        ziti edge list edge-routers
        export ZITI_EDGE_ROUTER=<name-of-edge-router>
 1. Run this script to create everything you need.
+
+       cd <repo-root-dir>/example/build
 
        echo Create the service config
        ziti edge create config web.endpoint.hostv1 host.v1 '{"protocol":"tcp", "address":"www.google.com","port":'443'}'
