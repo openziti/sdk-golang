@@ -37,7 +37,7 @@ func Client(zitiCfg *config.Config, serviceName string) {
 	conWrite := bufio.NewWriter(svc)
 
 	for {
-		text, err := reader.ReadString('\n') //read a line from intput
+		text, err := reader.ReadString('\n') //read a line from input
 		if err != nil {
 			fmt.Println(err)
 		}
