@@ -47,6 +47,7 @@ func newZitiClient() *http.Client {
 	zitiDialContext := ZitiDialContext{context: ziti.NewContextWithConfig(cfg)}
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
+	zitiTransport.TLSClientConfig.InsecureSkipVerify = true
 	return &http.Client{Transport: zitiTransport}
 }
 

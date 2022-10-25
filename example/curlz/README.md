@@ -84,9 +84,9 @@ will have created:
 Steps:
 1. Follow all steps in the simple-service example up to, and including, running the server but **do not** enroll the 
 `simple-client` identity with the Ziti Desktop Edge client. We will do that with the CLI for this example
-1. Open a new terminal and cd into the curlz directory
+1. Open a new terminal and cd into the example build directory
 
-       cd <repo-root-dir>/sdk-golang/example/curlz/
+       cd <repo-root-dir>/example/build/
 1. Run this script to create everything you need.
 
        echo Copy the identity jwt into the current working directory
