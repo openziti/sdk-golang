@@ -89,9 +89,6 @@ Steps:
        cd <repo-root-dir>/example/build/
 1. Run this script to create everything you need.
 
-       echo Copy the identity jwt into the current working directory
-       cp ../simple-server/simple-client.jwt .
-
        echo Enroll the simple-client identity
        ziti edge enroll --jwt simple-client.jwt
 
