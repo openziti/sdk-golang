@@ -10,12 +10,15 @@ This folder contains examples showing how to use the OpenZiti Go SDK
 
 ### Build
 Execute the following to build all examples. They will be placed in a folder in the example directory labeled `build`
-```shell
-cd <repo-root-dir>/example
-mkdir build
-go mod tidy
-go build -o build ./...
-```
+1. CD to the example directory
+
+       cd <repo-repo-dir>/example
+1. Run the following to create the build directory and build the examples
+
+       export ZITI_SDK_BUILD_DIR=$(pwd)/build
+       mkdir $ZITI_SDK_BUILD_DIR
+       go mod tidy
+       go build -o build ./...
 
 ## SDK Examples Overview
 ### [chat](./chat)

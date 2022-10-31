@@ -9,7 +9,7 @@ This example demonstrates:
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 
-## Build the example
+## Build the examples
 Refer to the [example README](../README.md) to build the SDK examples
 
 ## Part 1: Set up a cURLz to a non-zitified endpoint
@@ -26,7 +26,7 @@ At the end of these steps you will have created:
 * the service policies required to authorize the identities for bind and dial
 
 Steps:
-1. log into Ziti. The host:port and username/password will vary depending on your network.
+1. Log into OpenZiti. The host:port and username/password will vary depending on your network.
 
        ziti edge login localhost:1280 -u admin -p admin
 1. Determine your edge router's name and populate this environment variable with it.
@@ -35,7 +35,8 @@ Steps:
        export ZITI_EDGE_ROUTER=<name-of-edge-router>
 1. Run this script to create everything you need.
 
-       cd <repo-root-dir>/example/build
+       echo Changing to build directory
+       cd $ZITI_SDK_BUILD_DIR
 
        echo Create the service config
        ziti edge create config web.endpoint.hostv1 host.v1 '{"protocol":"tcp", "address":"www.google.com","port":'443'}'
@@ -50,10 +51,6 @@ Steps:
        echo Create service policies
        ziti edge create service-policy web.endpoint.dial Dial --service-roles "@web.endpoint" --identity-roles "#clients"
        ziti edge create service-policy web.endpoint.bind Bind --service-roles "@web.endpoint" --identity-roles "@${ZITI_EDGE_ROUTER}"
-       
-       echo Create edge router policies
-       ziti edge create edge-router-policy curlz-edge-router-policy --edge-router-roles '#all' --identity-roles '#clients,#servers'
-       ziti edge create service-edge-router-policy curlz-service-edge-router-policy --edge-router-roles '#all' --service-roles '@web.endpoint'
        
        echo Run policy advisor to check
        ziti edge policy-advisor services
@@ -77,8 +74,7 @@ a zitified endpoint. In this example, the traffic never leaves the zero trust ov
 ### Part 2 Architecture Overview
 ![image](zitified.png)
 
-At the end of these steps you 
-will have created:
+At the end of these steps you will have created:
 * an identity to connect to (dial) the service
 
 Steps:
@@ -86,7 +82,8 @@ Steps:
 `simple-client` identity with the Ziti Desktop Edge client. We will do that with the CLI for this example
 1. Open a new terminal and cd into the example build directory
 
-       cd <repo-root-dir>/example/build/
+       echo Changing to build directory
+       cd $ZITI_SDK_BUILD_DIR
 1. Run this script to create everything you need.
 
        echo Enroll the simple-client identity
@@ -108,10 +105,6 @@ Done with the example? This script will remove everything created during setup.
 ```
 ziti edge login localhost:1280 -u admin -p admin
 
-echo Removing edge router policies
-ziti edge delete edge-router-policy curlz-edge-router-policy
-ziti edge delete service-edge-router-policy curlz-service-edge-router-policy
-
 echo Removing service policies
 ziti edge delete service-policy web.endpoint.dial
 ziti edge delete service-policy web.endpoint.bind
@@ -125,4 +118,4 @@ ziti edge delete identity curlz
 echo Removing service
 ziti edge delete service web.endpoint
 ```
-NOTE: If you followed the cURLz to the zitified simple-server endpoint, refer to Teardown in that example README
+**NOTE:** If you followed **Part 2** of this example, refer to teardown in the `simple-server` [example README](../simple-server/README.md)

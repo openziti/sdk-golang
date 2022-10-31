@@ -11,7 +11,7 @@ This example demonstrates:
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 * Have the appropriate [Ziti Desktop Edge](https://openziti.github.io/ziti/clients/which-client.html) for your operating system
 
-## Build the example
+## Build the examples
 Refer to the [example README](../README.md) to build the SDK examples
 
 ## Setup using the OpenZiti CLI
@@ -23,7 +23,7 @@ These steps will configure the service using the OpenZiti CLI. At the end of the
 * the service policies required to authorize the identities for bind and dial
 
 Steps:
-1. log into Ziti. The host:port and username/password will vary depending on your network.
+1. Log into OpenZiti. The host:port and username/password will vary depending on your network.
 
        ziti edge login localhost:1280 -u admin -p admin
 1. Run this script to create everything you need.
@@ -38,17 +38,13 @@ Steps:
        ziti edge create service simpleService --configs "simple.hostv1,simple.interceptv1" --role-attributes simple-service
        
        echo Create two identities and enroll the server
-       ziti edge create identity user simple-client -a clients -o simple-client.jwt
-       ziti edge create identity device simple-server -a servers -o simple-server.jwt
+       ziti edge create identity user simple-client -a simpleserver.clients -o simple-client.jwt
+       ziti edge create identity device simple-server -a simpleserver.servers -o simple-server.jwt
        ziti edge enroll --jwt simple-server.jwt
        
        echo Create service policies
-       ziti edge create service-policy simple-client-dial Dial --identity-roles '#clients' --service-roles '#simple-service'
-       ziti edge create service-policy simple-client-bind Bind --identity-roles '#servers' --service-roles '#simple-service'
-       
-       echo Create edge router policies
-       ziti edge create edge-router-policy simple-edge-router-policy --edge-router-roles '#all' --identity-roles '#clients,#servers'
-       ziti edge create service-edge-router-policy simple-service-edge-router-policy --edge-router-roles '#all' --service-roles '#simple-service'
+       ziti edge create service-policy simple-client-dial Dial --identity-roles '#simpleserver.clients' --service-roles '#simple-service'
+       ziti edge create service-policy simple-client-bind Bind --identity-roles '#simpleserver.servers' --service-roles '#simple-service'
        
        echo Run policy advisor to check
        ziti edge policy-advisor services
@@ -56,12 +52,16 @@ Steps:
 
        ./simple-server simple-server.json simpleService
 
-1. Enroll the client identity
+1. Enroll the `simple-client` client identity
    1. Refer to [enrolling documentation](https://openziti.github.io/ziti/identities/enrolling.html) for details
 
-1. Issue cURL commands to see the server side responses in action
-   1. curl http://localhost:8080?name=client
-   2. curl http://simpleService.ziti:8080?name=client
+1. Issue cURL commands to see the server side responses in action. There are two servers spun up by the `simple-server` 
+   binary. One server is a simple HTTP server which is running on the local machine. The second server is a zitified 
+   HTTP server, this server should be accessible from the device running ZDE where you enrolled the `simple-client` 
+   identity.
+
+       curl http://localhost:8080?name=client
+       curl http://simpleService.ziti:8080?name=client
 
 ### Example output
 The following is the output you'll see from the server and client side after running the previous commands.
@@ -75,7 +75,7 @@ Saying hello to client, coming in from ziti
 ```
 **Client**
 ```
-$ curl http://localhost:8080\?name\=client
+$ curl http://localhost:8080?name=client
 Hello, client, from plain-internet
 
 $ curl http://simpleService.ziti:8080?name=client
@@ -87,10 +87,6 @@ Done with the example? This script will remove everything created during setup.
 You will have to manually remove the identity from your Ziti Desktop Edge application.
 ```
 ziti edge login localhost:1280 -u admin -p admin
-
-echo Removing edge router policies
-ziti edge delete edge-router-policy simple-edge-router-policy
-ziti edge delete service-edge-router-policy simple-service-edge-router-policy
 
 echo Removing service policies
 ziti edge delete service-policy simple-client-dial
