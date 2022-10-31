@@ -60,7 +60,10 @@ Steps:
    HTTP server, this server should be accessible from the device running ZDE where you enrolled the `simple-client` 
    identity.
 
+       # curl to the server listening on the underlay:
        curl http://localhost:8080?name=client
+       
+       # curl to the server listening on the overlay:
        curl http://simpleService.ziti:8080?name=client
 
 ### Example output
