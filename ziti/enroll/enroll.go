@@ -60,6 +60,7 @@ type EnrollmentFlags struct {
 	AdditionalCAs string
 	Username      string
 	Password      string
+	Verbose       bool
 }
 
 func (enFlags *EnrollmentFlags) GetCertPool() (*x509.CertPool, []*x509.Certificate) {
