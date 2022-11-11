@@ -336,7 +336,10 @@ func UnmarshalDialResult(msg *channel.Message) (*DialResult, error) {
 }
 
 func GetLoggerFields(msg *channel.Message) logrus.Fields {
-	msgUUID := uuidz.ToString(msg.Headers[UUIDHeader])
+	var msgUUID string
+	if id, found := msg.Headers[UUIDHeader]; found {
+		msgUUID = uuidz.ToString(id)
+	}
 
 	connId, _ := msg.GetUint32Header(ConnIdHeader)
 	seq, _ := msg.GetUint32Header(SeqHeader)
