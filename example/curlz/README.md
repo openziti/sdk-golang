@@ -38,7 +38,7 @@ Steps:
        cd <repo-root-dir>/example/build
 
        echo Create the service config
-       ziti edge create config web.endpoint.hostv1 host.v1 '{"protocol":"tcp", "address":"www.google.com","port":'443'}'
+       ziti edge create config web.endpoint.hostv1 host.v1 '{"protocol":"tcp", "address":"www.google.com","port":443}'
 
        echo Create the service
        ziti edge create service web.endpoint --configs "web.endpoint.hostv1"
