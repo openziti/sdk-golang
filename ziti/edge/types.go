@@ -204,6 +204,10 @@ type InterceptV1Config struct {
 type DomainName string
 
 func (dn DomainName) Match(hostname string) int {
+	if len(dn) == 0 {
+		return -1
+	}
+
 	if dn[0] == '*' {
 		domain := string([]byte(dn)[1:])
 		if strings.HasSuffix(hostname, domain) {
