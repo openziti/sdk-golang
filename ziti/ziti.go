@@ -27,7 +27,6 @@ import (
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	"github.com/openziti/metrics"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/impl"
@@ -62,12 +61,15 @@ type Context interface {
 	GetCurrentIdentity() (*edge.CurrentIdentity, error)
 	Dial(serviceName string) (edge.Conn, error)
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
+	// DialAddr finds the service for given address and creates a connection to it
 	DialAddr(network string, addr string) (edge.Conn, error)
 	Listen(serviceName string) (edge.Listener, error)
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
+
+	// GetServiceForAddr finds the service with intercept that matches best to given address
 	GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error)
 	RefreshServices() error
 	GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error)
@@ -199,34 +201,6 @@ func (context *contextImpl) Sessions() ([]*edge.Session, error) {
 func (context *contextImpl) OnClose(factory edge.RouterConn) {
 	logrus.Debugf("connection to router [%s] was closed", factory.Key())
 	context.routerConnections.Remove(factory.Key())
-}
-
-func NewContext() Context {
-	return NewContextWithConfig(nil)
-}
-
-func NewContextWithConfig(cfg *config.Config) Context {
-	return NewContextWithOpts(cfg, nil)
-}
-
-func NewContextWithOpts(cfg *config.Config, options *Options) Context {
-	if options == nil {
-		options = DefaultOptions
-	}
-
-	result := &contextImpl{
-		routerConnections: cmap.New[edge.RouterConn](),
-		options:           options,
-		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
-		closeNotify:       make(chan struct{}),
-	}
-
-	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
-		result.postureCache = posture.NewCache(ctrlClient, result.closeNotify)
-		return nil
-	})
-
-	return result
 }
 
 func (context *contextImpl) initialize() error {
@@ -594,15 +568,19 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 
 	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 }
+
+// GetServiceForAddr finds the service with intercept that matches best to given address
 func (context *contextImpl) GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error) {
 	var service *edge.Service
 	score := math.MaxInt
 	context.intercepts.Range(func(key, value any) bool {
 		intercept := value.(*edge.InterceptV1Config)
-		fmt.Println(intercept)
 		sc := intercept.Match(network, hostname, port)
 		if sc != -1 {
 			if score > sc {
+				score = sc
+				service = intercept.Service
+			} else if score == sc && intercept.Service.Name < service.Name { // if score is the same, pick alphabetically first service
 				score = sc
 				service = intercept.Service
 			}

@@ -262,6 +262,15 @@ func (self *ZitiAddress) Matches(v any) int {
 	return -1
 }
 
+func NewZitiAddress(str string) (*ZitiAddress, error) {
+	addr := &ZitiAddress{}
+	err := addr.UnmarshalText([]byte(str))
+	if err != nil {
+		return nil, err
+	}
+	return addr, nil
+}
+
 func (self *ZitiAddress) UnmarshalText(data []byte) error {
 	v := string(data)
 	if _, cidr, err := net.ParseCIDR(v); err == nil {
@@ -343,6 +352,9 @@ func (intercept *InterceptV1Config) Match(network, hostname string, port uint16)
 		if portScore == -1 || score < portScore {
 			portScore = score
 		}
+	}
+	if portScore == -1 {
+		return -1
 	}
 
 	return int(uint(addrScore)<<16 | (uint(portScore) & 0xFFFF))
