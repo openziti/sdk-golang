@@ -204,10 +204,6 @@ type InterceptV1Config struct {
 type DomainName string
 
 func (dn DomainName) Match(hostname string) int {
-	if len(dn) < 3 {
-		return -1
-	}
-
 	if dn[0] == '*' {
 		domain := string([]byte(dn)[1:])
 		if strings.HasSuffix(hostname, domain) {
@@ -283,6 +279,8 @@ func (self *ZitiAddress) UnmarshalText(data []byte) error {
 		return nil
 	}
 
+	// minimun valid hostname is `a.b`
+	// minimum valid domain name is '*.c'
 	if len(v) < 3 {
 		return errors.New("invalid address")
 	}
