@@ -88,9 +88,9 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 
 func Test_AddressMatch(t *testing.T) {
 
-	http := edge.PortRange{80, 80}
-	https := edge.PortRange{443, 443}
-	privPorts := edge.PortRange{0, 1024}
+	http := edge.PortRange{Low: 80, High: 80}
+	https := edge.PortRange{Low: 443, High: 443}
+	privPorts := edge.PortRange{High: 1024}
 
 	hostname, _ := edge.NewZitiAddress("plain.host.ziti")
 	domain, _ := edge.NewZitiAddress("*.domain.ziti")
