@@ -305,6 +305,9 @@ func (self *ZitiAddress) UnmarshalJSON(data []byte) error {
 	return self.UnmarshalText([]byte(v))
 }
 
+// Match returns the matching score of the given target address against this intercept
+// returns -1 in case address is not matched
+// if the address is matched returns a 32bit integer with upper bits set to hostname match and lower bits to port match
 func (intercept *InterceptV1Config) Match(network, hostname string, port uint16) int {
 	if !slices.Contains(intercept.Protocols, network) {
 		return -1
