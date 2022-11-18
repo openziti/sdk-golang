@@ -17,6 +17,7 @@
 package edge
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -51,5 +52,57 @@ func TestNetworkSessionDecode(t *testing.T) {
 
 	if !reflect.DeepEqual(expected, ns) {
 		t.Errorf("decode network session = %+v, want %+v", ns, expected)
+	}
+}
+
+func TestInterceptDecode(t *testing.T) {
+	str := `{
+"protocols": ["tcp"],
+"addresses": [
+    "plain.host.ziti",
+    "*.domain.ziti",
+    "100.64.255.1",
+    "100.64.0.0/10"
+    ],
+"portRanges": 
+    [
+      {"low": 80, "high": 80},
+      {"low": 1024, "high": 2024}
+    ]
+}
+`
+	intercept := &InterceptV1Config{}
+
+	err := json.Unmarshal([]byte(str), intercept)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type args struct {
+		network  string
+		hostname string
+		port     uint16
+	}
+	cases := []struct {
+		params   args
+		expected int
+	}{
+		{params: args{network: "udp", hostname: "plain.host.ziti", port: 80}, expected: -1},
+		{params: args{network: "tcp", hostname: "plain.host.ziti", port: 80}, expected: 0},
+		{params: args{network: "tcp", hostname: "foo.domain.ziti", port: 80}, expected: int(3 << 16)},
+		{params: args{network: "tcp", hostname: "foo.host.notziti", port: 80}, expected: -1},
+		{params: args{network: "tcp", hostname: "bar.domain.ziti", port: 1024}, expected: int(3<<16 | 1000)},
+		{params: args{network: "tcp", hostname: "100.64.255.1", port: 80}, expected: 0},
+		{params: args{network: "tcp", hostname: "100.64.255.1", port: 1443}, expected: 1000},
+		{params: args{network: "tcp", hostname: "100.64.0.1", port: 80}, expected: (32 - 10) << 16},
+		{params: args{network: "tcp", hostname: "100.64.10.1", port: 1443}, expected: (32-10)<<16 | 1000},
+	}
+
+	for _, c := range cases {
+		score := intercept.Match(c.params.network, c.params.hostname, c.params.port)
+		if score != c.expected {
+			t.Errorf("case[%s:%s:%d] => %x != %x", c.params.network,
+				c.params.hostname, c.params.port, c.expected, score)
+		}
 	}
 }

@@ -17,6 +17,7 @@
 package ziti
 
 import (
+	"encoding/json"
 	errors2 "errors"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
@@ -26,7 +27,6 @@ import (
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	"github.com/openziti/metrics"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/impl"
@@ -39,7 +39,9 @@ import (
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
 	"math"
+	"net"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,11 +61,16 @@ type Context interface {
 	GetCurrentIdentity() (*edge.CurrentIdentity, error)
 	Dial(serviceName string) (edge.Conn, error)
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
+	// DialAddr finds the service for given address and creates a connection to it
+	DialAddr(network string, addr string) (edge.Conn, error)
 	Listen(serviceName string) (edge.Listener, error)
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 	GetServiceId(serviceName string) (string, bool, error)
 	GetServices() ([]edge.Service, error)
 	GetService(serviceName string) (*edge.Service, bool)
+
+	// GetServiceForAddr finds the service with intercept that matches best to given address
+	GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error)
 	RefreshServices() error
 	GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error)
 	GetSession(id string) (*edge.Session, error)
@@ -157,8 +164,9 @@ type contextImpl struct {
 
 	ctrlClt api.Client
 
-	services sync.Map // name -> Service
-	sessions sync.Map // svcID:type -> Session
+	services   sync.Map // name -> Service
+	sessions   sync.Map // svcID:type -> Session
+	intercepts sync.Map
 
 	metrics metrics.Registry
 
@@ -195,34 +203,6 @@ func (context *contextImpl) OnClose(factory edge.RouterConn) {
 	context.routerConnections.Remove(factory.Key())
 }
 
-func NewContext() Context {
-	return NewContextWithConfig(nil)
-}
-
-func NewContextWithConfig(cfg *config.Config) Context {
-	return NewContextWithOpts(cfg, nil)
-}
-
-func NewContextWithOpts(cfg *config.Config, options *Options) Context {
-	if options == nil {
-		options = DefaultOptions
-	}
-
-	result := &contextImpl{
-		routerConnections: cmap.New[edge.RouterConn](),
-		options:           options,
-		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
-		closeNotify:       make(chan struct{}),
-	}
-
-	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
-		result.postureCache = posture.NewCache(ctrlClient, result.closeNotify)
-		return nil
-	})
-
-	return result
-}
-
 func (context *contextImpl) initialize() error {
 	return context.ctrlClt.Initialize()
 }
@@ -252,6 +232,7 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 
 	for _, deletedKey := range deletes {
 		context.services.Delete(deletedKey)
+		context.intercepts.Delete(deletedKey)
 	}
 
 	// Adds and Updates
@@ -265,6 +246,23 @@ func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
 					context.services.Store(s.Name, s) // replace
 					context.options.OnServiceUpdate(ServiceChanged, s)
 				}
+			}
+		}
+
+		intercept := &edge.InterceptV1Config{}
+		ok, err := s.GetConfigOfType(edge.InterceptV1, intercept)
+		if err != nil {
+			pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", edge.InterceptV1, s.Name)
+		} else if ok {
+			intercept.Service = s
+			context.intercepts.Store(s.Name, intercept)
+		} else {
+			cltCfg := &edge.ClientConfig{}
+			ok, err := s.GetConfigOfType(edge.ClientConfigV1, cltCfg)
+			if err == nil && ok {
+				intercept = cltCfg.ToInterceptV1Config()
+				intercept.Service = s
+				context.intercepts.Store(s.Name, intercept)
 			}
 		}
 	}
@@ -432,6 +430,7 @@ func (context *contextImpl) Authenticate() error {
 	logrus.Debug("attempting to authenticate")
 	context.services = sync.Map{}
 	context.sessions = sync.Map{}
+	context.intercepts = sync.Map{}
 
 	info := sdkinfo.GetSdkInfo()
 	info["appId"] = globalAppId
@@ -568,6 +567,79 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
+}
+
+// GetServiceForAddr finds the service with intercept that matches best to given address
+func (context *contextImpl) GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error) {
+	var service *edge.Service
+	score := math.MaxInt
+	context.intercepts.Range(func(key, value any) bool {
+		intercept := value.(*edge.InterceptV1Config)
+		sc := intercept.Match(network, hostname, port)
+		if sc != -1 {
+			if score > sc {
+				score = sc
+				service = intercept.Service
+			} else if score == sc && intercept.Service.Name < service.Name { // if score is the same, pick alphabetically first service
+				score = sc
+				service = intercept.Service
+			}
+
+			if sc == 0 {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	if service == nil {
+		return nil, -1, errors.Errorf("no service for address[%s:%s:%d]", network, hostname, port)
+	}
+
+	return service, score, nil
+}
+
+func (context *contextImpl) dialServiceFromAddr(service, network, host string, port uint16) (edge.Conn, error) {
+	appdata := make(map[string]any)
+	appdata["dst_protocol"] = network
+	appdata["dst_port"] = strconv.Itoa(int(port))
+	ip := net.ParseIP(host)
+	if len(ip) != 0 {
+		appdata["dst_ip"] = host
+	} else {
+		appdata["dst_hostname"] = host
+	}
+
+	options := &DialOptions{
+		ConnectTimeout: 5 * time.Second,
+	}
+	appdataJson, _ := json.Marshal(appdata)
+	options.AppData = appdataJson
+
+	return context.DialWithOptions(service, options)
+}
+
+func (context *contextImpl) DialAddr(network string, addr string) (edge.Conn, error) {
+	host, portstr, err := net.SplitHostPort(addr)
+
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := strconv.Atoi(portstr)
+	if err != nil {
+		return nil, err
+	}
+
+	network = normalizeProtocol(network)
+
+	service, _, err := context.GetServiceForAddr(network, host, uint16(port))
+	if err != nil {
+		return nil, err
+	}
+
+	return context.dialServiceFromAddr(service.Name, network, host, uint16(port))
 }
 
 func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
