@@ -84,6 +84,8 @@ type Context interface {
 	EnrollZitiMfa() (*api.MfaEnrollment, error)
 	VerifyZitiMfa(code string) error
 	RemoveZitiMfa(code string) error
+
+	Reload() error
 }
 
 type DialOptions struct {
@@ -176,6 +178,14 @@ type contextImpl struct {
 	closed            atomic.Bool
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
+}
+
+func (context *contextImpl) Reload() error {
+	id := context.ctrlClt.GetIdentity()
+	if id != nil {
+		return id.Reload()
+	}
+	return nil
 }
 
 func (context *contextImpl) Sessions() ([]*edge.Session, error) {
