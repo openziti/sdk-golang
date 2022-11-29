@@ -29,7 +29,7 @@ import (
 )
 
 type CacheData struct {
-	Processes    cmap.ConcurrentMap[ProcessInfo] // map[processPath]ProcessInfo
+	Processes    cmap.ConcurrentMap[string, ProcessInfo] // map[processPath]ProcessInfo
 	MacAddresses []string
 	Os           OsInfo
 	Domain       string
@@ -52,12 +52,12 @@ type Cache struct {
 	currentData  *CacheData
 	previousData *CacheData
 
-	watchedProcesses cmap.ConcurrentMap[struct{}] //map[processPath]struct{}{}
+	watchedProcesses cmap.ConcurrentMap[string, struct{}] //map[processPath]struct{}{}
 
 	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]edge.PostureQuery] //map[serviceId]map[queryId]query
-	activeServices  cmap.ConcurrentMap[struct{}]                                    // map[serviceId]
+	activeServices  cmap.ConcurrentMap[string, struct{}]                            // map[serviceId]
 
-	lastSent   cmap.ConcurrentMap[time.Time] //map[type|processQueryId]time.Time
+	lastSent   cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
 	ctrlClient api.Client
 
 	startOnce           sync.Once
