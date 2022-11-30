@@ -1,22 +1,23 @@
 # Overview
 This example illustrates how to embed zero trust connectivity into a Netcat like application. There are two parts, part
- 1 shows how to use zcat with a broadcast style messaging service. Part two shows how to use addressable terminators to
- direct messages to specific endpoints.
+ 1 shows how to use zcat with a broadcast style messaging service. Part two shows how to use 
+ [addressable terminators](https://github.com/openziti/fabric/wiki/Addressable-Terminators) to direct messages to 
+ specific endpoints.
 
 This example demonstrates:
 * Dialing a service
 * Binding a service
-* Using addressable terminators
+* Using [addressable terminators](https://github.com/openziti/fabric/wiki/Addressable-Terminators)
 
 ## Requirements
 * an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 * The [netcat](https://netcat.sourceforge.net/) CLI tool
 
-## Build the example
+## Build the examples
 Refer to the [example README](../README.md) to build the SDK examples
 
-## Part 1: Setup using the OpenZiti CLI
+## Part 1 Setup: zcat to a non-zitified endpoint
 These steps will configure the service using the OpenZiti CLI. At the end of these steps you will have created:
 * a service called `zcat`
 * an identity to dial the service
@@ -24,13 +25,13 @@ These steps will configure the service using the OpenZiti CLI. At the end of the
 * the service policies required to authorize the identities for bind and dial
 
 Steps:
-1. log into Ziti. The host:port and username/password will vary depending on your network.
+1. Log into OpenZiti. The host:port and username/password will vary depending on your network.
 
        ziti edge login localhost:1280 -u admin -p admin
 1. Give your edge router an attribute to be used in this example
 
        ziti edge list edge-routers
-       ziti edge update identitiy <name-of-edge-router> -a 'zcat.servers'
+       ziti edge update identity <name-of-edge-router> -a 'zcat.servers'
 1. Run this script to create everything you need.
 
        cd <repo-root-dir>/example/build
@@ -51,21 +52,23 @@ Steps:
        
        echo Run policy advisor to check
        ziti edge policy-advisor services
-1. Run a netcat listener
+1. Run a netcat listener (-l creates a listener and -k keeps the listener running when connections are closed). The 
+   netcat listener should be run on the device hosting your edge router.
 
-       nc -l localhost 1234
+       nc -lk localhost 1234
 1. Run the zcat application and send something to the server
 
        ./zcat zcat -i zcat-client.json
 
 ### Example output
 The following is the output you'll see from the server and client side after running the previous commands.
-**Server**
+
+#### Server
 ```shell
-$ nc -l localhost 1234
+$ nc -lk localhost 1234
 hello
 ```
-**Client**
+#### Client
 ```shell
 $ ./zcat zcat -i zcat-client.json
 [   0.224]    INFO main.runFunc: connected
@@ -90,7 +93,7 @@ ziti edge delete identity zcat-client
 echo Removing service
 ziti edge delete service zcat
 ```
-## Part 2: Setup using the OpenZiti CLI
+## Part 2 Setup: zcat to a zitified endpoint
 These steps will configure the service using the OpenZiti CLI. At the end of these steps you will have created:
 * a service called `zcat.addressable`
 * two identities, one to dial the service and one to bind to the service
@@ -98,13 +101,13 @@ These steps will configure the service using the OpenZiti CLI. At the end of the
 * the service policies required to authorize the identities for bind and dial
 
 Steps:
-1. log into Ziti. The host:port and username/password will vary depending on your network.
+1. Log into OpenZiti. The host:port and username/password will vary depending on your network.
 
        ziti edge login localhost:1280 -u admin -p admin
 1. If you didn't perform "Part 1" of this exercise, give your edge router an attribute to be used in this example
 
        ziti edge list edge-routers
-       ziti edge update identitiy <name-of-edge-router> -a 'zcat.servers'
+       ziti edge update identity <name-of-edge-router> -a 'zcat.servers'
 1. Run this script to create everything you need.
 
        cd <repo-root-dir>/example/build
@@ -131,7 +134,7 @@ Steps:
 
 1. Run a netcat listener
 
-       nc -l localhost 1234
+       nc -lk localhost 1234
 1. Run the zcat application and send something to the edge router
 
        ./zcat zcat.addressable <name-of-edge-router> -i zcat-client.json
@@ -142,7 +145,7 @@ Steps:
 The following is the output you'll see from the server and client side after running the previous commands.
 #### Server
 ```shell
-$ nc -l localhost 1234
+$ nc -lk localhost 1234
 hello
 hello
 ```
@@ -162,7 +165,7 @@ hello
 can be used as proof that sending directly to `example.user` with an addressable terminator was attempted but due to the 
 user not being bound to the service, the message failed to send since there was no terminator for that user.
 
-**Example error output**
+#### Example error output
 ```shell
 ./zcat zcat.addressable example.user -i zcat-client.json
 [   0.223]   FATAL main.runFunc: {error=[unable to dial service 'zcat.addressable': dial failed: service 5VN4H4YQikdAwPFN3XWhYZ has no terminators for instanceId example.user]} unable to dial service: 'zcat.addressable'

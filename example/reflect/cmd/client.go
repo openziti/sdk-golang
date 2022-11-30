@@ -8,12 +8,6 @@ import (
 	"os"
 )
 
-type ServiceConfig struct {
-	Protocol string
-	Hostname string
-	Port     int
-}
-
 func Client(zitiCfg *config.Config, serviceName string) {
 	ctx := ziti.NewContextWithConfig(zitiCfg) //get a ziti context using a file
 
