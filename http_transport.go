@@ -23,7 +23,7 @@ func NewHttpClient(ctx ziti.Context, tlsConfig *tls.Config) *http.Client {
 // ZitiTransport wraps the default http.RoundTripper implementation with Ziti edge.Conn pooling
 type ZitiTransport struct {
 	http.Transport
-	connByAddr cmap.ConcurrentMap[edge.Conn]
+	connByAddr cmap.ConcurrentMap[string, edge.Conn]
 	Context    ziti.Context
 	TlsConfig  *tls.Config
 }

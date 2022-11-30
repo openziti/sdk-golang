@@ -247,12 +247,12 @@ github.com/openziti/foundation/v2 v2.0.8 h1:0Y7GG7C+84yC7OxfqnRJjZGQaVqtkRKuCWzC
 github.com/openziti/foundation/v2 v2.0.8/go.mod h1:Z0gnQsGJb/H/B+pixLtmCIpw1dBllD4QoT6LeD35WzA=
 github.com/openziti/identity v1.0.25 h1:29cNzDJMH14nIQmxfKxj6NdU0Oy6yIvCpKHuKTaaAy8=
 github.com/openziti/identity v1.0.25/go.mod h1:b/fapA3IvFcMa69IsIRODDHiezi/DaYm+jKqFKNn1vM=
-github.com/openziti/metrics v1.1.7 h1:YUfRhbTxU7loAqoOEhTAuYrBaeTX36Ra8GORnq5pN1I=
-github.com/openziti/metrics v1.1.7/go.mod h1:rKqoPs6di6QmQA1Sy0O0T1JtuMKP1vlluEZJR1HeY4E=
+github.com/openziti/metrics v1.2.0 h1:s/LUPdCaX1i8ZPRgEQNhg4ekUeID0P2I1TVFa4NpQuE=
+github.com/openziti/metrics v1.2.0/go.mod h1:ZGAUFO3Q89j2U4zAxNraZfepwMpP4lkMepEnh2zO+lA=
 github.com/openziti/transport/v2 v2.0.44 h1:aoaz9fGfAH+habqSRS31nwVdtNKzzpY4gLT0cr5umfA=
 github.com/openziti/transport/v2 v2.0.44/go.mod h1:G66dsMU5tHxGv6TZpOb8Vvf7KZcXrYJLTyDbsD7ogLo=
-github.com/orcaman/concurrent-map/v2 v2.0.0 h1:iSMwuBQvQ1nX5i9gYuGMiSy0fjWHmazdjF+NdSO9JzI=
-github.com/orcaman/concurrent-map/v2 v2.0.0/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
+github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
+github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9/go.mod h1:gLH27qo/dvMhLTVVyMELpe3Tut7sOfkiDg7ZpeqKwsw=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=

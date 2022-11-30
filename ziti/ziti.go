@@ -162,7 +162,7 @@ var _ Context = &contextImpl{}
 
 type contextImpl struct {
 	options           *Options
-	routerConnections cmap.ConcurrentMap[edge.RouterConn]
+	routerConnections cmap.ConcurrentMap[string, edge.RouterConn]
 
 	ctrlClt api.Client
 
