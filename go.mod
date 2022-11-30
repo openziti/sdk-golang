@@ -17,7 +17,7 @@ require (
 	github.com/openziti/identity v1.0.25
 	github.com/openziti/metrics v1.1.7
 	github.com/openziti/transport/v2 v2.0.44
-	github.com/orcaman/concurrent-map/v2 v2.0.0
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/shirou/gopsutil/v3 v3.22.10

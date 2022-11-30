@@ -251,8 +251,8 @@ github.com/openziti/metrics v1.1.7 h1:YUfRhbTxU7loAqoOEhTAuYrBaeTX36Ra8GORnq5pN1
 github.com/openziti/metrics v1.1.7/go.mod h1:rKqoPs6di6QmQA1Sy0O0T1JtuMKP1vlluEZJR1HeY4E=
 github.com/openziti/transport/v2 v2.0.44 h1:aoaz9fGfAH+habqSRS31nwVdtNKzzpY4gLT0cr5umfA=
 github.com/openziti/transport/v2 v2.0.44/go.mod h1:G66dsMU5tHxGv6TZpOb8Vvf7KZcXrYJLTyDbsD7ogLo=
-github.com/orcaman/concurrent-map/v2 v2.0.0 h1:iSMwuBQvQ1nX5i9gYuGMiSy0fjWHmazdjF+NdSO9JzI=
-github.com/orcaman/concurrent-map/v2 v2.0.0/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
+github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
+github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9/go.mod h1:gLH27qo/dvMhLTVVyMELpe3Tut7sOfkiDg7ZpeqKwsw=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
