@@ -247,8 +247,8 @@ github.com/openziti/foundation/v2 v2.0.9 h1:4Z53AzfCcI8XK46eeoSDabroVk1GS2An04WD
 github.com/openziti/foundation/v2 v2.0.9/go.mod h1:Z0gnQsGJb/H/B+pixLtmCIpw1dBllD4QoT6LeD35WzA=
 github.com/openziti/identity v1.0.26 h1:t0LrFC6vQgYoJF45GPQBP+6IPwP8kgpctTo10hJicH4=
 github.com/openziti/identity v1.0.26/go.mod h1:b/fapA3IvFcMa69IsIRODDHiezi/DaYm+jKqFKNn1vM=
-github.com/openziti/metrics v1.2.1 h1:5dHnCw4Ob8tXmnVwRL541gwvXa6rrBo5uATjhTq8F/w=
-github.com/openziti/metrics v1.2.1/go.mod h1:I9s/rq19W7XPNMgR/zLQr1Yz9rAXzajuf9hneWM2JIE=
+github.com/openziti/metrics v1.2.2 h1:L2V1yc+eIp8ARn74Pv4jL8YSJaMskaGW3DJdmWt+hi8=
+github.com/openziti/metrics v1.2.2/go.mod h1:I9s/rq19W7XPNMgR/zLQr1Yz9rAXzajuf9hneWM2JIE=
 github.com/openziti/transport/v2 v2.0.46 h1:Acf8NnhDt4TOISImt8ZIP6sODNJQpN63Ox2VgwGjDo8=
 github.com/openziti/transport/v2 v2.0.46/go.mod h1:dpf6sh+PexxXggeVzCerrEP2cO2kcC3el3UkwFwnPTc=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
