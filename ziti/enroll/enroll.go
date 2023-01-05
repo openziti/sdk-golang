@@ -163,6 +163,7 @@ func EnrollUpdb(enFlags EnrollmentFlags) error {
 func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 	var key crypto.PrivateKey
 	var err error
+
 	cfg := &config.Config{
 		ZtAPI: enFlags.Token.Issuer,
 	}
@@ -174,11 +175,13 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 			if stat.IsDir() {
 				return nil, errors.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
 			}
+
 			if absPath, fileErr := filepath.Abs(enFlags.KeyFile); fileErr != nil {
 				return nil, fileErr
 			} else {
 				cfg.ID.Key = "file://" + absPath
 			}
+
 		} else {
 			cfg.ID.Key = enFlags.KeyFile
 			pfxlog.Logger().Infof("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
@@ -203,73 +206,58 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 		}
 	}
 
-	caPool, allowedCerts := enFlags.GetCertPool()
-
 	if enFlags.CertFile != "" {
 		enFlags.CertFile, _ = filepath.Abs(enFlags.CertFile)
 		cfg.ID.Cert = "file://" + enFlags.CertFile
 	}
 
-	enrollmentComplete := false
-	shouldFetchCerts := true
+	caPool, allowedCerts := enFlags.GetCertPool()
+
+	//fetch so CA bundles
+	pfxlog.Logger().Debug("fetching certificates from server")
+	serverOnlyCaPool := x509.NewCertPool()
+	serverOnlyCaPool.AddCert(enFlags.Token.SignatureCert)
+
+	controllerCas := FetchCertificates(cfg.ZtAPI, serverOnlyCaPool)
+
+	if len(controllerCas) == 0 {
+		return nil, errors.New("expected 1 or more CAs from controller, got 0")
+	}
+
+	for _, cert := range controllerCas {
+		allowedCerts = append(allowedCerts, cert)
+		caPool.AddCert(cert)
+	}
 
 	var enrollErr error
+	switch enFlags.Token.EnrollmentMethod {
+	case "ott":
+		enrollErr = enrollOTT(enFlags.Token, cfg, caPool)
+	case "ottca":
+		enrollErr = enrollCA(enFlags.Token, cfg, caPool)
+	case "ca":
+		enrollErr = enrollCAAuto(enFlags, cfg, caPool)
+	default:
+		enrollErr = errors.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
+	}
 
-	//loop two times at most. if the correct certs are in the jwt or the overridden ca file then the enrollment will function properly
-	//if not - fetch the certificates from the server - add them to the caPool and try again a second time
-	for !enrollmentComplete {
-		switch enFlags.Token.EnrollmentMethod {
-		case "ott":
-			enrollErr = enrollOTT(enFlags.Token, cfg, caPool)
-		case "ottca":
-			enrollErr = enrollCA(enFlags.Token, cfg, caPool)
-		case "ca":
-			enrollErr = enrollCAAuto(enFlags, cfg, caPool)
-		default:
-			enrollErr = errors.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
-			enrollmentComplete = true //no need to try again
-		}
-
-		if enrollErr == nil {
-			enrollmentComplete = true //enrollment was successful
-		} else {
-			//determine if the failure is expected or due to tls. if tls related - retry. if not - just carry on without retrying
-			urlErr, ok := enrollErr.(*url.Error)
-			if ok {
-				_, okx509 := urlErr.Err.(x509.UnknownAuthorityError)
-				if (okx509 || strings.Contains(urlErr.Err.Error(), "x509")) && shouldFetchCerts {
-					// don't try to fetch certs again
-					shouldFetchCerts = false
-
-					pfxlog.Logger().Debug("fetching certificates from server")
-					rootCaPool := x509.NewCertPool()
-					rootCaPool.AddCert(enFlags.Token.SignatureCert)
-
-					for _, xcert := range FetchCertificates(cfg.ZtAPI, rootCaPool) {
-						allowedCerts = append(allowedCerts, xcert)
-						caPool.AddCert(xcert)
-					}
-
-					//certs fetched - try again
-					continue
-				}
-			}
-
-			// if any error other than a tls-related error occurs just return it - don't try again
-			return cfg, enrollErr
-		}
+	if enrollErr != nil {
+		return nil, enrollErr
 	}
 
 	if len(allowedCerts) > 0 {
 		var buf bytes.Buffer
-		merr := nfx509.MarshalToPem(allowedCerts, &buf)
-		if merr != nil {
-			return nil, merr
+
+		err := nfx509.MarshalToPem(allowedCerts, &buf)
+
+		if err != nil {
+			return nil, err
 		}
+
 		cfg.ID.CA = "pem:" + buf.String()
 	}
 
-	return cfg, nil // success
+	return cfg, nil
 }
 
 func generateECKey() (crypto.PrivateKey, error) {
