@@ -88,6 +88,9 @@ type RestClient interface {
 	GenerateNewMfaRecoveryCodes(code string) error
 	GetMfaRecoveryCodes(code string) ([]string, error)
 	Shutdown()
+
+	SetAuthToken(string)
+	GetAuthToken() string
 }
 
 type Client interface {
@@ -109,7 +112,8 @@ func NewClient(ctrl *url.URL, tlsCfg *tls.Config, configTypes []string) (RestCli
 	}, nil
 }
 
-var AuthUrl, _ = url.Parse("/edge/client/v1/authenticate?method=cert")
+var AuthUrlCert, _ = url.Parse("/edge/client/v1/authenticate?method=cert")
+var AuthUrlToken, _ = url.Parse("/edge/client/v1/authenticate?method=ext-jwt")
 var AuthMfaUrl, _ = url.Parse("/edge/client/v1/authenticate/mfa")
 var CurrSessUrl, _ = url.Parse("/edge/client/v1/current-api-session")
 var CurrIdentityUrl, _ = url.Parse("/edge/client/v1/current-identity")
@@ -128,8 +132,17 @@ type ctrlClient struct {
 	zitiUrl            *url.URL
 	clt                http.Client
 	apiSession         *edge.ApiSession
+	authToken          string
 	lastServiceRefresh time.Time
 	lastServiceUpdate  time.Time
+}
+
+func (c *ctrlClient) SetAuthToken(authToken string) {
+	c.authToken = authToken
+}
+
+func (c *ctrlClient) GetAuthToken() string {
+	return c.authToken
 }
 
 func (c *ctrlClient) Shutdown() {
@@ -140,11 +153,33 @@ func (c *ctrlClient) GetCurrentApiSession() *edge.ApiSession {
 	return c.apiSession
 }
 
+func (c *ctrlClient) NewRequest(method, url string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if c.authToken != "" {
+		req.Header.Set("Authorization", c.authToken)
+	} else {
+		req.Header.Set("Authorization", c.apiSession.Token)
+	}
+
+	if c.apiSession != nil && c.apiSession.Token != "" {
+		req.Header.Set(constants.ZitiSession, c.apiSession.Token)
+	}
+
+	req.Header.Set("content-type", "application/json")
+
+	return req, nil
+}
+
 func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("getting current identity information")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(CurrIdentityUrl).String(), nil)
+	req, err := c.NewRequest("GET", c.zitiUrl.ResolveReference(CurrIdentityUrl).String(), nil)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new HTTP request")
@@ -154,7 +189,6 @@ func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 		return nil, errors.New("no apiSession to refresh")
 	}
 
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	resp, err := c.clt.Do(req)
 	if err != nil && resp == nil {
 		return nil, errors.Wrap(err, "failed contact controller")
@@ -181,7 +215,7 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("checking if service list update is available")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(ServiceUpdateUrl).String(), nil)
+	req, err := c.NewRequest("GET", c.zitiUrl.ResolveReference(ServiceUpdateUrl).String(), nil)
 
 	if err != nil {
 		return false, errors.Wrap(err, "failed to create new HTTP request")
@@ -191,7 +225,6 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 		return false, errors.New("not authenticated")
 	}
 
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	resp, err := c.clt.Do(req)
 	if err != nil && resp == nil {
 		return false, errors.Wrap(err, "failed contact controller")
@@ -233,9 +266,7 @@ func (c *ctrlClient) CreateSession(svcId string, kind edge.SessionType) (*edge.S
 
 	fullSessionUrl := c.zitiUrl.ResolveReference(SessionUrl).String()
 	pfxlog.Logger().Debugf("requesting session from %v", fullSessionUrl)
-	req, _ := http.NewRequest("POST", fullSessionUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("POST", fullSessionUrl, reqBody)
 
 	logrus.WithField("service_id", svcId).Debug("requesting session")
 	resp, err := c.clt.Do(req)
@@ -261,9 +292,7 @@ func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error
 		return err
 	}
 	fullUrl := c.zitiUrl.ResolveReference(PostureResponseBulkUrl).String()
-	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
 
 	resp, err := c.clt.Do(req)
 
@@ -296,9 +325,7 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 		return err
 	}
 	fullUrl := c.zitiUrl.ResolveReference(PostureResponseUrl).String()
-	req, _ := http.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest(http.MethodPost, fullUrl, bytes.NewReader(jsonBody))
 
 	resp, err := c.clt.Do(req)
 
@@ -322,9 +349,7 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
 	sessionLookupUrlStr := c.zitiUrl.ResolveReference(SessionUrl).String() + "/" + id
 	pfxlog.Logger().Debugf("requesting session from %v", sessionLookupUrlStr)
-	req, _ := http.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest(http.MethodGet, sessionLookupUrlStr, nil)
 
 	logrus.WithField("sessionId", id).Debug("requesting session")
 	resp, err := c.clt.Do(req)
@@ -337,7 +362,7 @@ func (c *ctrlClient) RefreshSession(id string) (*edge.Session, error) {
 }
 
 func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error) {
-	req := new(bytes.Buffer)
+	body := new(bytes.Buffer)
 	reqMap := make(map[string]interface{})
 	for k, v := range info {
 		reqMap[k] = v
@@ -347,10 +372,25 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 		reqMap["configTypes"] = c.configTypes
 	}
 
-	if err := json.NewEncoder(req).Encode(reqMap); err != nil {
+	if err := json.NewEncoder(body).Encode(reqMap); err != nil {
 		return nil, err
 	}
-	resp, err := c.clt.Post(c.zitiUrl.ResolveReference(AuthUrl).String(), "application/json", req)
+
+	authUrl := AuthUrlCert
+
+	if c.authToken != "" {
+		authUrl = AuthUrlToken
+	}
+	reqUrl := c.zitiUrl.ResolveReference(authUrl).String()
+	req, err := c.NewRequest("POST", reqUrl, body)
+
+	if err != nil {
+		pfxlog.Logger().Errorf("failure to create login requqest %+v", err)
+		return nil, err
+	}
+
+	resp, err := c.clt.Do(req)
+
 	if err != nil {
 		pfxlog.Logger().Errorf("failure to post auth %+v", err)
 		return nil, err
@@ -383,6 +423,8 @@ func (c *ctrlClient) Login(info map[string]interface{}) (*edge.ApiSession, error
 
 }
 
+// VerifyMfa is called to complete MFA enrollment.
+//
 // During MFA enrollment, and initial TOTP code must be provided to enable MFA authentication. The code
 // provided MUST NOT be a recovery code. Until MFA enrollment is verified, MFA authentication will not
 // be required or possible. MFA Posture Checks may restrict service access until MFA is enrolled
@@ -394,9 +436,7 @@ func (c *ctrlClient) VerifyMfa(code string) error {
 	mfaVerifyUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaVerifyUrl).String()
 	pfxlog.Logger().Debugf("verifying MFA: POST %v", mfaVerifyUrl)
 
-	req, _ := http.NewRequest("POST", mfaVerifyUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("POST", mfaVerifyUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -414,6 +454,8 @@ func (c *ctrlClient) VerifyMfa(code string) error {
 	return nil
 }
 
+// AuthenticateMFA provides the supplied TOTP code after primary enrollment.
+//
 // During authentication/login additional MFA authentication queries may be provided. AuthenticateMFA allows
 // the current identity for their current api session to attempt to pass MFA authentication.
 func (c *ctrlClient) AuthenticateMFA(code string) error {
@@ -423,9 +465,7 @@ func (c *ctrlClient) AuthenticateMFA(code string) error {
 	mfaAuthUrl := c.zitiUrl.ResolveReference(AuthMfaUrl).String()
 	pfxlog.Logger().Debugf("authenticating MFA: POST %v", mfaAuthUrl)
 
-	req, _ := http.NewRequest("POST", mfaAuthUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("POST", mfaAuthUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -448,7 +488,9 @@ type MfaEnrollment struct {
 	RecoveryCodes   []string
 }
 
-// Enroll in MFA. Will only succeed if the current identity of the current API session is not enrolled in MFA.
+// EnrollMfa will start the enrollment process for TOTP MFA.
+//
+// EnrollmentMFA will only succeed if the current identity of the current API session is not enrolled in MFA.
 // If MFA is already enrolled and re-enrollment is desired first use RemoveMfa.
 func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	body := `{}`
@@ -456,9 +498,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 
 	mfaUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaUrl).String()
 	pfxlog.Logger().Debugf("enrolling in mfa: POST %v", mfaUrl)
-	req, _ := http.NewRequest("POST", mfaUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("POST", mfaUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -473,9 +513,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 		return nil, fmt.Errorf("invalid status code returned attempting to start MFA enrollment [%v], response body: %v", resp.StatusCode, string(respBody))
 	}
 
-	req, _ = http.NewRequest("GET", mfaUrl, bytes.NewBuffer(nil))
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ = c.NewRequest("GET", mfaUrl, bytes.NewBuffer(nil))
 
 	resp, err = c.clt.Do(req)
 	if err != nil {
@@ -513,7 +551,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 	return mfaEnrollment, nil
 }
 
-// Remove the previous enrolled MFA. A valid TOTP/recovery code is required. If MFA enrollment has not been completed
+// RemoveMfa removes any existing MFA enrollment. A valid TOTP/recovery code is required. If MFA enrollment has not been completed
 // an emty string can be used to remove the partially started MFA enrollment.
 func (c *ctrlClient) RemoveMfa(code string) error {
 	body := NewMFACodeBody(code)
@@ -521,9 +559,7 @@ func (c *ctrlClient) RemoveMfa(code string) error {
 
 	mfaUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaUrl).String()
 	pfxlog.Logger().Debugf("removing mfa: DELETE %v", mfaUrl)
-	req, _ := http.NewRequest("DELETE", mfaUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("DELETE", mfaUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -540,16 +576,14 @@ func (c *ctrlClient) RemoveMfa(code string) error {
 	return nil
 }
 
-// Generate new MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
+// GenerateNewMfaRecoveryCodes generates new MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
 func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
 	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaRecoveryCodesUrl).String()
 	pfxlog.Logger().Debugf("generating new MFA recovery codes: POST %v", mfaRecoveryCodesUrl)
-	req, _ := http.NewRequest("POST", mfaRecoveryCodesUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("POST", mfaRecoveryCodesUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -567,16 +601,14 @@ func (c *ctrlClient) GenerateNewMfaRecoveryCodes(code string) error {
 	return nil
 }
 
-// Retrieve MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
+// GetMfaRecoveryCodes retrieve MFA recovery codes. Required previous MFA enrollment and a valid TOTP code.
 func (c *ctrlClient) GetMfaRecoveryCodes(code string) ([]string, error) {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
 
 	mfaRecoveryCodesUrl := c.zitiUrl.ResolveReference(CurrentIdentityMfaRecoveryCodesUrl).String()
 	pfxlog.Logger().Debugf("retrieving MFA recovery codes: GET %v", mfaRecoveryCodesUrl)
-	req, _ := http.NewRequest("GET", mfaRecoveryCodesUrl, reqBody)
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
-	req.Header.Set("content-type", "application/json")
+	req, _ := c.NewRequest("GET", mfaRecoveryCodesUrl, reqBody)
 
 	resp, err := c.clt.Do(req)
 
@@ -658,7 +690,7 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 	log := pfxlog.Logger()
 
 	log.Debugf("refreshing apiSession")
-	req, err := http.NewRequest("GET", c.zitiUrl.ResolveReference(CurrSessUrl).String(), nil)
+	req, err := c.NewRequest("GET", c.zitiUrl.ResolveReference(CurrSessUrl).String(), nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new HTTP request during refresh: %v", err)
@@ -668,7 +700,6 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 		return nil, fmt.Errorf("no apiSession to refresh")
 	}
 
-	req.Header.Set(constants.ZitiSession, c.apiSession.Token)
 	resp, err := c.clt.Do(req)
 	if err != nil && resp == nil {
 		return nil, fmt.Errorf("failed contact controller: %v", err)
@@ -702,14 +733,17 @@ func (c *ctrlClient) Refresh() (*time.Time, error) {
 }
 
 func (c *ctrlClient) GetServices() ([]*edge.Service, error) {
-	servReq, _ := http.NewRequest("GET", c.zitiUrl.ResolveReference(ServicesUrl).String(), nil)
+	servReq, _ := c.NewRequest("GET", c.zitiUrl.ResolveReference(ServicesUrl).String(), nil)
 
-	if c.apiSession.Token == "" {
-		return nil, errors.New("apiSession apiSession token is empty")
-	} else {
-		pfxlog.Logger().Debugf("using apiSession apiSession token %v", c.apiSession.Token)
+	pfxlog.Logger().WithFields(map[string]interface{}{
+		"apiSession.Token": c.apiSession.Token,
+		"authToken":        c.authToken,
+	}).Debug("retrieving services")
+
+	if c.apiSession.Token == "" && c.authToken == "" {
+		return nil, errors.New("authentication token is empty")
 	}
-	servReq.Header.Set(constants.ZitiSession, c.apiSession.Token)
+
 	pgOffset := 0
 	pgLimit := 500
 
@@ -772,14 +806,13 @@ func (c *ctrlClient) GetServiceTerminators(service *edge.Service, offset, limit 
 	if err != nil {
 		return nil, 0, err
 	}
-	servReq, _ := http.NewRequest("GET", c.zitiUrl.ResolveReference(terminatorsUrl).String(), nil)
+	servReq, _ := c.NewRequest("GET", c.zitiUrl.ResolveReference(terminatorsUrl).String(), nil)
 
 	if c.apiSession.Token == "" {
 		return nil, 0, errors.New("apiSession apiSession token is empty")
 	} else {
 		pfxlog.Logger().Debugf("using apiSession apiSession token %v", c.apiSession.Token)
 	}
-	servReq.Header.Set(constants.ZitiSession, c.apiSession.Token)
 
 	q := servReq.URL.Query()
 	q.Set("limit", strconv.Itoa(limit))

@@ -79,13 +79,16 @@ type Context interface {
 	// Close closes any connections open to edge routers
 	Close()
 
-	// Add a Ziti MFA handler, invoked during authentication
+	// AddZitiMfaHandler adds a Ziti MFA handler, invoked during authentication
 	AddZitiMfaHandler(handler func(query *edge.AuthQuery, resp func(code string) error) error)
 	EnrollZitiMfa() (*api.MfaEnrollment, error)
 	VerifyZitiMfa(code string) error
 	RemoveZitiMfa(code string) error
 
 	Reload() error
+
+	SetAuthToken(token string)
+	GetAuthToken() string
 }
 
 type DialOptions struct {
@@ -178,6 +181,15 @@ type contextImpl struct {
 	closed            atomic.Bool
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
+	securityToken     string
+}
+
+func (context *contextImpl) SetAuthToken(token string) {
+	context.ctrlClt.SetAuthToken(token)
+}
+
+func (context *contextImpl) GetAuthToken() string {
+	return context.ctrlClt.GetAuthToken()
 }
 
 func (context *contextImpl) Reload() error {

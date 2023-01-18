@@ -27,6 +27,8 @@ type Config struct {
 	ZtAPI       string          `json:"ztAPI"`
 	ID          identity.Config `json:"id"`
 	ConfigTypes []string        `json:"configTypes"`
+
+	AuthToken string `json:"-"`
 }
 
 func New(ztApi string, idConfig identity.Config) *Config {

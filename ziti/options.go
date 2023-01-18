@@ -2,6 +2,7 @@ package ziti
 
 import (
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"net/http"
 	"time"
 )
 
@@ -19,9 +20,11 @@ type Options struct {
 	RefreshInterval time.Duration
 	OnContextReady  func(ctx Context)
 	OnServiceUpdate serviceCB
+	HttpApiRequest  func(r *http.Request)
 }
 
 var DefaultOptions = &Options{
 	RefreshInterval: 5 * time.Minute,
 	OnServiceUpdate: nil,
+	HttpApiRequest:  nil,
 }
