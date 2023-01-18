@@ -30,7 +30,12 @@ func main() {
 		return
 	}
 
-	context := ziti.NewContext()
+	context, err := ziti.NewContext()
+
+	if err != nil {
+		panic(err)
+	}
+
 	con, err := context.Dial(os.Args[1])
 
 	if err != nil {

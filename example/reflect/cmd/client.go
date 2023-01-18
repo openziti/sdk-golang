@@ -9,7 +9,11 @@ import (
 )
 
 func Client(zitiCfg *config.Config, serviceName string) {
-	ctx := ziti.NewContextWithConfig(zitiCfg) //get a ziti context using a file
+	ctx, err := ziti.NewContextWithConfig(zitiCfg) //get a ziti context using a file
+
+	if err != nil {
+		panic(err)
+	}
 
 	foundSvc, ok := ctx.GetService(serviceName)
 	if !ok {

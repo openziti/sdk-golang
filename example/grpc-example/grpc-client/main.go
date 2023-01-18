@@ -32,7 +32,12 @@ func main() {
 		log.Fatalf("failed to load config err=%v", err)
 	}
 
-	ztx := ziti.NewContextWithConfig(cfg)
+	ztx, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
 	err = ztx.Authenticate()
 	if err != nil {
 		log.Fatalf("failed to authenticate: %v", err)

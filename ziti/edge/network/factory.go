@@ -14,12 +14,13 @@
 	limitations under the License.
 */
 
-package impl
+package network
 
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream/kx"
 	"github.com/openziti/channel/v2"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 )
 
@@ -75,34 +76,34 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-func (conn *routerConn) NewConn(service *edge.Service, connType ConnType) *edgeConn {
+func (conn *routerConn) NewConn(service *rest_model.ServiceDetail, connType ConnType) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
 		readQ:      NewNoopSequencer[*channel.Message](4),
 		msgMux:     conn.msgMux,
-		serviceId:  service.Name,
+		serviceId:  *service.Name,
 		connType:   connType,
 	}
 
 	var err error
-	if service.Encryption {
+	if *service.EncryptionRequired {
 		if edgeCh.keyPair, err = kx.NewKeyPair(); err == nil {
 			edgeCh.crypto = true
 		} else {
-			pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", service.Name, err)
+			pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", *service.Name, err)
 		}
 	}
 
 	err = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
-		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", service.Name, id, err)
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
 	return edgeCh
 }
 
-func (conn *routerConn) Connect(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
+func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
 	ec := conn.NewConn(service, ConnTypeDial)
 	dialConn, err := ec.Connect(session, options)
 	if err != nil {
@@ -113,7 +114,7 @@ func (conn *routerConn) Connect(service *edge.Service, session *edge.Session, op
 	return dialConn, err
 }
 
-func (conn *routerConn) Listen(service *edge.Service, session *edge.Session, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
 	ec := conn.NewConn(service, ConnTypeBind)
 	listener, err := ec.Listen(session, service, options)
 	if err != nil {

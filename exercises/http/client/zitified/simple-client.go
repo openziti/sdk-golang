@@ -45,7 +45,13 @@ func createZitifiedHttpClient(idFile string) http.Client {
 	if err != nil {
 		panic(err)
 	}
-	zitiContext = ziti.NewContextWithConfig(cfg)
+
+	zitiContext, err = ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = Dial                                 //zitiDialContext.Dial
 	return http.Client{Transport: zitiTransport}

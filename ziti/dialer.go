@@ -3,7 +3,7 @@ package ziti
 import (
 	"context"
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/edge-api/rest_model"
 	"math"
 	"net"
 	"strconv"
@@ -42,7 +42,7 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	network = normalizeProtocol(network)
 
 	var ztx Context
-	var service *edge.Service
+	var service *rest_model.ServiceDetail
 	best := math.MaxInt
 	ForAllContexts(func(ctx Context) bool {
 		srv, score, err := ctx.GetServiceForAddr(network, host, uint16(port))
@@ -61,7 +61,7 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	})
 
 	if ztx != nil && service != nil {
-		return ztx.(*contextImpl).dialServiceFromAddr(service.Name, network, host, uint16(port))
+		return ztx.(*ContextImpl).dialServiceFromAddr(*service.Name, network, host, uint16(port))
 	}
 
 	if dialer.fallback != nil {

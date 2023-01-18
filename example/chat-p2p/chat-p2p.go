@@ -175,13 +175,22 @@ func (self *chatPeerToPeer) run(*cobra.Command, []string) {
 
 	logger := pfxlog.Logger()
 	if self.cfg.configFile == "" {
-		self.context = ziti.NewContext()
+		var err error
+		self.context, err = ziti.NewContext()
+
+		if err != nil {
+			panic(err)
+		}
 	} else {
 		cfg, err := config.NewFromFile(self.cfg.configFile)
 		if err != nil {
 			panic(err)
 		}
-		self.context = ziti.NewContextWithConfig(cfg)
+		self.context, err = ziti.NewContextWithConfig(cfg)
+
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	logger.Infof("registering to service %v\n", self.cfg.service)
@@ -201,7 +210,7 @@ func (self *chatPeerToPeer) run(*cobra.Command, []string) {
 	if err != nil {
 		panic(err)
 	}
-	self.identity = identity.Name
+	self.identity = *identity.Name
 
 	go self.waitForCalls()
 	go self.consoleIO()

@@ -80,7 +80,13 @@ func zitifiedServer() {
 		fmt.Printf("Using the default service [%v]", serviceName)
 	}
 
-	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(serviceName, &options)
+	ctx, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := ctx.ListenWithOptions(serviceName, &options)
 	if err != nil {
 		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)

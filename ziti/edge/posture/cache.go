@@ -17,12 +17,13 @@
 package posture
 
 import (
+	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/stringz"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/edge/api"
 	cmap "github.com/orcaman/concurrent-map/v2"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,11 +55,11 @@ type Cache struct {
 
 	watchedProcesses cmap.ConcurrentMap[string, struct{}] //map[processPath]struct{}{}
 
-	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]edge.PostureQuery] //map[serviceId]map[queryId]query
-	activeServices  cmap.ConcurrentMap[string, struct{}]                            // map[serviceId]
+	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]rest_model.PostureQuery] //map[serviceId]map[queryId]query
+	activeServices  cmap.ConcurrentMap[string, struct{}]                                  // map[serviceId]
 
 	lastSent   cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
-	ctrlClient api.Client
+	ctrlClient Submitter
 
 	startOnce           sync.Once
 	doSingleSubmissions bool
@@ -68,19 +69,19 @@ type Cache struct {
 	lock       sync.Mutex
 }
 
-func NewCache(ctrlClient api.Client, closeNotify <-chan struct{}) *Cache {
+func NewCache(submitter Submitter, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
 		currentData:      NewCacheData(),
 		previousData:     NewCacheData(),
 		watchedProcesses: cmap.New[struct{}](),
 		activeServices:   cmap.New[struct{}](),
 		lastSent:         cmap.New[time.Time](),
-		ctrlClient:       ctrlClient,
+		ctrlClient:       submitter,
 		startOnce:        sync.Once{},
 		closeNotify:      closeNotify,
 		DomainFunc:       Domain,
 	}
-	cache.serviceQueryMap.Store(map[string]map[string]edge.PostureQuery{})
+	cache.serviceQueryMap.Store(map[string]map[string]rest_model.PostureQuery{})
 	cache.start()
 
 	return cache
@@ -121,7 +122,7 @@ func (cache *Cache) Evaluate() {
 }
 
 // GetChangedResponses determines if posture responses should be sent out.
-func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
+func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
 	if !cache.currentData.Evaluated.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -131,8 +132,8 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		queryMap := cache.serviceQueryMap.Load()[serviceId]
 
 		for queryId, query := range queryMap {
-			if query.QueryType != api.PostureCheckTypeProcess {
-				activeQueryTypes[query.QueryType] = queryId
+			if *query.QueryType != rest_model.PostureCheckTypePROCESS {
+				activeQueryTypes[string(*query.QueryType)] = queryId
 			} else {
 				activeQueryTypes[query.Process.Path] = queryId
 			}
@@ -143,45 +144,42 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		return nil
 	}
 
-	var responses []*api.PostureResponse
+	var responses []rest_model.PostureResponseCreate
 	if cache.currentData.Domain != cache.previousData.Domain {
-		if queryId, ok := activeQueryTypes[api.PostureCheckTypeDomain]; ok {
-			domainRes := &api.PostureResponse{
-				Id:     queryId,
-				TypeId: api.PostureCheckTypeDomain,
-				PostureSubType: api.PostureResponseDomain{
-					Domain: cache.currentData.Domain,
-				},
+		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeDOMAIN)]; ok {
+			domainResponse := &rest_model.PostureResponseDomainCreate{
+				Domain: &cache.currentData.Domain,
 			}
-			responses = append(responses, domainRes)
+			domainResponse.SetID(&queryId)
+			domainResponse.SetTypeID(rest_model.PostureCheckTypeDOMAIN)
+
+			responses = append(responses, domainResponse)
 		}
 	}
 
 	if !stringz.EqualSlices(cache.currentData.MacAddresses, cache.previousData.MacAddresses) {
-		if queryId, ok := activeQueryTypes[api.PostureCheckTypeMAC]; ok {
-			macRes := &api.PostureResponse{
-				Id:     queryId,
-				TypeId: api.PostureCheckTypeMAC,
-				PostureSubType: api.PostureResponseMac{
-					MacAddresses: cache.currentData.MacAddresses,
-				},
+		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeMAC)]; ok {
+			macResponse := &rest_model.PostureResponseMacAddressCreate{
+				MacAddresses: cache.currentData.MacAddresses,
 			}
-			responses = append(responses, macRes)
+			macResponse.SetID(&queryId)
+			macResponse.SetTypeID(rest_model.PostureCheckTypeMAC)
+
+			responses = append(responses, macResponse)
 		}
 	}
 
 	if cache.previousData.Os.Version != cache.currentData.Os.Version || cache.previousData.Os.Type != cache.currentData.Os.Type {
-		if queryId, ok := activeQueryTypes[api.PostureCheckTypeOs]; ok {
-			osRes := &api.PostureResponse{
-				Id:     queryId,
-				TypeId: api.PostureCheckTypeOs,
-				PostureSubType: api.PostureResponseOs{
-					Type:    cache.currentData.Os.Type,
-					Version: cache.currentData.Os.Version,
-					Build:   "",
-				},
+		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeOS)]; ok {
+			osResponse := &rest_model.PostureResponseOperatingSystemCreate{
+				Type:    &cache.currentData.Os.Type,
+				Version: &cache.currentData.Os.Version,
+				Build:   "",
 			}
-			responses = append(responses, osRes)
+			osResponse.SetID(&queryId)
+			osResponse.SetTypeID(rest_model.PostureCheckTypeOS)
+
+			responses = append(responses, osResponse)
 		}
 	}
 
@@ -203,16 +201,16 @@ func (cache *Cache) GetChangedResponses() []*api.PostureResponse {
 		}
 
 		if sendResponse {
-			procResp := &api.PostureResponse{
-				Id:     queryId,
-				TypeId: api.PostureCheckTypeProcess,
-				PostureSubType: api.PostureResponseProcess{
-					IsRunning:          curState.IsRunning,
-					Hash:               curState.Hash,
-					SignerFingerprints: curState.SignerFingerprints,
-				},
+			processResponse := &rest_model.PostureResponseProcessCreate{
+				Path:               processPath,
+				Hash:               curState.Hash,
+				SignerFingerprints: curState.SignerFingerprints,
+				IsRunning:          curState.IsRunning,
 			}
-			responses = append(responses, procResp)
+
+			processResponse.SetID(&queryId)
+			processResponse.SetTypeID(rest_model.PostureCheckTypePROCESS)
+			responses = append(responses, processResponse)
 		}
 	})
 
@@ -237,13 +235,13 @@ func (cache *Cache) Refresh() {
 
 // SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
 // to provide data for on a per-service basis.
-func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]edge.PostureQuery) {
+func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]rest_model.PostureQuery) {
 	cache.serviceQueryMap.Store(serviceQueryMap)
 
 	var processPaths []string
 	for _, queryMap := range serviceQueryMap {
 		for _, query := range queryMap {
-			if query.QueryType == api.PostureCheckTypeProcess && query.Process != nil {
+			if *query.QueryType == rest_model.PostureCheckTypePROCESS && query.Process != nil {
 				processPaths = append(processPaths, query.Process.Path)
 			}
 		}
@@ -283,30 +281,31 @@ func (cache *Cache) start() {
 	})
 }
 
-func (cache *Cache) SendResponses(responses []*api.PostureResponse) error {
+func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) []error {
 	if cache.doSingleSubmissions {
-		allErrors := api.Errors{}
+		var allErrors []error
 		for _, response := range responses {
-			err := cache.ctrlClient.SendPostureResponse(*response)
+			err := cache.ctrlClient.SendPostureResponse(response)
 
 			if err != nil {
-				allErrors.Errors = append(allErrors.Errors, err)
+				allErrors = append(allErrors, err)
 			}
 		}
 
-		if len(allErrors.Errors) != 0 {
-			return allErrors
-		}
-
-		return nil
+		return allErrors
 
 	} else {
 		err := cache.ctrlClient.SendPostureResponseBulk(responses)
 
-		if _, ok := err.(api.NotFound); ok {
+		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusNotFound {
 			cache.doSingleSubmissions = true
 			return cache.SendResponses(responses)
 		}
-		return err
+		return []error{err}
 	}
+}
+
+type Submitter interface {
+	SendPostureResponse(response rest_model.PostureResponseCreate) error
+	SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error
 }

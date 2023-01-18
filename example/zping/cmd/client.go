@@ -171,9 +171,17 @@ in server mode`,
 				logrus.WithError(err).Error("Error loading config file")
 				os.Exit(1)
 			}
-			context = ziti.NewContextWithConfig(configFile)
+
+			context, err = ziti.NewContextWithConfig(configFile)
+			if err != nil {
+				panic(err)
+			}
 		} else {
-			context = ziti.NewContext()
+			context, err = ziti.NewContext()
+
+			if err != nil {
+				panic(err)
+			}
 		}
 		c := make(chan os.Signal)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
