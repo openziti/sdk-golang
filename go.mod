@@ -1,6 +1,6 @@
 module github.com/openziti/sdk-golang
 
-go 1.18
+go 1.19
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -12,11 +12,11 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.2
-	github.com/openziti/channel/v2 v2.0.26
+	github.com/openziti/channel/v2 v2.0.27
 	github.com/openziti/foundation/v2 v2.0.10
 	github.com/openziti/identity v1.0.30
 	github.com/openziti/metrics v1.2.3
-	github.com/openziti/transport/v2 v2.0.50
+	github.com/openziti/transport/v2 v2.0.51
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -45,8 +45,8 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/crypto v0.3.0 // indirect
-	golang.org/x/term v0.2.0 // indirect
+	golang.org/x/crypto v0.5.0 // indirect
+	golang.org/x/term v0.4.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
