@@ -11,7 +11,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.9
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/netfoundry/secretstream v0.1.2
+	github.com/netfoundry/secretstream v0.1.3
 	github.com/openziti/channel/v2 v2.0.30
 	github.com/openziti/foundation/v2 v2.0.10
 	github.com/openziti/identity v1.0.30
@@ -45,7 +45,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/crypto v0.5.0 // indirect
+	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
