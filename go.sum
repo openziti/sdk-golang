@@ -243,12 +243,12 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/openziti/channel/v2 v2.0.30 h1:ouGVQ0XwukM0WnSviwEdJ5Wx9IMay0u9jn6Dk1yQT1A=
 github.com/openziti/channel/v2 v2.0.30/go.mod h1:BPW2RknugK2aU48mF+kTtyAVHjKsTc7gDD21bl+dSEU=
-github.com/openziti/foundation/v2 v2.0.10 h1:IeOkcPbgBpBTw4JrWz8s9Z76vO/m+i2uIE0cMZ0C2DM=
-github.com/openziti/foundation/v2 v2.0.10/go.mod h1:Z0gnQsGJb/H/B+pixLtmCIpw1dBllD4QoT6LeD35WzA=
+github.com/openziti/foundation/v2 v2.0.11 h1:F1mgUZE6h8cQnl39ul8vGxpTzXcXz4USsjxpxcLpnec=
+github.com/openziti/foundation/v2 v2.0.11/go.mod h1:Wv7bhW20imO9T+Xr6EudMh71Q5AQtk8tJERFttVwqNw=
 github.com/openziti/identity v1.0.30 h1:N2WDdK7MpeXuHCRjMo6N/QMtUXUkenUEqfKWXFNu2oE=
 github.com/openziti/identity v1.0.30/go.mod h1:SPZAaqvDToS2jtae4D2fvO9IsR6G6FKNZ8WTqAwKKJE=
-github.com/openziti/metrics v1.2.3 h1:h9+mSU673QLSMOb3YibD1vNgE0yIDZ5leiUqDwN5szE=
-github.com/openziti/metrics v1.2.3/go.mod h1:jK8BfZ9nXMhO+LPcUPpN/sebrLfIeF4uaHlm5JIF7BY=
+github.com/openziti/metrics v1.2.4 h1:hVMtomhNpGeQHQkfJ+qL6Y2V8mr33pELWoJGAU4sOrA=
+github.com/openziti/metrics v1.2.4/go.mod h1:72hHyYUzLC/9YwPmnAXapQNBZ0uI+rU7W00Sm4TZY1k=
 github.com/openziti/transport/v2 v2.0.53 h1:ovMR412Ywo5b5Zojb5SQOQcdQ7pxUZqnq0qe5rTXFpE=
 github.com/openziti/transport/v2 v2.0.53/go.mod h1:3s+FPOq2j9dsVmeJhGnwWBfnfd7Q+hdRkSqzDPQSbu0=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
@@ -301,8 +301,9 @@ github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+github.com/stretchr/testify v1.8.2 h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ8=
+github.com/stretchr/testify v1.8.2/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
 github.com/tklauser/go-sysconf v0.3.11 h1:89WgdJhk5SNwJfu+GKyYveZ4IaJ7xAkecBo+KdJV0CM=
 github.com/tklauser/go-sysconf v0.3.11/go.mod h1:GqXfhXY3kiPa0nAXPDIQIWzJbMCB7AmcWpGR8lSZfqI=
