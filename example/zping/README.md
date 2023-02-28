@@ -2,7 +2,7 @@
 
 What is zping?  zping replaces the function of icmp ping tool in a ziti network.
 
-It provides an end to end latency measurment between any two ziti identities in a ziti network and like icmp ping will provide the following metrics upon completion of the ping session:
+It provides an end to end latency measurement between any two ziti identities in a ziti network and like icmp ping will provide the following metrics upon completion of the ping session:
 
 min, max and mean latency and standard deviation.
 
@@ -54,7 +54,7 @@ Linux:
 
 3. Create a simple sdk service named “ziti-ping” this is the default service zping looks for but can be          
 
-   overriden  with the -s command line flag.
+   overridden  with the -s command line flag.
 
 4. Create a bind policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
 
@@ -118,6 +118,6 @@ Linux:
         100 bytes from zpingendpoint1: ziti_seq=5 time=76.849ms
         
         --- zpingendpoint1 ping statistics ---
-        5 packets transmitted and 5 packets recieved, 0.00% packet loss
+        5 packets transmitted and 5 packets received, 0.00% packet loss
         round-trip min/max/avg/stddev 75.597/76.849/76.309/0.417 ms
 ```

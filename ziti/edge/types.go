@@ -19,14 +19,15 @@ package edge
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
-	"golang.org/x/exp/slices"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -283,7 +284,7 @@ func (self *ZitiAddress) UnmarshalText(data []byte) error {
 		return nil
 	}
 
-	// minimun valid hostname is `a.b`
+	// minimum valid hostname is `a.b`
 	// minimum valid domain name is '*.c'
 	if len(v) < 3 {
 		return errors.New("invalid address")

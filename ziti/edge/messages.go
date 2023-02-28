@@ -18,6 +18,7 @@ package edge
 
 import (
 	"encoding/binary"
+
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"
@@ -314,7 +315,7 @@ func UnmarshalDialResult(msg *channel.Message) (*DialResult, error) {
 
 	if msg.ContentType == ContentTypeDialSuccess {
 		if len(msg.Body) != 4 {
-			return nil, errors.Errorf("dial success msg improperly formated. body len: %v", len(msg.Body))
+			return nil, errors.Errorf("dial success msg improperly formatted. body len: %v", len(msg.Body))
 		}
 		newConnId := binary.LittleEndian.Uint32(msg.Body)
 		return &DialResult{

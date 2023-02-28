@@ -5,6 +5,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/constants"
@@ -12,11 +18,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"io"
-	"net/http"
-	"net/url"
-	"strconv"
-	"time"
 )
 
 type AuthFailure struct {
@@ -161,7 +162,7 @@ func (c *ctrlClient) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
 	}
 
 	if resp == nil {
-		return nil, errors.New("controller returned empty respose")
+		return nil, errors.New("controller returned empty response")
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -198,7 +199,7 @@ func (c *ctrlClient) IsServiceListUpdateAvailable() (bool, error) {
 	}
 
 	if resp == nil {
-		return false, errors.New("controller returned empty respose")
+		return false, errors.New("controller returned empty response")
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -281,9 +282,9 @@ func (c *ctrlClient) SendPostureResponseBulk(responses []*PostureResponse) error
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("recieved error during bulk posture response submission, could not read body: %v", err)
+			return fmt.Errorf("received error during bulk posture response submission, could not read body: %v", err)
 		}
-		return fmt.Errorf("recieved error during bulk posture response submission: %v", string(body))
+		return fmt.Errorf("received error during bulk posture response submission: %v", string(body))
 	}
 
 	return nil
@@ -311,9 +312,9 @@ func (c *ctrlClient) SendPostureResponse(response PostureResponse) error {
 	if resp.StatusCode != http.StatusCreated {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("recieved error during posture response submission, could not read body: %v", err)
+			return fmt.Errorf("received error during posture response submission, could not read body: %v", err)
 		}
-		return fmt.Errorf("recieved error during posture response submission: %v", string(body))
+		return fmt.Errorf("received error during posture response submission: %v", string(body))
 	}
 
 	return nil
@@ -514,7 +515,7 @@ func (c *ctrlClient) EnrollMfa() (*MfaEnrollment, error) {
 }
 
 // Remove the previous enrolled MFA. A valid TOTP/recovery code is required. If MFA enrollment has not been completed
-// an emty string can be used to remove the partially started MFA enrollment.
+// an empty string can be used to remove the partially started MFA enrollment.
 func (c *ctrlClient) RemoveMfa(code string) error {
 	body := NewMFACodeBody(code)
 	reqBody := bytes.NewBuffer(body)
