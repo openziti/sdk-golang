@@ -243,12 +243,12 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/openziti/channel/v2 v2.0.32 h1:epe6kTY+u27Kvc8Agh+lRv5bFwNC3yZQ5oTcST8x4uM=
 github.com/openziti/channel/v2 v2.0.32/go.mod h1:KJ5J38H3vH+PWDr3tgp0K7R17YL7mLoWDRx64DV+FRA=
-github.com/openziti/foundation/v2 v2.0.11 h1:F1mgUZE6h8cQnl39ul8vGxpTzXcXz4USsjxpxcLpnec=
-github.com/openziti/foundation/v2 v2.0.11/go.mod h1:Wv7bhW20imO9T+Xr6EudMh71Q5AQtk8tJERFttVwqNw=
+github.com/openziti/foundation/v2 v2.0.12 h1:1CdKOjJJCwWuAFabiC/51SK3GDZp/iccZma9S+1+TBc=
+github.com/openziti/foundation/v2 v2.0.12/go.mod h1:4dQfHeB87/gvkKg1i/NUT3DZqyvlFVqWinRQM4Dz+5w=
 github.com/openziti/identity v1.0.31 h1:pk+WzaC3ay76yKTXVljp25hqDewAuyvaG9HWSZyEzsY=
 github.com/openziti/identity v1.0.31/go.mod h1:kiqpnUmp8GJyRwd1k9OTO8RUVx+3EwMcaY4mWMdweXk=
-github.com/openziti/metrics v1.2.4 h1:hVMtomhNpGeQHQkfJ+qL6Y2V8mr33pELWoJGAU4sOrA=
-github.com/openziti/metrics v1.2.4/go.mod h1:72hHyYUzLC/9YwPmnAXapQNBZ0uI+rU7W00Sm4TZY1k=
+github.com/openziti/metrics v1.2.5 h1:qwnH3stgUIg4HpuQqxgBmnTemUXgwPlYLBsrihxccVY=
+github.com/openziti/metrics v1.2.5/go.mod h1:NJOKXzI+Tyu8NZZiCP/yoh8Zl2rgwDnfbC1KsCep7wE=
 github.com/openziti/transport/v2 v2.0.54 h1:56V57m4yrxVJaXnStR6lEy+RUirH9p+d++fT5yobEUA=
 github.com/openziti/transport/v2 v2.0.54/go.mod h1:W3THvfsPaUyZhpODvVbybubyV/ujpeh4H9sAxgve/xU=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
