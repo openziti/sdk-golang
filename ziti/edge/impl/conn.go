@@ -18,13 +18,14 @@ package impl
 
 import (
 	"fmt"
-	"github.com/openziti/foundation/v2/info"
-	"github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/openziti/foundation/v2/info"
+	"github.com/sirupsen/logrus"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream"
@@ -381,7 +382,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			conn.closed.Store(true)
 			return 0, io.EOF
 		} else if err != nil {
-			log.Debugf("unexepcted sequencer err (%v)", err)
+			log.Debugf("unexpected sequencer err (%v)", err)
 			return 0, err
 		}
 

@@ -20,6 +20,14 @@ import (
 	"encoding/json"
 	errors2 "errors"
 	"fmt"
+	"math"
+	"net"
+	"reflect"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
@@ -38,13 +46,6 @@ import (
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"math"
-	"net"
-	"reflect"
-	"strconv"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -218,7 +219,7 @@ func (context *contextImpl) initialize() error {
 }
 
 func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
-	pfxlog.Logger().Debugf("procesing service updates with %v services", len(services))
+	pfxlog.Logger().Debugf("processing service updates with %v services", len(services))
 
 	idMap := make(map[string]*edge.Service)
 	for _, s := range services {

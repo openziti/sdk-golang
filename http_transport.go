@@ -3,12 +3,13 @@ package sdk_golang
 import (
 	"context"
 	"crypto/tls"
-	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/ziti/edge"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 // NewHttpClient returns a http.Client that can be used exactly as any other http.Client but will route requests
@@ -45,7 +46,7 @@ func NewZitiTransport(ctx ziti.Context, clientTlsConfig *tls.Config) *ZitiTransp
 	return zitiTransport
 }
 
-// urlToServiceName removes ports from host names that internal standard GoLang capabilies may have added.
+// urlToServiceName removes ports from host names that internal standard GoLang capabilities may have added.
 func urlToServiceName(addr string) string {
 	return strings.Split(addr, ":")[0]
 }
