@@ -12,11 +12,11 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.4
-	github.com/openziti/channel/v2 v2.0.39
+	github.com/openziti/channel/v2 v2.0.40
 	github.com/openziti/foundation/v2 v2.0.14
 	github.com/openziti/identity v1.0.34
 	github.com/openziti/metrics v1.2.8
-	github.com/openziti/transport/v2 v2.0.58
+	github.com/openziti/transport/v2 v2.0.59
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
