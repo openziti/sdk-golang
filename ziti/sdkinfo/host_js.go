@@ -1,4 +1,4 @@
-//go:build unix
+//go:build js
 
 /*
 	Copyright 2020 NetFoundry Inc.
@@ -18,24 +18,6 @@
 
 package sdkinfo
 
-import (
-	"golang.org/x/sys/unix"
-	"strings"
-)
-
-var nullTerm = string([]byte{0})
-
-// get string out of \0-terminated bytes
-func toString(b []byte) string {
-	s := strings.SplitN(string(b), nullTerm, 2)
-	return s[0]
-}
-
 func getOSversion() (string, string, error) {
-	osInfo := new(unix.Utsname)
-	if err := unix.Uname(osInfo); err == nil {
-		return toString(osInfo.Release[:]), toString(osInfo.Version[:]), nil
-	} else {
-		return "", "", err
-	}
+	return "javascript", "unknown", nil
 }
