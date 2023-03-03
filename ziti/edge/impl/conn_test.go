@@ -31,7 +31,7 @@ func BenchmarkConnWrite(b *testing.B) {
 	testChannel := &NoopTestChannel{}
 	conn := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:      sequencer.NewNoopSequencer(4),
+		readQ:      NewNoopSequencer[*channel.Message](4),
 		msgMux:     mux,
 		serviceId:  "test",
 	}
@@ -53,7 +53,7 @@ func BenchmarkConnRead(b *testing.B) {
 	mux := edge.NewCowMapMsgMux()
 	testChannel := &NoopTestChannel{}
 
-	readQ := sequencer.NewNoopSequencer(4)
+	readQ := NewNoopSequencer[*channel.Message](4)
 	conn := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:      readQ,
@@ -70,12 +70,7 @@ func BenchmarkConnRead(b *testing.B) {
 			counter += 1
 			data := make([]byte, 877)
 			msg := edge.NewDataMsg(1, counter, data)
-			event := &edge.MsgEvent{
-				ConnId: 1,
-				Seq:    counter,
-				Msg:    msg,
-			}
-			err := readQ.PutSequenced(counter, event)
+			err := readQ.PutSequenced(msg)
 			if err != nil {
 				panic(err)
 			}

@@ -31,7 +31,6 @@ import (
 	"github.com/netfoundry/secretstream"
 	"github.com/netfoundry/secretstream/kx"
 	"github.com/openziti/channel/v2"
-	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 )
@@ -49,7 +48,7 @@ var _ edge.Conn = &edgeConn{}
 
 type edgeConn struct {
 	edge.MsgChannel
-	readQ                 sequencer.Sequencer
+	readQ                 *noopSeq[*channel.Message]
 	leftover              []byte
 	msgMux                edge.MsgMux
 	hosting               sync.Map
@@ -58,7 +57,6 @@ type edgeConn struct {
 	sentFIN               atomic.Bool
 	serviceId             string
 	sourceIdentity        string
-	readDeadline          time.Time
 	acceptCompleteHandler *newConnHandler
 	connType              ConnType
 
@@ -134,7 +132,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 			return
 		}
 
-		if err := conn.readQ.PutSequenced(0, msg); err != nil {
+		if err := conn.readQ.PutSequenced(msg); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("error pushing edge message to sequencer")
 		} else {
@@ -187,7 +185,7 @@ func (conn *edgeConn) SetDeadline(t time.Time) error {
 }
 
 func (conn *edgeConn) SetReadDeadline(t time.Time) error {
-	conn.readDeadline = t
+	conn.readQ.SetReadDeadline(t)
 	return nil
 }
 
@@ -376,8 +374,8 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			return 0, io.EOF
 		}
 
-		next, err := conn.readQ.GetNextWithDeadline(conn.readDeadline)
-		if err == sequencer.ErrClosed {
+		msg, err := conn.readQ.GetNext()
+		if err == ErrClosed {
 			log.Debug("sequencer closed, closing connection")
 			conn.closed.Store(true)
 			return 0, io.EOF
@@ -385,8 +383,6 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			log.Debugf("unexpected sequencer err (%v)", err)
 			return 0, err
 		}
-
-		msg := next.(*channel.Message)
 
 		flags, _ := msg.GetUint32Header(edge.FlagsHeader)
 		if flags&edge.FIN != 0 {
@@ -514,7 +510,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
-		readQ:          sequencer.NewNoopSequencer(4),
+		readQ:          NewNoopSequencer[*channel.Message](4),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,
