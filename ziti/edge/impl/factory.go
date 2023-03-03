@@ -20,7 +20,6 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/netfoundry/secretstream/kx"
 	"github.com/openziti/channel/v2"
-	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 )
 
@@ -81,7 +80,7 @@ func (conn *routerConn) NewConn(service *edge.Service, connType ConnType) *edgeC
 
 	edgeCh := &edgeConn{
 		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:      sequencer.NewNoopSequencer(4),
+		readQ:      NewNoopSequencer[*channel.Message](4),
 		msgMux:     conn.msgMux,
 		serviceId:  service.Name,
 		connType:   connType,

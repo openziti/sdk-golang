@@ -100,6 +100,8 @@ type Conn interface {
 	CompleteAcceptFailed(err error)
 }
 
+const forever = time.Hour * 24 * 365 * 100
+
 type MsgChannel struct {
 	channel.Channel
 	id            uint32
@@ -140,7 +142,7 @@ func (ec *MsgChannel) NextMsgId() uint32 {
 
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
-	return nil
+	return ec.Channel.Underlay().SetWriteDeadline(t)
 }
 
 func (ec *MsgChannel) Write(data []byte) (n int, err error) {
@@ -164,10 +166,10 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 
 	// NOTE: We need to wait for the buffer to be on the wire before returning. The Writer contract
 	//       states that buffers are not allowed be retained, and if we have it queued asynchronously
-	//       it is retained and we can cause data corruption
+	//       it is retained, and we can cause data corruption
 	var err error
 	if ec.writeDeadline.IsZero() {
-		err = ec.Channel.Send(msg)
+		err = msg.WithTimeout(forever).SendAndWaitForWire(ec.Channel)
 	} else {
 		err = msg.WithTimeout(time.Until(ec.writeDeadline)).SendAndWaitForWire(ec.Channel)
 	}
