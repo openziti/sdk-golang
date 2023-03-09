@@ -244,12 +244,12 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/openziti/channel/v2 v2.0.47 h1:Xm2NhgkqGgOwSallJbYN6GNLdFuAykOcLnao4465Dzc=
 github.com/openziti/channel/v2 v2.0.47/go.mod h1:oKYPAQRIuKj3uTDU/t7H2pwng5gAetwZ5pwbyGkBxvc=
-github.com/openziti/foundation/v2 v2.0.17 h1:VQzdZXXaNqJiPakZD5O7kEu0lbOoQBoziUhp4VTzKsE=
-github.com/openziti/foundation/v2 v2.0.17/go.mod h1:lLIVb/foLtVQ1Gv0VnfVmnSg/vMKU1HslYMc6rEymf4=
+github.com/openziti/foundation/v2 v2.0.18 h1:ehXqKT7aEGLpjaAn5T+CnvCqz1DQIFa0Z2f+DzyGvzw=
+github.com/openziti/foundation/v2 v2.0.18/go.mod h1:lLIVb/foLtVQ1Gv0VnfVmnSg/vMKU1HslYMc6rEymf4=
 github.com/openziti/identity v1.0.39 h1:CWxDHTkLgVk9zoWvG9Wy8rGycVKT887KDV1alDtJICA=
 github.com/openziti/identity v1.0.39/go.mod h1:hbO4NYcilj1IH5h2jq2NeDucGxmw+gAgytMKQgFkLPc=
-github.com/openziti/metrics v1.2.12 h1:lMalxcET/ad2yx1kB45p2lfRLjf+5Bp3VqkrDwPEl34=
-github.com/openziti/metrics v1.2.12/go.mod h1:0JyU56eo/74kPMHYRX0xNUTLbhwrC1UZXEivMUWNBho=
+github.com/openziti/metrics v1.2.13 h1:9XYoCir+KLxNS7Ft/lybWaha6r8ptYDOnykSbcXB59E=
+github.com/openziti/metrics v1.2.13/go.mod h1:nGKBuxg3rn5ts8ri7LS/5WqcyYa8izeCcBXlDSb4dJ4=
 github.com/openziti/transport/v2 v2.0.65 h1:S51eJvyeknciJyMP9T+Wb7wdvSMjeRnaUpsYXP5uazY=
 github.com/openziti/transport/v2 v2.0.65/go.mod h1:itZ3bj4Imtg5mWI1/mop+tnPQzg9rfHtHWZ6rX0jyy4=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
@@ -670,8 +670,8 @@ google.golang.org/protobuf v1.24.0/go.mod h1:r/3tXBNzIEhYS9I1OUVjXDlt8tc493IdKGj
 google.golang.org/protobuf v1.25.0/go.mod h1:9JNX74DMeImyA3h4bdi1ymwjUzf21/xIlbajtzgsN7c=
 google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
 google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
-google.golang.org/protobuf v1.28.1 h1:d0NfwRgPtno5B1Wa6L2DAG+KivqkdutMf1UhdNx175w=
-google.golang.org/protobuf v1.28.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
+google.golang.org/protobuf v1.29.0 h1:44S3JjaKmLEE4YIkjzexaP+NzZsudE3Zin5Njn/pYX0=
+google.golang.org/protobuf v1.29.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b h1:QRR6H1YWRnHb4Y/HeNFCTJLFVxaq6wH4YuVdsUOr75U=
