@@ -12,7 +12,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.5
-	github.com/openziti/channel/v2 v2.0.51
+	github.com/openziti/channel/v2 v2.0.52
 	github.com/openziti/foundation/v2 v2.0.18
 	github.com/openziti/identity v1.0.41
 	github.com/openziti/metrics v1.2.15
@@ -47,6 +47,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/crypto v0.7.0 // indirect
 	golang.org/x/term v0.6.0 // indirect
-	google.golang.org/protobuf v1.29.1 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
