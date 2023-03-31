@@ -14,11 +14,12 @@
 	limitations under the License.
 */
 
-package impl
+package network
 
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"net"
@@ -30,7 +31,7 @@ import (
 )
 
 type baseListener struct {
-	service *edge.Service
+	service *rest_model.ServiceDetail
 	acceptC chan edge.Conn
 	errorC  chan error
 	closed  atomic.Bool
@@ -41,7 +42,7 @@ func (listener *baseListener) Network() string {
 }
 
 func (listener *baseListener) String() string {
-	return listener.service.Name
+	return *listener.service.Name
 }
 
 func (listener *baseListener) Addr() net.Addr {
@@ -167,11 +168,11 @@ type MultiListener interface {
 	AddListener(listener edge.Listener, closeHandler func())
 	NotifyOfChildError(err error)
 	GetServiceName() string
-	GetService() *edge.Service
+	GetService() *rest_model.ServiceDetail
 	CloseWithError(err error)
 }
 
-func NewMultiListener(service *edge.Service, getSessionF func() *edge.Session) MultiListener {
+func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
 	return &multiListener{
 		baseListener: baseListener{
 			service: service,
@@ -187,7 +188,7 @@ type multiListener struct {
 	baseListener
 	listeners            map[edge.Listener]struct{}
 	listenerLock         sync.Mutex
-	getSessionF          func() *edge.Session
+	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
 }
@@ -237,7 +238,7 @@ func (listener *multiListener) notifyOfConnectionChange() {
 	}
 }
 
-func (listener *multiListener) GetCurrentSession() *edge.Session {
+func (listener *multiListener) GetCurrentSession() *rest_model.SessionDetail {
 	return listener.getSessionF()
 }
 
@@ -302,10 +303,10 @@ func (listener *multiListener) condenseErrors(errors []error) error {
 }
 
 func (listener *multiListener) GetServiceName() string {
-	return listener.service.Name
+	return *listener.service.Name
 }
 
-func (listener *multiListener) GetService() *edge.Service {
+func (listener *multiListener) GetService() *rest_model.ServiceDetail {
 	return listener.service
 }
 

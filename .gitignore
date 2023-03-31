@@ -2,5 +2,5 @@
 github_deploy_key
 *.json
 *.jwt
-go.work
-go.work.sum
+./go.work
+./go.work.sum

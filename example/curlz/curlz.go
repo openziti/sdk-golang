@@ -44,7 +44,14 @@ func newZitiClient() *http.Client {
 		panic(err)
 	}
 
-	zitiDialContext := ZitiDialContext{context: ziti.NewContextWithConfig(cfg)}
+	ctx, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	zitiDialContext := ZitiDialContext{context: ctx}
+
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
 	zitiTransport.TLSClientConfig.InsecureSkipVerify = true

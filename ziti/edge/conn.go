@@ -18,6 +18,7 @@ package edge
 
 import (
 	"fmt"
+	"github.com/openziti/edge-api/rest_model"
 	"io"
 	"net"
 	"os"
@@ -45,8 +46,8 @@ func init() {
 }
 
 type RouterClient interface {
-	Connect(service *Service, session *Session, options *DialOptions) (Conn, error)
-	Listen(service *Service, session *Session, options *ListenOptions) (Listener, error)
+	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions) (Conn, error)
+	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions) (Listener, error)
 }
 
 type RouterConn interface {
@@ -74,7 +75,7 @@ type Listener interface {
 
 type SessionListener interface {
 	Listener
-	GetCurrentSession() *Session
+	GetCurrentSession() *rest_model.SessionDetail
 	SetConnectionChangeHandler(func(conn []Listener))
 	SetErrorEventHandler(func(error))
 	GetErrorEventHandler() func(error)

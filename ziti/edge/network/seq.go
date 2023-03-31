@@ -1,4 +1,4 @@
-package impl
+package network
 
 import (
 	"github.com/openziti/foundation/v2/concurrenz"

@@ -75,7 +75,12 @@ var serverCmd = &cobra.Command{
 				logrus.WithError(err).Error("Error loading config file")
 				os.Exit(1)
 			}
-			context := ziti.NewContextWithConfig(configFile)
+			context, err := ziti.NewContextWithConfig(configFile)
+
+			if err != nil {
+				panic(err)
+			}
+
 			identity, err := context.GetCurrentIdentity()
 			if err != nil {
 				logrus.WithError(err).Error("Error resolving local Identity")
@@ -88,7 +93,12 @@ var serverCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		} else {
-			context := ziti.NewContext()
+			context, err := ziti.NewContext()
+
+			if err != nil {
+				panic(err)
+			}
+
 			identity, err := context.GetCurrentIdentity()
 			if err != nil {
 				logrus.WithError(err).Error("Error resolving local Identity")

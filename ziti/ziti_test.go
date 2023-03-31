@@ -2,39 +2,49 @@ package ziti
 
 import (
 	"fmt"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/assert"
-	"sync"
 	"testing"
 )
+
+func ToPtr[T any](s T) *T {
+	return &s
+}
 
 func Test_contextImpl_processServiceUpdates(t *testing.T) {
 
 	callbacks := make(map[string]ServiceEventType)
-	servUpdate := func(eventType ServiceEventType, service *edge.Service) {
-		println(eventType, service.Name)
-		callbacks[service.Name] = eventType
+	servUpdate := func(eventType ServiceEventType, service *rest_model.ServiceDetail) {
+		println(eventType, *service.Name)
+		callbacks[*service.Name] = eventType
 	}
 
 	closeNotify := make(chan struct{})
 	defer close(closeNotify)
 
-	ctx := &contextImpl{
+	ctx := &ContextImpl{
 		options: &Options{
 			OnServiceUpdate: servUpdate,
 		},
-		services:     sync.Map{},
-		sessions:     sync.Map{},
-		postureCache: posture.NewCache(nil, closeNotify),
+		services:   cmap.New[*rest_model.ServiceDetail](),
+		sessions:   cmap.New[*rest_model.SessionDetail](),
+		intercepts: cmap.New[*edge.InterceptV1Config](),
+		ctrlClt: &CtrlClient{
+			PostureCache: posture.NewCache(nil, closeNotify),
+		},
 	}
 
-	var services []*edge.Service
+	var services []*rest_model.ServiceDetail
 
 	for i := 0; i < 5; i++ {
-		services = append(services, &edge.Service{
-			Id:   fmt.Sprint("serviceId - ", i),
-			Name: fmt.Sprint("service", i),
+		services = append(services, &rest_model.ServiceDetail{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr(fmt.Sprint("serviceId - ", i)),
+			},
+			Name: ToPtr(fmt.Sprint("service", i)),
 		})
 	}
 
@@ -42,7 +52,7 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 
 	assert.Equal(t, len(services), len(callbacks))
 	for _, s := range services {
-		assert.Contains(t, callbacks, s.Name)
+		assert.Contains(t, callbacks, *s.Name)
 	}
 
 	callbacks = make(map[string]ServiceEventType)
@@ -52,8 +62,8 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 	// remove one
 	ctx.processServiceUpdates(services[1:])
 	assert.Equal(t, 1, len(callbacks))
-	assert.Equal(t, ServiceRemoved, callbacks[services[0].Name])
-	_, found := ctx.services.Load(services[0].Name)
+	assert.Equal(t, ServiceRemoved, callbacks[*services[0].Name])
+	_, found := ctx.services.Get(*services[0].Name)
 	assert.False(t, found)
 
 	callbacks = make(map[string]ServiceEventType)
@@ -64,26 +74,25 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 	for _, v := range callbacks {
 		assert.Equal(t, ServiceRemoved, v)
 	}
-	ctx.services.Range(func(key, value interface{}) bool {
-		assert.Fail(t, "should be empty")
-		return true
-	})
+	assert.True(t, ctx.services.IsEmpty(), "should be empty")
 
 	// test changes
 	ctx.processServiceUpdates(services)
 
-	updates := []*edge.Service{
+	updates := []*rest_model.ServiceDetail{
 		{
+			BaseEntity: rest_model.BaseEntity{
+				ID: services[0].ID,
+			},
 			Name:        services[0].Name,
-			Id:          services[0].Id,
-			Permissions: []string{"Dial"},
+			Permissions: []rest_model.DialBind{rest_model.DialBindDial},
 		},
 	}
 	callbacks = make(map[string]ServiceEventType)
 	ctx.processServiceUpdates(updates)
 
 	assert.Equal(t, len(services), len(callbacks))
-	assert.Equal(t, ServiceChanged, callbacks[services[0].Name])
+	assert.Equal(t, ServiceChanged, callbacks[*services[0].Name])
 }
 
 func Test_AddressMatch(t *testing.T) {
@@ -97,11 +106,13 @@ func Test_AddressMatch(t *testing.T) {
 	ipaddr, _ := edge.NewZitiAddress("100.64.255.1")
 	cidr, _ := edge.NewZitiAddress("100.64.0.0/10")
 
-	services := []*edge.Service{
+	services := []*rest_model.ServiceDetail{
 		{
-			Id:   "httpByHostname",
-			Name: "httpByHostname",
-			Configs: map[string]map[string]interface{}{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr("httpByHostname"),
+			},
+			Name: ToPtr("httpByHostname"),
+			Config: map[string]map[string]interface{}{
 				edge.InterceptV1: {
 					"protocols":  []string{"tcp"},
 					"addresses":  []*edge.ZitiAddress{hostname},
@@ -110,9 +121,11 @@ func Test_AddressMatch(t *testing.T) {
 			},
 		},
 		{
-			Id:   "httpByDomain",
-			Name: "httpByDomain",
-			Configs: map[string]map[string]interface{}{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr("httpByDomain"),
+			},
+			Name: ToPtr("httpByDomain"),
+			Config: map[string]map[string]interface{}{
 				edge.InterceptV1: {
 					"protocols":  []string{"tcp"},
 					"addresses":  []*edge.ZitiAddress{domain},
@@ -121,9 +134,11 @@ func Test_AddressMatch(t *testing.T) {
 			},
 		},
 		{
-			Id:   "adminByDomain",
-			Name: "adminByDomain",
-			Configs: map[string]map[string]interface{}{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr("adminByDomain"),
+			},
+			Name: ToPtr("adminByDomain"),
+			Config: map[string]map[string]interface{}{
 				edge.InterceptV1: {
 					"protocols":  []string{"tcp", "udp"},
 					"addresses":  []*edge.ZitiAddress{domain},
@@ -132,9 +147,11 @@ func Test_AddressMatch(t *testing.T) {
 			},
 		},
 		{
-			Id:   "httpByIP",
-			Name: "httpByIP",
-			Configs: map[string]map[string]interface{}{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr("httpByIP"),
+			},
+			Name: ToPtr("httpByIP"),
+			Config: map[string]map[string]interface{}{
 				edge.InterceptV1: {
 					"protocols":  []string{"tcp"},
 					"addresses":  []*edge.ZitiAddress{ipaddr},
@@ -143,9 +160,11 @@ func Test_AddressMatch(t *testing.T) {
 			},
 		},
 		{
-			Id:   "adminByCidr",
-			Name: "adminByCidr",
-			Configs: map[string]map[string]interface{}{
+			BaseEntity: rest_model.BaseEntity{
+				ID: ToPtr("adminByCidr"),
+			},
+			Name: ToPtr("adminByCidr"),
+			Config: map[string]map[string]interface{}{
 				edge.InterceptV1: {
 					"protocols":  []string{"tcp", "udp"},
 					"addresses":  []*edge.ZitiAddress{cidr},
@@ -155,12 +174,14 @@ func Test_AddressMatch(t *testing.T) {
 		},
 	}
 
-	ctx := &contextImpl{
-		options:      &Options{},
-		services:     sync.Map{},
-		sessions:     sync.Map{},
-		intercepts:   sync.Map{},
-		postureCache: posture.NewCache(nil, nil),
+	ctx := &ContextImpl{
+		options:    &Options{},
+		services:   cmap.New[*rest_model.ServiceDetail](),
+		sessions:   cmap.New[*rest_model.SessionDetail](),
+		intercepts: cmap.New[*edge.InterceptV1Config](),
+		ctrlClt: &CtrlClient{
+			PostureCache: posture.NewCache(nil, nil),
+		},
 	}
 	ctx.processServiceUpdates(services)
 
@@ -181,7 +202,7 @@ func Test_AddressMatch(t *testing.T) {
 		{params: args{Network: "tcp", Hostname: "foo.domain.ziti", Port: 80}, expected: 3 << 16, name: "httpByDomain"},
 		{params: args{Network: "tcp", Hostname: "foo.host.notziti", Port: 80}, expected: -1},
 
-		{params: args{Network: "udp", Hostname: "bar.domain.ziti", Port: 22}, expected: int(3<<16 | 1024), name: "adminByDomain"},
+		{params: args{Network: "udp", Hostname: "bar.domain.ziti", Port: 22}, expected: 3<<16 | 1024, name: "adminByDomain"},
 		{params: args{Network: "tcp", Hostname: "100.64.255.1", Port: 80}, expected: 0, name: "httpByIP"},
 
 		{params: args{Network: "tcp", Hostname: "100.64.255.1", Port: 443}, expected: (32-10)<<16 | 1024, name: "adminByCidr"},
@@ -198,7 +219,7 @@ func Test_AddressMatch(t *testing.T) {
 		} else {
 			check.NoError(err, "unexpected error", c.params)
 			check.Equal(c.expected, score, "score", c.params)
-			check.Equal(c.name, srv.Name, c.params)
+			check.Equal(c.name, *srv.Name, c.params)
 		}
 
 	}

@@ -18,7 +18,6 @@ package ziti
 
 import (
 	"encoding/json"
-	errors2 "errors"
 	"fmt"
 	"math"
 	"net"
@@ -29,16 +28,19 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/channel/v2/latency"
+	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
+	"github.com/openziti/edge-api/rest_client_api_client/service"
+	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	"github.com/openziti/metrics"
 	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/edge/api"
-	"github.com/openziti/sdk-golang/ziti/edge/impl"
-	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	"github.com/openziti/sdk-golang/ziti/edge/network"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
 	"github.com/openziti/transport/v2"
@@ -46,160 +48,135 @@ import (
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
+	"net/http"
 )
+
+type SessionType rest_model.DialBind
 
 const (
 	LatencyCheckInterval = 30 * time.Second
 	LatencyCheckTimeout  = 10 * time.Second
+
+	ClientConfigV1 = "ziti-tunneler-client.v1"
+	InterceptV1    = "intercept.v1"
+
+	SessionDial = rest_model.DialBindDial
+	SessionBind = rest_model.DialBindBind
 )
 
-func SetApplication(theAppId, theAppVersion string) {
-	sdkinfo.SetApplication(theAppId, theAppVersion)
-}
-
+// Context is the main interface for SDK instances that may be used to authenticate, connect to services, or host
+// services.
 type Context interface {
+	// Authenticate attempts to use credentials configured on the Context to perform authentication. The authentication
+	// implementation used is configured via the Authenticator field on an Option struct provided during Context
+	// creation.
 	Authenticate() error
-	GetCurrentIdentity() (*edge.CurrentIdentity, error)
+
+	// SetAuthenticator sets the current Authenticator to use for subsequent authentication requests
+	SetAuthenticator(authenticator rest_util.Authenticator)
+
+	// GetAuthenticator returns the currently set Authenticator used to authenticate requests
+	GetAuthenticator() rest_util.Authenticator
+
+	// GetCurrentIdentity returns the Edge API details of the currently authenticated identity.
+	GetCurrentIdentity() (*rest_model.IdentityDetail, error)
+
+	// Dial attempts to connect to a service using a given service name; authenticating as necessary in order to obtain
+	// a service session, attach to Edge Routers, and connect to a service.
 	Dial(serviceName string) (edge.Conn, error)
+
+	// DialWithOptions performs the same logic as Dial but allows specification of DialOptions.
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
-	// DialAddr finds the service for given address and creates a connection to it
+
+	// DialAddr finds the service for given address and performs a Dial for it.
 	DialAddr(network string, addr string) (edge.Conn, error)
+
+	// Listen attempts to host a service by the given service name;  authenticating as necessary in order to obtain
+	// a service session, attach to Edge Routers, and bind (host) the service.
 	Listen(serviceName string) (edge.Listener, error)
+
+	// ListenWithOptions performs the same logic as Listen, but allows the specification of ListenOptions.
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
+
+	// GetServiceId will return the id of a specific service by service name. If not found, false, will be returned
+	// with an empty string.
 	GetServiceId(serviceName string) (string, bool, error)
-	GetServices() ([]edge.Service, error)
-	GetService(serviceName string) (*edge.Service, bool)
+
+	// GetServices will return a slice of service details that the current authenticating identity can access for
+	// dial (connect) or bind (host/listen).
+	GetServices() ([]rest_model.ServiceDetail, error)
+
+	// GetService will return the service details of a specific service by service name.
+	GetService(serviceName string) (*rest_model.ServiceDetail, bool)
 
 	// GetServiceForAddr finds the service with intercept that matches best to given address
-	GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error)
-	RefreshServices() error
-	GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error)
-	GetSession(id string) (*edge.Session, error)
+	GetServiceForAddr(network, hostname string, port uint16) (*rest_model.ServiceDetail, int, error)
 
+	// RefreshServices forces the context to refresh the list of services the current authenticating identity has access
+	// to.
+	RefreshServices() error
+
+	// GetServiceTerminators will return a slice of rest_model.TerminatorClientDetail for a specific service name.
+	// The offset and limit options can be used to page through excessive lists of items. A max of 500 is imposed on
+	// limit.
+	GetServiceTerminators(serviceName string, offset, limit int) ([]*rest_model.TerminatorClientDetail, int, error)
+
+	// GetSession will return the session detail associated with a specific session id.
+	GetSession(id string) (*rest_model.SessionDetail, error)
+
+	// Metrics will return the current context's metrics Registry.
 	Metrics() metrics.Registry
+
 	// Close closes any connections open to edge routers
 	Close()
 
-	// Add a Ziti MFA handler, invoked during authentication
-	AddZitiMfaHandler(handler func(query *edge.AuthQuery, resp func(code string) error) error)
-	EnrollZitiMfa() (*api.MfaEnrollment, error)
+	// AddZitiMfaHandler adds a Ziti MFA handler, invoked during authentication
+	AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp func(code string) error) error)
+
+	// EnrollZitiMfa will attempt to enable TOTP 2FA on the currently authenticating identity if not already enrolled.
+	EnrollZitiMfa() (*rest_model.DetailMfa, error)
+
+	// VerifyZitiMfa will attempt to complete enrollment of TOTP 2FA with the given code.
 	VerifyZitiMfa(code string) error
+
+	// RemoveZitiMfa will attempt to remove TOTP 2FA for the current identity
 	RemoveZitiMfa(code string) error
-
-	Reload() error
 }
 
-type DialOptions struct {
-	ConnectTimeout time.Duration
-	Identity       string
-	AppData        []byte
-}
+var _ Context = &ContextImpl{}
 
-func (d DialOptions) GetConnectTimeout() time.Duration {
-	return d.ConnectTimeout
-}
-
-type Precedence byte
-
-func (p Precedence) String() string {
-	if p == PrecedenceRequired {
-		return PrecedenceRequiredLabel
-	}
-	if p == PrecedenceFailed {
-		return PrecedenceFailedLabel
-	}
-	return PrecedenceDefaultLabel
-}
-
-const (
-	PrecedenceDefault  Precedence = 0
-	PrecedenceRequired Precedence = 1
-	PrecedenceFailed   Precedence = 2
-
-	PrecedenceDefaultLabel  = "default"
-	PrecedenceRequiredLabel = "required"
-	PrecedenceFailedLabel   = "failed"
-)
-
-func GetPrecedenceForLabel(p string) Precedence {
-	if p == PrecedenceRequiredLabel {
-		return PrecedenceRequired
-	}
-	if p == PrecedenceFailedLabel {
-		return PrecedenceFailed
-	}
-	return PrecedenceDefault
-}
-
-type ListenOptions struct {
-	Cost                  uint16
-	Precedence            Precedence
-	ConnectTimeout        time.Duration
-	MaxConnections        int
-	Identity              string
-	BindUsingEdgeIdentity bool
-	ManualStart           bool
-}
-
-func DefaultListenOptions() *ListenOptions {
-	return &ListenOptions{
-		Cost:           0,
-		Precedence:     PrecedenceDefault,
-		ConnectTimeout: 5 * time.Second,
-		MaxConnections: 3,
-	}
-}
-
-var globalAppId = ""
-var globalAppVersion = ""
-
-// SetAppInfo sets the `appId` and `appVersion` to provide in SDK Information during all Ziti context authentications
-func SetAppInfo(appId, appVersion string) {
-	globalAppId = appId
-	globalAppVersion = appVersion
-}
-
-var _ Context = &contextImpl{}
-
-type contextImpl struct {
+type ContextImpl struct {
 	options           *Options
 	routerConnections cmap.ConcurrentMap[string, edge.RouterConn]
 
-	ctrlClt api.Client
+	ctrlClt *CtrlClient
 
-	services   sync.Map // name -> Service
-	sessions   sync.Map // svcID:type -> Session
-	intercepts sync.Map
+	services   cmap.ConcurrentMap[string, *rest_model.ServiceDetail] // name -> Service
+	sessions   cmap.ConcurrentMap[string, *rest_model.SessionDetail] // svcID:type -> Session
+	intercepts cmap.ConcurrentMap[string, *edge.InterceptV1Config]
 
 	metrics metrics.Registry
 
 	firstAuthOnce sync.Once
 
-	postureCache      *posture.Cache
 	closed            atomic.Bool
 	closeNotify       chan struct{}
-	authQueryHandlers map[string]func(query *edge.AuthQuery, resp func(code string) error) error
+	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error
 }
 
-func (context *contextImpl) Reload() error {
-	id := context.ctrlClt.GetIdentity()
-	if id != nil {
-		return id.Reload()
-	}
-	return nil
+func (context *ContextImpl) SetAuthenticator(authenticator rest_util.Authenticator) {
+	context.ctrlClt.Authenticator = authenticator
 }
 
-func (context *contextImpl) Sessions() ([]*edge.Session, error) {
-	var sessions []*edge.Session
+func (context *ContextImpl) GetAuthenticator() rest_util.Authenticator {
+	return context.ctrlClt.Authenticator
+}
+
+func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
+	var sessions []*rest_model.SessionDetail
 	var err error
-	context.sessions.Range(func(key, value interface{}) bool {
-		s, ok := value.(*edge.Session)
-		if !ok {
-			err = fmt.Errorf("unexpected type: %T", value)
-			return false
-		}
+	context.sessions.IterCb(func(key string, s *rest_model.SessionDetail) {
 		sessions = append(sessions, s)
-		return true
 	})
 
 	if err != nil {
@@ -209,127 +186,134 @@ func (context *contextImpl) Sessions() ([]*edge.Session, error) {
 	return sessions, nil
 }
 
-func (context *contextImpl) OnClose(factory edge.RouterConn) {
+func (context *ContextImpl) OnClose(factory edge.RouterConn) {
 	logrus.Debugf("connection to router [%s] was closed", factory.Key())
 	context.routerConnections.Remove(factory.Key())
 }
 
-func (context *contextImpl) initialize() error {
-	return context.ctrlClt.Initialize()
-}
-
-func (context *contextImpl) processServiceUpdates(services []*edge.Service) {
+func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
 	pfxlog.Logger().Debugf("processing service updates with %v services", len(services))
 
-	idMap := make(map[string]*edge.Service)
+	idMap := make(map[string]*rest_model.ServiceDetail)
 	for _, s := range services {
-		idMap[s.Id] = s
+		idMap[*s.ID] = s
 	}
 
 	// process Deletes
 	var deletes []string
-	context.services.Range(func(key, value interface{}) bool {
-		svc := value.(*edge.Service)
-		k := key.(string)
-		if _, found := idMap[svc.Id]; !found {
-			deletes = append(deletes, k)
+	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
+		if _, found := idMap[*svc.ID]; !found {
+			deletes = append(deletes, key)
 			if context.options.OnServiceUpdate != nil {
 				context.options.OnServiceUpdate(ServiceRemoved, svc)
 			}
-			context.deleteServiceSessions(svc.Id)
+			context.deleteServiceSessions(*svc.ID)
 		}
-		return true
 	})
 
 	for _, deletedKey := range deletes {
-		context.services.Delete(deletedKey)
-		context.intercepts.Delete(deletedKey)
+		context.services.Remove(deletedKey)
+		context.intercepts.Remove(deletedKey)
 	}
 
 	// Adds and Updates
 	for _, s := range services {
-		val, exists := context.services.LoadOrStore(s.Name, s)
+		isChange := false
+		valuesDiffer := false
+
+		_ = context.services.Upsert(*s.Name, s, func(exist bool, valueInMap *rest_model.ServiceDetail, newValue *rest_model.ServiceDetail) *rest_model.ServiceDetail {
+			isChange = exist
+			if isChange {
+				valuesDiffer = !reflect.DeepEqual(newValue, valueInMap)
+			}
+
+			return newValue
+		})
+
 		if context.options.OnServiceUpdate != nil {
-			if !exists {
-				context.options.OnServiceUpdate(ServiceAdded, val.(*edge.Service))
-			} else {
-				if !reflect.DeepEqual(val, s) {
-					context.services.Store(s.Name, s) // replace
+			if isChange {
+				if valuesDiffer {
 					context.options.OnServiceUpdate(ServiceChanged, s)
 				}
+			} else {
+				context.services.Set(*s.Name, s)
+				context.options.OnServiceUpdate(ServiceAdded, s)
 			}
 		}
 
 		intercept := &edge.InterceptV1Config{}
-		ok, err := s.GetConfigOfType(edge.InterceptV1, intercept)
+		ok, err := edge.ParseServiceConfig(s, InterceptV1, intercept)
 		if err != nil {
-			pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", edge.InterceptV1, s.Name)
+			pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", InterceptV1, *s.Name)
 		} else if ok {
 			intercept.Service = s
-			context.intercepts.Store(s.Name, intercept)
+			context.intercepts.Set(*s.Name, intercept)
 		} else {
 			cltCfg := &edge.ClientConfig{}
-			ok, err := s.GetConfigOfType(edge.ClientConfigV1, cltCfg)
+			ok, err := edge.ParseServiceConfig(s, ClientConfigV1, cltCfg)
 			if err == nil && ok {
 				intercept = cltCfg.ToInterceptV1Config()
 				intercept.Service = s
-				context.intercepts.Store(s.Name, intercept)
+				context.intercepts.Set(*s.Name, intercept)
 			}
 		}
 	}
 
-	serviceQueryMap := map[string]map[string]edge.PostureQuery{} //serviceId -> queryId -> query
+	serviceQueryMap := map[string]map[string]rest_model.PostureQuery{} //serviceId -> queryId -> query
 
-	context.services.Range(func(serviceId, val interface{}) bool {
-		if service, ok := val.(*edge.Service); ok {
-			for _, querySets := range service.PostureQueries {
-				for _, query := range querySets.PostureQueries {
-					var queryMap map[string]edge.PostureQuery
-					var ok bool
-					if queryMap, ok = serviceQueryMap[service.Id]; !ok {
-						queryMap = map[string]edge.PostureQuery{}
-						serviceQueryMap[service.Id] = queryMap
-					}
-					queryMap[query.Id] = query
+	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
+		for _, querySets := range svc.PostureQueries {
+			for _, query := range querySets.PostureQueries {
+				var queryMap map[string]rest_model.PostureQuery
+				var ok bool
+				if queryMap, ok = serviceQueryMap[*svc.ID]; !ok {
+					queryMap = map[string]rest_model.PostureQuery{}
+					serviceQueryMap[*svc.ID] = queryMap
 				}
+				queryMap[*query.ID] = *query
 			}
 		}
-		return true
 	})
 
-	context.postureCache.SetServiceQueryMap(serviceQueryMap)
+	context.ctrlClt.PostureCache.SetServiceQueryMap(serviceQueryMap)
 }
 
-func (context *contextImpl) refreshSessions() {
+func (context *ContextImpl) refreshSessions() {
 	log := pfxlog.Logger()
 	edgeRouters := make(map[string]string)
-	context.sessions.Range(func(key, value interface{}) bool {
+	var toDelete []string
+	context.sessions.IterCb(func(key string, session *rest_model.SessionDetail) {
 		log.Debugf("refreshing session for %s", key)
 
-		session := value.(*edge.Session)
-		if s, err := context.refreshSession(session.Id); err != nil {
+		if s, err := context.refreshSession(*session.ID); err != nil {
 			log.WithError(err).Errorf("failed to refresh session for %s", key)
-			context.sessions.Delete(session.Id)
+			toDelete = append(toDelete, *session.ID)
 		} else {
 			for _, er := range s.EdgeRouters {
 				for _, u := range er.Urls {
-					edgeRouters[u] = er.Name
+					edgeRouters[u] = *er.Name
 				}
 			}
 		}
-
-		return true
 	})
+
+	for _, id := range toDelete {
+		context.sessions.Remove(id)
+	}
 
 	for u, name := range edgeRouters {
 		go context.connectEdgeRouter(name, u, nil)
 	}
 }
 
-func (context *contextImpl) RefreshServices() error {
+func (context *ContextImpl) RefreshServices() error {
+	if err := context.ensureApiSession(); err != nil {
+		return fmt.Errorf("failed to refresh services: %v", err)
+	}
+
 	log := pfxlog.Logger()
 	log.Debug("refreshing services")
-	services, err := context.getServices()
+	services, err := context.ctrlClt.GetServices()
 	if err != nil {
 		return err
 	}
@@ -337,12 +321,12 @@ func (context *contextImpl) RefreshServices() error {
 	return nil
 }
 
-func (context *contextImpl) runSessionRefresh() {
+func (context *ContextImpl) runSessionRefresh() {
 	log := pfxlog.Logger()
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
 	defer svcUpdateTick.Stop()
 
-	expireTime := context.ctrlClt.GetCurrentApiSession().Expires
+	expireTime := time.Time(*context.ctrlClt.GetCurrentApiSession().ExpiresAt)
 	sleepDuration := time.Until(expireTime) - (10 * time.Second)
 
 	var serviceUpdateApiAvailable = true
@@ -372,7 +356,7 @@ func (context *contextImpl) runSessionRefresh() {
 				var err error
 				if checkService, err = context.ctrlClt.IsServiceListUpdateAvailable(); err != nil {
 					log.WithError(err).Errorf("failed to check if service list update is available")
-					if errors.As(err, &api.NotFound{}) {
+					if _, ok := err.(*current_api_session.ListServiceUpdatesUnauthorized); !ok {
 						serviceUpdateApiAvailable = false
 						checkService = true
 					}
@@ -383,7 +367,7 @@ func (context *contextImpl) runSessionRefresh() {
 
 			if checkService {
 				log.Debug("refreshing services")
-				services, err := context.getServices()
+				services, err := context.ctrlClt.GetServices()
 				if err != nil {
 					log.Errorf("failed to load service updates %+v", err)
 				} else {
@@ -395,13 +379,14 @@ func (context *contextImpl) runSessionRefresh() {
 	}
 }
 
-func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error {
+func (context *ContextImpl) EnsureAuthenticated(options edge.ConnOptions) error {
 	operation := func() error {
 		pfxlog.Logger().Info("attempting to establish new api session")
 		err := context.Authenticate()
-		if err != nil && errors2.As(err, &api.AuthFailure{}) {
+		if err != nil {
 			return backoff.Permanent(err)
 		}
+
 		return err
 	}
 	expBackoff := backoff.NewExponentialBackOff()
@@ -411,11 +396,7 @@ func (context *contextImpl) EnsureAuthenticated(options edge.ConnOptions) error 
 	return backoff.Retry(operation, expBackoff)
 }
 
-func (context *contextImpl) GetCurrentIdentity() (*edge.CurrentIdentity, error) {
-	if err := context.initialize(); err != nil {
-		return nil, errors.Wrap(err, "failed to initialize context")
-	}
-
+func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
 	if err := context.ensureApiSession(); err != nil {
 		return nil, errors.Wrap(err, "failed to establish api session")
 	}
@@ -423,11 +404,7 @@ func (context *contextImpl) GetCurrentIdentity() (*edge.CurrentIdentity, error) 
 	return context.ctrlClt.GetCurrentIdentity()
 }
 
-func (context *contextImpl) Authenticate() error {
-	if err := context.initialize(); err != nil {
-		return errors.Errorf("failed to initialize context: (%v)", err)
-	}
-
+func (context *ContextImpl) Authenticate() error {
 	if context.ctrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
 		if _, err := context.ctrlClt.Refresh(); err == nil {
@@ -439,15 +416,14 @@ func (context *contextImpl) Authenticate() error {
 	}
 
 	logrus.Debug("attempting to authenticate")
-	context.services = sync.Map{}
-	context.sessions = sync.Map{}
-	context.intercepts = sync.Map{}
+	context.services = cmap.New[*rest_model.ServiceDetail]()
+	context.sessions = cmap.New[*rest_model.SessionDetail]()
+	context.intercepts = cmap.New[*edge.InterceptV1Config]()
 
-	info := sdkinfo.GetSdkInfo()
-	info["appId"] = globalAppId
-	info["appVersion"] = globalAppVersion
+	envInfo, sdkInfo := sdkinfo.GetSdkInfo()
+	context.ctrlClt.SetInfo(envInfo, sdkInfo)
 
-	apiSession, err := context.ctrlClt.Login(info)
+	apiSession, err := context.ctrlClt.Authenticate()
 
 	if err != nil {
 		return err
@@ -476,13 +452,13 @@ func (context *contextImpl) Authenticate() error {
 		go context.runSessionRefresh()
 
 		metricsTags := map[string]string{
-			"srcId": context.ctrlClt.GetCurrentApiSession().Identity.Id,
+			"srcId": context.ctrlClt.GetCurrentApiSession().Identity.ID,
 		}
 
 		context.metrics = metrics.NewRegistry(context.ctrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
 
 		// get services
-		if services, err := context.getServices(); err != nil {
+		if services, err := context.ctrlClt.GetServices(); err != nil {
 			doOnceErr = err
 		} else {
 			context.processServiceUpdates(services)
@@ -492,17 +468,13 @@ func (context *contextImpl) Authenticate() error {
 	return doOnceErr
 }
 
-const (
-	MfaProviderZiti = "ziti"
-)
-
-func (context *contextImpl) AddZitiMfaHandler(handler func(query *edge.AuthQuery, resp func(code string) error) error) {
-	context.authQueryHandlers[MfaProviderZiti] = handler
+func (context *ContextImpl) AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp func(code string) error) error) {
+	context.authQueryHandlers[string(rest_model.MfaProvidersZiti)] = handler
 }
 
-func (context *contextImpl) handleAuthQuery(authQuery *edge.AuthQuery) error {
-	if authQuery.Provider == MfaProviderZiti {
-		handler := context.authQueryHandlers[MfaProviderZiti]
+func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetail) error {
+	if *authQuery.Provider == rest_model.MfaProvidersZiti {
+		handler := context.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
 
 		if handler == nil {
 			return fmt.Errorf("no handler registered for: %v", authQuery.Provider)
@@ -514,12 +486,12 @@ func (context *contextImpl) handleAuthQuery(authQuery *edge.AuthQuery) error {
 	return fmt.Errorf("unsupported MFA provider: %v", authQuery.Provider)
 }
 
-func (context *contextImpl) Dial(serviceName string) (edge.Conn, error) {
+func (context *ContextImpl) Dial(serviceName string) (edge.Conn, error) {
 	defaultOptions := &DialOptions{ConnectTimeout: 5 * time.Second}
 	return context.DialWithOptions(serviceName, defaultOptions)
 }
 
-func (context *contextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error) {
+func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error) {
 	edgeDialOptions := &edge.DialOptions{
 		ConnectTimeout: options.ConnectTimeout,
 		Identity:       options.Identity,
@@ -528,51 +500,48 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 	if edgeDialOptions.GetConnectTimeout() == 0 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second
 	}
-	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%v)", err)
-	}
 
 	if err := context.ensureApiSession(); err != nil {
 		return nil, fmt.Errorf("failed to dial: %v", err)
 	}
 
-	service, ok := context.GetService(serviceName)
+	svc, ok := context.GetService(serviceName)
 	if !ok {
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
 
-	context.postureCache.AddActiveService(service.Id)
+	context.ctrlClt.PostureCache.AddActiveService(*svc.ID)
 
 	edgeDialOptions.CallerId = context.ctrlClt.GetCurrentApiSession().Identity.Name
 
-	session, err := context.GetSession(service.Id)
+	session, err := context.GetSession(*svc.ID)
 	if err != nil {
-		context.deleteServiceSessions(service.Id)
-		if session, err = context.createSessionWithBackoff(service, edge.SessionDial, options); err != nil {
+		context.deleteServiceSessions(*svc.ID)
+		if session, err = context.createSessionWithBackoff(svc, SessionType(SessionDial), options); err != nil {
 			return nil, errors.Wrapf(err, "unable to dial service '%v'", serviceName)
 		}
 	}
 
-	pfxlog.Logger().WithField("sessionId", session.Id).WithField("sessionToken", session.Token).Debug("connecting with session")
-	conn, err := context.dialSession(service, session, edgeDialOptions)
+	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session")
+	conn, err := context.dialSession(svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
 
 	var refreshErr error
-	if _, refreshErr = context.refreshSession(session.Id); refreshErr == nil {
+	if _, refreshErr = context.refreshSession(*session.ID); refreshErr == nil {
 		// if the session wasn't expired, no reason to try again, return the failure
 		return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 	}
 
-	context.deleteServiceSessions(service.Id)
-	if session, refreshErr = context.createSessionWithBackoff(service, edge.SessionDial, options); refreshErr != nil {
+	context.deleteServiceSessions(*svc.ID)
+	if session, refreshErr = context.createSessionWithBackoff(svc, SessionType(SessionDial), options); refreshErr != nil {
 		// couldn't create a new session, report the error
 		return nil, errors.Wrapf(refreshErr, "unable to dial service '%s'", serviceName)
 	}
 
 	// retry with new session
-	conn, err = context.dialSession(service, session, edgeDialOptions)
+	conn, err = context.dialSession(svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
@@ -581,37 +550,39 @@ func (context *contextImpl) DialWithOptions(serviceName string, options *DialOpt
 }
 
 // GetServiceForAddr finds the service with intercept that matches best to given address
-func (context *contextImpl) GetServiceForAddr(network, hostname string, port uint16) (*edge.Service, int, error) {
-	var service *edge.Service
+func (context *ContextImpl) GetServiceForAddr(network, hostname string, port uint16) (*rest_model.ServiceDetail, int, error) {
+	var svc *rest_model.ServiceDetail
 	score := math.MaxInt
-	context.intercepts.Range(func(key, value any) bool {
-		intercept := value.(*edge.InterceptV1Config)
+	lowestFound := false
+	context.intercepts.IterCb(func(key string, intercept *edge.InterceptV1Config) {
+		if lowestFound {
+			return
+		}
+
 		sc := intercept.Match(network, hostname, port)
 		if sc != -1 {
 			if score > sc {
 				score = sc
-				service = intercept.Service
-			} else if score == sc && intercept.Service.Name < service.Name { // if score is the same, pick alphabetically first service
+				svc = intercept.Service
+			} else if score == sc && *intercept.Service.Name < *svc.Name { // if score is the same, pick alphabetically first service
 				score = sc
-				service = intercept.Service
+				svc = intercept.Service
 			}
 
 			if sc == 0 {
-				return false
+				lowestFound = true
 			}
 		}
-
-		return true
 	})
 
-	if service == nil {
+	if svc == nil {
 		return nil, -1, errors.Errorf("no service for address[%s:%s:%d]", network, hostname, port)
 	}
 
-	return service, score, nil
+	return svc, score, nil
 }
 
-func (context *contextImpl) dialServiceFromAddr(service, network, host string, port uint16) (edge.Conn, error) {
+func (context *ContextImpl) dialServiceFromAddr(service, network, host string, port uint16) (edge.Conn, error) {
 	appdata := make(map[string]any)
 	appdata["dst_protocol"] = network
 	appdata["dst_port"] = strconv.Itoa(int(port))
@@ -631,7 +602,7 @@ func (context *contextImpl) dialServiceFromAddr(service, network, host string, p
 	return context.DialWithOptions(service, options)
 }
 
-func (context *contextImpl) DialAddr(network string, addr string) (edge.Conn, error) {
+func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, error) {
 	host, portstr, err := net.SplitHostPort(addr)
 
 	if err != nil {
@@ -645,15 +616,15 @@ func (context *contextImpl) DialAddr(network string, addr string) (edge.Conn, er
 
 	network = normalizeProtocol(network)
 
-	service, _, err := context.GetServiceForAddr(network, host, uint16(port))
+	svc, _, err := context.GetServiceForAddr(network, host, uint16(port))
 	if err != nil {
 		return nil, err
 	}
 
-	return context.dialServiceFromAddr(service.Name, network, host, uint16(port))
+	return context.dialServiceFromAddr(*svc.Name, network, host, uint16(port))
 }
 
-func (context *contextImpl) dialSession(service *edge.Service, session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
+func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
 	if err != nil {
 		return nil, err
@@ -661,7 +632,7 @@ func (context *contextImpl) dialSession(service *edge.Service, session *edge.Ses
 	return edgeConnFactory.Connect(service, session, options)
 }
 
-func (context *contextImpl) ensureApiSession() error {
+func (context *ContextImpl) ensureApiSession() error {
 	if context.ctrlClt.GetCurrentApiSession() == nil {
 		if err := context.Authenticate(); err != nil {
 			return fmt.Errorf("no apiSession, authentication attempt failed: %v", err)
@@ -670,15 +641,11 @@ func (context *contextImpl) ensureApiSession() error {
 	return nil
 }
 
-func (context *contextImpl) Listen(serviceName string) (edge.Listener, error) {
+func (context *ContextImpl) Listen(serviceName string) (edge.Listener, error) {
 	return context.ListenWithOptions(serviceName, DefaultListenOptions())
 }
 
-func (context *contextImpl) ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error) {
-	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%v)", err)
-	}
-
+func (context *ContextImpl) ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error) {
 	if err := context.ensureApiSession(); err != nil {
 		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
@@ -689,7 +656,7 @@ func (context *contextImpl) ListenWithOptions(serviceName string, options *Liste
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *contextImpl) listenSession(service *edge.Service, options *ListenOptions) edge.Listener {
+func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) edge.Listener {
 	edgeListenOptions := &edge.ListenOptions{
 		Cost:                  options.Cost,
 		Precedence:            edge.Precedence(options.Precedence),
@@ -712,13 +679,13 @@ func (context *contextImpl) listenSession(service *edge.Service, options *Listen
 	return listenerMgr.listener
 }
 
-func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edge.ConnOptions) (edge.RouterConn, error) {
-	logger := pfxlog.Logger().WithField("sessionId", session.Id)
+func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
+	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
-	if refreshedSession, err := context.refreshSession(session.Id); err != nil {
-		if _, isNotFound := err.(api.NotFound); isNotFound {
-			sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
-			context.sessions.Delete(sessionKey)
+	if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
+		if _, isNotFound := err.(*service.DetailServiceNotFound); isNotFound {
+			sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
+			context.sessions.Remove(sessionKey)
 		}
 
 		return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
@@ -733,7 +700,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 	// go through connected routers first
 	bestLatency := time.Duration(math.MaxInt64)
 	var bestER edge.RouterConn
-	var unconnected []edge.EdgeRouter
+	var unconnected []*rest_model.SessionEdgeRouter
 	for _, edgeRouter := range session.EdgeRouters {
 		for _, routerUrl := range edgeRouter.Urls {
 			if er, found := context.routerConnections.Get(routerUrl); found {
@@ -755,7 +722,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 
 	for _, edgeRouter := range unconnected {
 		for _, routerUrl := range edgeRouter.Urls {
-			go context.connectEdgeRouter(edgeRouter.Name, routerUrl, ch)
+			go context.connectEdgeRouter(*edgeRouter.Name, routerUrl, ch)
 		}
 	}
 
@@ -779,7 +746,7 @@ func (context *contextImpl) getEdgeRouterConn(session *edge.Session, options edg
 	}
 }
 
-func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
+func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
 	logger := pfxlog.Logger()
 
 	retF := func(res *edgeRouterConnResult) {
@@ -806,12 +773,18 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	}
 
 	pfxlog.Logger().Debugf("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
-	dialer := channel.NewClassicDialer(identity.NewIdentity(context.ctrlClt.GetIdentity()), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(context.ctrlClt.GetCurrentApiSession().Token),
+	id, err := context.ctrlClt.GetIdentity()
+
+	if err != nil {
+		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
+	}
+
+	dialer := channel.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
+		edge.SessionTokenHeader: []byte(*context.ctrlClt.GetCurrentApiSession().Token),
 	})
 
 	start := time.Now().UnixNano()
-	edgeConn := impl.NewEdgeConnFactory(routerName, ingressUrl, context)
+	edgeConn := network.NewEdgeConnFactory(routerName, ingressUrl, context)
 	ch, err := channel.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, edgeConn, nil)
 	if err != nil {
 		logger.Error(err)
@@ -878,96 +851,71 @@ func (context *contextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	retF(&edgeRouterConnResult{routerUrl: ingressUrl, routerConnection: useConn})
 }
 
-func (context *contextImpl) GetServiceId(name string) (string, bool, error) {
-	if err := context.initialize(); err != nil {
-		return "", false, errors.Errorf("failed to initialize context: (%v)", err)
-	}
-
+func (context *ContextImpl) GetServiceId(name string) (string, bool, error) {
 	if err := context.ensureApiSession(); err != nil {
 		return "", false, fmt.Errorf("failed to get service id: %v", err)
 	}
 
-	id, found := context.getServiceId(name)
-	return id, found, nil
-}
-
-func (context *contextImpl) GetService(name string) (*edge.Service, bool) {
-	if err := context.initialize(); err != nil {
-		return nil, false
+	if svc, found := context.GetService(name); found {
+		return *svc.ID, true, nil
 	}
 
+	return "", false, nil
+}
+
+func (context *ContextImpl) GetService(name string) (*rest_model.ServiceDetail, bool) {
 	if err := context.ensureApiSession(); err != nil {
 		pfxlog.Logger().Warnf("failed to get service: %v", err)
 		return nil, false
 	}
 
-	if s, found := context.services.Load(name); !found {
+	if svc, found := context.services.Get(name); !found {
 		return nil, false
 	} else {
-		return s.(*edge.Service), true
+		return svc, true
 	}
 }
 
-func (context *contextImpl) getServiceId(name string) (string, bool) {
-	if s, found := context.GetService(name); found {
-		return s.Id, true
-	}
-
-	return "", false
-}
-
-func (context *contextImpl) GetServices() ([]edge.Service, error) {
-	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%v)", err)
-	}
-
+func (context *ContextImpl) GetServices() ([]rest_model.ServiceDetail, error) {
 	if err := context.ensureApiSession(); err != nil {
 		return nil, fmt.Errorf("failed to get services: %v", err)
 	}
 
-	var res []edge.Service
-	context.services.Range(func(key, value interface{}) bool {
-		svc := value.(*edge.Service)
+	var res []rest_model.ServiceDetail
+	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
 		res = append(res, *svc)
-		return true
 	})
+
 	return res, nil
 }
 
-func (context *contextImpl) getServices() ([]*edge.Service, error) {
-	return context.ctrlClt.GetServices()
-}
-
-func (context *contextImpl) GetServiceTerminators(serviceName string, offset, limit int) ([]*edge.Terminator, int, error) {
-	service, found := context.GetService(serviceName)
+func (context *ContextImpl) GetServiceTerminators(serviceName string, offset, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
+	svc, found := context.GetService(serviceName)
 	if !found {
 		return nil, 0, errors.Errorf("did not find service named %v", serviceName)
 	}
-	return context.ctrlClt.GetServiceTerminators(service, offset, limit)
+	return context.ctrlClt.GetServiceTerminators(svc, offset, limit)
 }
 
-func (context *contextImpl) GetSession(serviceId string) (*edge.Session, error) {
-	return context.getOrCreateSession(serviceId, edge.SessionDial)
+func (context *ContextImpl) GetSession(serviceId string) (*rest_model.SessionDetail, error) {
+	return context.getOrCreateSession(serviceId, SessionType(SessionDial))
 }
 
-func (context *contextImpl) getOrCreateSession(serviceId string, sessionType edge.SessionType) (*edge.Session, error) {
-	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%v)", err)
-	}
+func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	sessionKey := fmt.Sprintf("%s:%s", serviceId, sessionType)
 
-	cache := sessionType == edge.SessionDial
+	cache := string(sessionType) == string(SessionDial)
 
 	// Can't cache Bind sessions, as we use session tokens for routing. If there are multiple binds on a single
 	// session routing information will get overwritten
 	if cache {
-		val, ok := context.sessions.Load(sessionKey)
+		session, ok := context.sessions.Get(sessionKey)
 		if ok {
-			return val.(*edge.Session), nil
+			return session, nil
 		}
 	}
 
-	context.postureCache.AddActiveService(serviceId)
+	context.ctrlClt.PostureCache.AddActiveService(serviceId)
 	session, err := context.ctrlClt.CreateSession(serviceId, sessionType)
 
 	if err != nil {
@@ -977,13 +925,13 @@ func (context *contextImpl) getOrCreateSession(serviceId string, sessionType edg
 	return session, nil
 }
 
-func (context *contextImpl) createSessionWithBackoff(service *edge.Service, sessionType edge.SessionType, options edge.ConnOptions) (*edge.Session, error) {
+func (context *ContextImpl) createSessionWithBackoff(service *rest_model.ServiceDetail, sessionType SessionType, options edge.ConnOptions) (*rest_model.SessionDetail, error) {
 	expBackoff := backoff.NewExponentialBackOff()
 	expBackoff.InitialInterval = 50 * time.Millisecond
 	expBackoff.MaxInterval = 10 * time.Second
 	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
 
-	var session *edge.Session
+	var session *rest_model.SessionDetail
 	operation := func() error {
 		s, err := context.createSession(service, sessionType)
 		if err != nil {
@@ -994,30 +942,27 @@ func (context *contextImpl) createSessionWithBackoff(service *edge.Service, sess
 	}
 
 	if session != nil {
-		context.postureCache.AddActiveService(service.Id)
+		context.ctrlClt.PostureCache.AddActiveService(*service.ID)
 		context.cacheSession("create", session)
 	}
 
 	return session, backoff.Retry(operation, expBackoff)
 }
 
-func (context *contextImpl) createSession(service *edge.Service, sessionType edge.SessionType) (*edge.Session, error) {
+func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	start := time.Now()
 	logger := pfxlog.Logger()
 	logger.Debugf("establishing %v session to service %v", sessionType, service.Name)
-	session, err := context.getOrCreateSession(service.Id, sessionType)
+	session, err := context.getOrCreateSession(*service.ID, sessionType)
 	if err != nil {
 		logger.WithError(err).Warnf("failure creating %v session to service %v", sessionType, service.Name)
-		if errors2.Is(err, api.NotAuthorized) {
+		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusUnauthorized {
 			if err := context.Authenticate(); err != nil {
-				if errors2.As(err, &api.AuthFailure{}) {
+				if authErr, ok := err.(*runtime.APIError); ok && authErr.Code == http.StatusUnauthorized {
 					return nil, backoff.Permanent(err)
 				}
 				return nil, err
 			}
-		} else if errors2.As(err, &api.NotAccessible{}) {
-			logger.Warnf("session create failure not recoverable, not retrying")
-			return nil, backoff.Permanent(err)
 		}
 		return nil, err
 	}
@@ -1026,12 +971,8 @@ func (context *contextImpl) createSession(service *edge.Service, sessionType edg
 	return session, nil
 }
 
-func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
-	if err := context.initialize(); err != nil {
-		return nil, errors.Errorf("failed to initialize context: (%v)", err)
-	}
-
-	session, err := context.ctrlClt.RefreshSession(id)
+func (context *ContextImpl) refreshSession(id string) (*rest_model.SessionDetail, error) {
+	session, err := context.ctrlClt.GetSession(id)
 	if err != nil {
 		return nil, err
 	}
@@ -1039,29 +980,33 @@ func (context *contextImpl) refreshSession(id string) (*edge.Session, error) {
 	return session, nil
 }
 
-func (context *contextImpl) cacheSession(op string, session *edge.Session) {
-	sessionKey := fmt.Sprintf("%s:%s", session.Service.Id, session.Type)
+func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionDetail) {
+	sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
 
-	if session.Type == edge.SessionDial {
+	if *session.Type == SessionDial {
 		if op == "create" {
-			context.sessions.Store(sessionKey, session)
+			context.sessions.Set(sessionKey, session)
 		} else if op == "refresh" {
 			// N.B.: refreshed sessions do not contain token so update stored session object with updated edgeRouters
-			val, exists := context.sessions.LoadOrStore(sessionKey, session)
-			if exists {
-				existingSession := val.(*edge.Session)
+			isUpdate := false
+			val := context.sessions.Upsert(sessionKey, session, func(exist bool, valueInMap *rest_model.SessionDetail, newValue *rest_model.SessionDetail) *rest_model.SessionDetail {
+				isUpdate = exist
+				return newValue
+			})
+			if isUpdate {
+				existingSession := val
 				existingSession.EdgeRouters = session.EdgeRouters
 			}
 		}
 	}
 }
 
-func (context *contextImpl) deleteServiceSessions(svcId string) {
-	context.sessions.Delete(fmt.Sprintf("%s:%s", svcId, edge.SessionBind))
-	context.sessions.Delete(fmt.Sprintf("%s:%s", svcId, edge.SessionDial))
+func (context *ContextImpl) deleteServiceSessions(svcId string) {
+	context.sessions.Remove(fmt.Sprintf("%s:%s", svcId, SessionBind))
+	context.sessions.Remove(fmt.Sprintf("%s:%s", svcId, SessionDial))
 }
 
-func (context *contextImpl) Close() {
+func (context *ContextImpl) Close() {
 	if context.closed.CompareAndSwap(false, true) {
 		close(context.closeNotify)
 		// remove any closed connections
@@ -1074,29 +1019,25 @@ func (context *contextImpl) Close() {
 			}
 			context.routerConnections.Remove(key)
 		}
-		if context.ctrlClt != nil {
-			context.ctrlClt.Shutdown()
-		}
 	}
 }
 
-func (context *contextImpl) Metrics() metrics.Registry {
-	_ = context.initialize()
+func (context *ContextImpl) Metrics() metrics.Registry {
 	return context.metrics
 }
 
-func (context *contextImpl) EnrollZitiMfa() (*api.MfaEnrollment, error) {
+func (context *ContextImpl) EnrollZitiMfa() (*rest_model.DetailMfa, error) {
 	return context.ctrlClt.EnrollMfa()
 }
 
-func (context *contextImpl) VerifyZitiMfa(code string) error {
+func (context *ContextImpl) VerifyZitiMfa(code string) error {
 	return context.ctrlClt.VerifyMfa(code)
 }
-func (context *contextImpl) RemoveZitiMfa(code string) error {
+func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.ctrlClt.RemoveMfa(code)
 }
 
-func newListenerManager(service *edge.Service, context *contextImpl, options *edge.ListenOptions) *listenerManager {
+func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) *listenerManager {
 	now := time.Now()
 
 	listenerMgr := &listenerManager{
@@ -1110,7 +1051,7 @@ func newListenerManager(service *edge.Service, context *contextImpl, options *ed
 		disconnectedTime:  &now,
 	}
 
-	listenerMgr.listener = impl.NewMultiListener(service, listenerMgr.GetCurrentSession)
+	listenerMgr.listener = network.NewMultiListener(service, listenerMgr.GetCurrentSession)
 
 	go listenerMgr.run()
 
@@ -1118,13 +1059,13 @@ func newListenerManager(service *edge.Service, context *contextImpl, options *ed
 }
 
 type listenerManager struct {
-	service            *edge.Service
-	context            *contextImpl
-	session            *edge.Session
+	service            *rest_model.ServiceDetail
+	context            *ContextImpl
+	session            *rest_model.SessionDetail
 	options            *edge.ListenOptions
 	routerConnections  map[string]edge.RouterConn
 	connects           map[string]time.Time
-	listener           impl.MultiListener
+	listener           network.MultiListener
 	connectChan        chan *edgeRouterConnResult
 	eventChan          chan listenerEvent
 	sessionRefreshTime time.Time
@@ -1140,7 +1081,13 @@ func (mgr *listenerManager) run() {
 	}
 
 	if mgr.options.Identity != "" {
-		identitySecret, err := signing.AssertIdentityWithSecret(mgr.context.ctrlClt.GetIdentity().Cert().PrivateKey)
+		id, err := mgr.context.ctrlClt.GetIdentity()
+
+		if err != nil {
+			panic("could not get identity during run")
+		}
+
+		identitySecret, err := signing.AssertIdentityWithSecret(id.Cert().PrivateKey)
 		if err != nil {
 			pfxlog.Logger().Errorf("failed to sign identity: %v", err)
 		} else {
@@ -1187,11 +1134,11 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 	}
 }
 
-func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *edge.Session) {
+func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *rest_model.SessionDetail) {
 	start := time.Now()
 	logger := pfxlog.Logger()
-	service := mgr.listener.GetService()
-	listener, err := routerConnection.Listen(service, session, mgr.options)
+	svc := mgr.listener.GetService()
+	listener, err := routerConnection.Listen(svc, session, mgr.options)
 	elapsed := time.Since(start)
 	if err == nil {
 		logger.Debugf("listener established to %v in %vms", routerConnection.Key(), elapsed.Milliseconds())
@@ -1240,7 +1187,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 	}
 
 	for _, edgeRouter := range mgr.session.EdgeRouters {
-		if _, ok := mgr.routerConnections[edgeRouter.Name]; ok {
+		if _, ok := mgr.routerConnections[*edgeRouter.Name]; ok {
 			// already connected to this router
 			continue
 		}
@@ -1252,7 +1199,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 			}
 
 			mgr.connects[routerUrl] = time.Now()
-			go mgr.context.connectEdgeRouter(edgeRouter.Name, routerUrl, mgr.connectChan)
+			go mgr.context.connectEdgeRouter(*edgeRouter.Name, routerUrl, mgr.connectChan)
 		}
 	}
 }
@@ -1263,28 +1210,32 @@ func (mgr *listenerManager) refreshSession() {
 		return
 	}
 
-	session, err := mgr.context.refreshSession(mgr.session.Id)
+	session, err := mgr.context.refreshSession(*mgr.session.ID)
 	if err != nil {
-		if errors2.As(err, &api.NotFound{}) {
-			// try to create new session
-			mgr.createSessionWithBackoff()
-			return
-		}
+		apiErr, ok := err.(*runtime.APIError)
 
-		if errors2.Is(err, api.NotAuthorized) {
-			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
-			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
-				err := fmt.Errorf("unable to establish API session (%w)", err)
-				if len(mgr.routerConnections) == 0 {
-					mgr.listener.CloseWithError(err)
-				}
+		if ok {
+			switch apiErr.Code {
+			case http.StatusNotFound:
+				// try to create new session
+				mgr.createSessionWithBackoff()
 				return
+			case http.StatusUnauthorized:
+				pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
+				if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
+					err := fmt.Errorf("unable to establish API session (%w)", err)
+					if len(mgr.routerConnections) == 0 {
+						mgr.listener.CloseWithError(err)
+					}
+					return
+				}
 			}
 		}
 
-		session, err = mgr.context.refreshSession(mgr.session.Id)
+		session, err = mgr.context.refreshSession(*mgr.session.ID)
 		if err != nil {
-			if errors2.Is(err, api.NotAuthorized) {
+			apiErr, ok = err.(*runtime.APIError)
+			if ok && apiErr.Code == http.StatusUnauthorized {
 				pfxlog.Logger().Errorf(
 					"failure refreshing bind session even after re-authenticating api session. service %v (%v)",
 					mgr.listener.GetServiceName(), err)
@@ -1294,7 +1245,7 @@ func (mgr *listenerManager) refreshSession() {
 				return
 			}
 
-			pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", mgr.session.Id, err)
+			pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", *mgr.session.ID, err)
 
 			// try to create new session
 			mgr.createSessionWithBackoff()
@@ -1310,16 +1261,17 @@ func (mgr *listenerManager) refreshSession() {
 }
 
 func (mgr *listenerManager) createSessionWithBackoff() {
-	session, err := mgr.context.createSessionWithBackoff(mgr.service, edge.SessionBind, mgr.options)
+	session, err := mgr.context.createSessionWithBackoff(mgr.service, SessionType(SessionBind), mgr.options)
 	if session != nil {
 		mgr.session = session
 		mgr.sessionRefreshTime = time.Now()
+		pfxlog.Logger().WithField("session token", *session.Token).Info("new service session")
 	} else {
 		pfxlog.Logger().WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
 	}
 }
 
-func (mgr *listenerManager) GetCurrentSession() *edge.Session {
+func (mgr *listenerManager) GetCurrentSession() *rest_model.SessionDetail {
 	if mgr.listener.IsClosed() {
 		return nil
 	}
@@ -1374,50 +1326,11 @@ func (event listenSuccessEvent) handle(mgr *listenerManager) {
 }
 
 type getSessionEvent struct {
-	session *edge.Session
+	session *rest_model.SessionDetail
 	doneC   chan struct{}
 }
 
 func (event *getSessionEvent) handle(mgr *listenerManager) {
 	defer close(event.doneC)
 	event.session = mgr.session
-}
-
-// Used for external integration tests
-var _ Context = &ContextImplTest{}
-
-type ContextImplTest struct {
-	Context
-}
-
-func (self *ContextImplTest) getInternal() (*contextImpl, error) {
-	if ctxImpl, ok := self.Context.(*contextImpl); ok {
-		return ctxImpl, nil
-	}
-
-	return nil, fmt.Errorf("invalid type, got %T", self.Context)
-}
-
-func (self *ContextImplTest) GetApiSession() (*edge.ApiSession, error) {
-	if internal, err := self.getInternal(); err == nil {
-		return internal.ctrlClt.GetCurrentApiSession(), nil
-	} else {
-		return nil, err
-	}
-}
-
-func (self *ContextImplTest) GetSessions() ([]*edge.Session, error) {
-	if internal, err := self.getInternal(); err == nil {
-		return internal.Sessions()
-	} else {
-		return nil, err
-	}
-}
-
-func (self *ContextImplTest) GetPostureCache() (*posture.Cache, error) {
-	if internal, err := self.getInternal(); err == nil {
-		return internal.postureCache, nil
-	} else {
-		return nil, err
-	}
 }

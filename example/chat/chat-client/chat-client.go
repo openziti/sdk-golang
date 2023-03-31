@@ -43,7 +43,12 @@ func main() {
 		serviceName = os.Args[3]
 	}
 
-	context := ziti.NewContextWithConfig(cfg)
+	context, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
 	conn, err := context.Dial(serviceName)
 	if err != nil {
 		fmt.Printf("failed to dial service %v, err: %+v\n", serviceName, err)

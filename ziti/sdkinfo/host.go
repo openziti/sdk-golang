@@ -17,6 +17,7 @@
 package sdkinfo
 
 import (
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/sirupsen/logrus"
 	"runtime"
 )
@@ -29,30 +30,31 @@ func SetApplication(theAppId, theAppVersion string) {
 	appVersion = theAppVersion
 }
 
-func GetSdkInfo() map[string]interface{} {
+func GetSdkInfo() (*rest_model.EnvInfo, *rest_model.SdkInfo) {
 
-	result := make(map[string]interface{})
-	result["sdkInfo"] = map[string]interface{}{
-		"type":       "ziti-sdk-golang",
-		"version":    Version,
-		"revision":   Revision,
-		"branch":     Branch,
-		"appId":      appId,
-		"appVersion": appVersion,
+	sdkInfo := &rest_model.SdkInfo{
+		AppID:      appId,
+		AppVersion: appVersion,
+		Branch:     Branch,
+		Revision:   Revision,
+		Type:       "ziti-sdk-golang",
+		Version:    Version,
 	}
 
-	envInfo := map[string]interface{}{
-		"os":   runtime.GOOS,
-		"arch": runtime.GOARCH,
+	envInfo := &rest_model.EnvInfo{
+		Arch:      runtime.GOARCH,
+		Os:        runtime.GOOS,
+		OsRelease: "",
+		OsVersion: "",
 	}
-	result["envInfo"] = envInfo
 
 	if rel, ver, err := getOSversion(); err == nil {
-		envInfo["osRelease"] = rel
-		envInfo["osVersion"] = ver
+		envInfo.OsRelease = rel
+		envInfo.OsVersion = ver
 	} else {
 		logrus.Warn("failed to get OS version", err)
 	}
 
-	return result
+	return envInfo, sdkInfo
+
 }

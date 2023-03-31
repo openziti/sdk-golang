@@ -29,7 +29,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti/edge/api"
+	httptransport "github.com/go-openapi/runtime/client"
+	"github.com/openziti/edge-api/rest_client_api_client"
+	"github.com/openziti/edge-api/rest_client_api_client/well_known"
 	"io"
 	"net/http"
 	"net/url"
@@ -533,50 +535,48 @@ func FetchServerCert(urlRoot string) (*x509.Certificate, error) {
 // FetchCertificates will accecss the server insecurely to pull down the latest CA to be used to communicate with the
 // server adding certificates to the provided pool
 func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certificate {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: rootCaPool},
-	}
-	client := &http.Client{Transport: tr}
+	ctrlUrl, err := url.Parse(urlRoot)
 
-	certStoreUrl, err := url.Parse(urlRoot)
 	if err != nil {
-		pfxlog.Logger().WithError(err).WithField("url", urlRoot).Panic("could not parse base url to retrieve CA store")
+		pfxlog.Logger().Errorf("could not parse url root: %s", err)
+		return nil //@todo figure out what the impact is here of returning an error on other callers
 	}
 
-	certStoreUrl = certStoreUrl.ResolveReference(api.WellKnownCaStoreUrl)
+	path := rest_client_api_client.DefaultBasePath
 
-	resp, respErr := client.Get(certStoreUrl.String())
-
-	if respErr != nil {
-		//if an error occurs, log the issue and just return a nil slice of certs
-		pfxlog.Logger().Errorf("unable to retrieve certificates from server at %s. %s", urlRoot, respErr)
-		return nil
+	if ctrlUrl.Path != "" && ctrlUrl.Path != "/" {
+		path = ctrlUrl.Path
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			pfxlog.Logger().WithError(err).Error("could not close response body during certificate lookup")
-		}
-	}()
 
-	pkcs7b64, err := io.ReadAll(resp.Body)
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: rootCaPool},
+		},
+	}
+
+	clientRuntime := httptransport.NewWithClient(ctrlUrl.Host, path, rest_client_api_client.DefaultSchemes, httpClient)
+	client := rest_client_api_client.New(clientRuntime, nil)
+
+	resp, err := client.WellKnown.ListWellKnownCas(well_known.NewListWellKnownCasParams(), nil, nil)
+
 	if err != nil {
-		pfxlog.Logger().Warnf("could not read response. no certificates added from %s", urlRoot)
 		return nil
 	}
 
-	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-
-		pkcs7Certs, _ := base64.StdEncoding.DecodeString(string(pkcs7b64))
-		if pkcs7Certs != nil {
-			certs, parseErr := pkcs7.Parse(pkcs7Certs)
-			if parseErr != nil {
-				pfxlog.Logger().Warnf("could not parse certificates. no certificates added from %s", urlRoot)
-				return nil
-			}
-			return certs.Certificates
-		}
-	} else {
-		pfxlog.Logger().Debugf("no certificates added from url. http response: %d, url: %s", resp.StatusCode, urlRoot)
+	if resp.Payload == "" {
+		pfxlog.Logger().Debug("no certificates returned from well know ca store")
+		return nil
 	}
+
+	pkcs7Certs, _ := base64.StdEncoding.DecodeString(string(resp.Payload))
+	if pkcs7Certs != nil {
+		certs, parseErr := pkcs7.Parse(pkcs7Certs)
+		if parseErr != nil {
+			pfxlog.Logger().Warnf("could not parse certificates. no certificates added from %s", urlRoot)
+			return nil
+		}
+		return certs.Certificates
+	}
+
 	return nil
 }

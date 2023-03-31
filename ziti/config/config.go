@@ -17,7 +17,9 @@
 package config
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
 	"github.com/pkg/errors"
 	"os"
@@ -27,6 +29,10 @@ type Config struct {
 	ZtAPI       string          `json:"ztAPI"`
 	ID          identity.Config `json:"id"`
 	ConfigTypes []string        `json:"configTypes"`
+
+	CaPool        *x509.CertPool
+	AuthToken     string `json:"-"`
+	Authenticator rest_util.Authenticator
 }
 
 func New(ztApi string, idConfig identity.Config) *Config {
@@ -44,6 +50,7 @@ func NewFromFile(confFile string) (*Config, error) {
 
 	c := Config{}
 	err = json.Unmarshal(conf, &c)
+
 	if err != nil {
 		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
 	}

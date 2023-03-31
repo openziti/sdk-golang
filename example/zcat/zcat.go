@@ -84,7 +84,12 @@ func runFunc(_ *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	context := ziti.NewContextWithConfig(cfg)
+	context, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		opts := &ziti.DialOptions{
 			ConnectTimeout: 5 * time.Second,

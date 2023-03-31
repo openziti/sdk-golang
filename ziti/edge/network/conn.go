@@ -14,10 +14,11 @@
 	limitations under the License.
 */
 
-package impl
+package network
 
 import (
 	"fmt"
+	"github.com/openziti/edge-api/rest_model"
 	"io"
 	"net"
 	"sync"
@@ -203,14 +204,14 @@ func (conn *edgeConn) HandleClose(channel.Channel) {
 	conn.readFIN.Store(true)
 }
 
-func (conn *edgeConn) Connect(session *edge.Session, options *edge.DialOptions) (edge.Conn, error) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.Id)
+func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.ID)
 
 	var pub []byte
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
-	connectRequest := edge.NewConnectMsg(conn.Id(), session.Token, pub, options)
+	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.Channel)
 	if err != nil {
@@ -298,11 +299,11 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
-func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (edge.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
 		WithField("serviceName", service.Name).
-		WithField("sessionId", session.Id)
+		WithField("sessionId", session.ID)
 
 	listener := &edgeListener{
 		baseListener: baseListener{
@@ -310,18 +311,18 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 			acceptC: make(chan edge.Conn, 10),
 			errorC:  make(chan error, 1),
 		},
-		token:       session.Token,
+		token:       *session.Token,
 		edgeChan:    conn,
 		manualStart: options.ManualStart,
 	}
 	logger.Debug("adding listener for session")
-	conn.hosting.Store(session.Token, listener)
+	conn.hosting.Store(*session.Token, listener)
 
 	success := false
 	defer func() {
 		if !success {
 			logger.Debug("removing listener for session")
-			conn.hosting.Delete(session.Token)
+			conn.hosting.Delete(*session.Token)
 		}
 	}()
 
@@ -330,7 +331,7 @@ func (conn *edgeConn) Listen(session *edge.Session, service *edge.Service, optio
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
-	bindRequest := edge.NewBindMsg(conn.Id(), session.Token, pub, options)
+	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.Channel)
 	if err != nil {

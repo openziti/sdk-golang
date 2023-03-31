@@ -4,12 +4,16 @@
 package ziti
 
 import (
+	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/edge-api/rest_client_api_client"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/edge/api"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/pkg/errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,11 +54,16 @@ func LoadContext(config_ string) (Context, error) {
 		return nil, err
 	}
 
-	cfg.ConfigTypes = append(cfg.ConfigTypes, edge.InterceptV1, edge.ClientConfigV1)
-	newCtx := NewContextWithConfig(cfg).(*contextImpl)
+	cfg.ConfigTypes = append(cfg.ConfigTypes, InterceptV1, ClientConfigV1)
+	newCtx, err := NewContextWithConfig(cfg)
+
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, exists := contexts.LoadOrStore(path, newCtx)
 
-	ztx := ctx.(*contextImpl)
+	ztx := ctx.(*ContextImpl)
 	if exists {
 		newCtx.Close()
 	} else {
@@ -78,30 +87,64 @@ func ForAllContexts(f func(ctx Context) bool) {
 	})
 }
 
-func NewContext() Context {
+func NewContext() (Context, error) {
 	return NewContextWithConfig(nil)
 }
 
-func NewContextWithConfig(cfg *config.Config) Context {
+func NewContextWithConfig(cfg *config.Config) (Context, error) {
 	return NewContextWithOpts(cfg, nil)
 }
 
-func NewContextWithOpts(cfg *config.Config, options *Options) Context {
+func NewContextWithOpts(cfg *config.Config, options *Options) (Context, error) {
 	if options == nil {
 		options = DefaultOptions
 	}
 
-	result := &contextImpl{
+	newContext := &ContextImpl{
 		routerConnections: cmap.New[edge.RouterConn](),
 		options:           options,
-		authQueryHandlers: map[string]func(query *edge.AuthQuery, resp func(code string) error) error{},
+		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error{},
 		closeNotify:       make(chan struct{}),
 	}
 
-	result.ctrlClt = api.NewLazyClient(cfg, func(ctrlClient api.Client) error {
-		result.postureCache = posture.NewCache(ctrlClient, result.closeNotify)
-		return nil
-	})
+	ztUrl, err := url.Parse(cfg.ZtAPI)
 
-	return result
+	if err != nil {
+		return nil, err
+	}
+
+	newContext.ctrlClt = &CtrlClient{
+		CaPool: cfg.CaPool,
+	}
+
+	ctrlUrl, err := url.Parse(cfg.ZtAPI)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "could not parse ZtAPI from configuration as URI")
+	}
+
+	if cfg.Authenticator == nil {
+		return nil, errors.New("authenticator must not be nil")
+	}
+
+	httpClient, err := cfg.Authenticator.BuildHttpClient()
+
+	if err != nil {
+		return nil, errors.Wrap(err, "could not build HTTP client")
+	}
+
+	clientRuntime := httptransport.NewWithClient(ctrlUrl.Host, rest_client_api_client.DefaultBasePath, rest_client_api_client.DefaultSchemes, httpClient)
+	clientRuntime.DefaultAuthentication = newContext.ctrlClt
+
+	newContext.ctrlClt.ZitiEdgeClient = rest_client_api_client.New(clientRuntime, nil)
+	newContext.ctrlClt.Authenticator = cfg.Authenticator
+	newContext.ctrlClt.EdgeClientApiUrl = ztUrl
+
+	if err != nil {
+		return nil, err
+	}
+
+	newContext.ctrlClt.PostureCache = posture.NewCache(newContext.ctrlClt, newContext.closeNotify)
+
+	return newContext, nil
 }

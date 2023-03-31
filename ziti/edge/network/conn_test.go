@@ -1,4 +1,4 @@
-package impl
+package network
 
 import (
 	"crypto/x509"

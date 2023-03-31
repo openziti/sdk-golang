@@ -11,7 +11,13 @@ import (
 )
 
 func Server(zitiCfg *config.Config, serviceName string) {
-	listener, err := ziti.NewContextWithConfig(zitiCfg).Listen(serviceName)
+	ctx, err := ziti.NewContextWithConfig(zitiCfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := ctx.Listen(serviceName)
 	if err != nil {
 		log.Panic(err)
 	}

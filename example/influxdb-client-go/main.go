@@ -13,15 +13,17 @@ import (
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/config"
 )
-var	svcName = "httpsdk"
+
+var svcName = "httpsdk"
 
 type ZitiDoer struct {
 	httpClient *gohttp.Client
 }
 type ZitiDialContext struct {
-	context ziti.Context
+	context     ziti.Context
 	serviceName string
 }
+
 func (dc *ZitiDialContext) Dial(_ context.Context, _ string, _ string) (net.Conn, error) {
 	return dc.context.Dial(dc.serviceName)
 }
@@ -30,7 +32,12 @@ func NewZitiDoer(cfgFile string) *ZitiDoer {
 	if err != nil {
 		logrus.Errorf("failed to load ziti configuration file: %v", err)
 	}
-	ctx := ziti.NewContextWithConfig(zitiCfg)
+	ctx, err := ziti.NewContextWithConfig(zitiCfg)
+
+	if err != nil {
+		panic(err)
+	}
+
 	zitiDialContext := ZitiDialContext{context: ctx, serviceName: svcName}
 	zitiTransport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
@@ -40,7 +47,7 @@ func NewZitiDoer(cfgFile string) *ZitiDoer {
 	}
 	return doer
 }
-func(doer *ZitiDoer) Do(httpReq *gohttp.Request) (*gohttp.Response, error){
+func (doer *ZitiDoer) Do(httpReq *gohttp.Request) (*gohttp.Response, error) {
 	return doer.httpClient.Do(httpReq)
 }
 
@@ -54,7 +61,7 @@ func main() {
 	//create a new "Doer" - in this case it is a simple struct which implements "Do"
 	zitiDoer := NewZitiDoer(identityFile)
 
-	token := fmt.Sprintf("%s:%s",userName, password)
+	token := fmt.Sprintf("%s:%s", userName, password)
 	// Create a new client using an InfluxDB server base URL and an authentication token
 	// For authentication token supply a string in the form: "username:password" as a token. Set empty value for an unauthenticated server
 	opts := influxdb2.DefaultOptions()
@@ -80,7 +87,7 @@ func main() {
 	// Get query client. Org name is not used
 	queryAPI := client.QueryAPI("")
 	// Supply string in a form database/retention-policy as a bucket. Skip retention policy for the default one, use just a database name (without the slash character)
-	result, err := queryAPI.Query(context.Background(), `from(bucket:"`+ bucket +`")|> range(start: -1h) |> filter(fn: (r) => r._measurement == "stat")`)
+	result, err := queryAPI.Query(context.Background(), `from(bucket:"`+bucket+`")|> range(start: -1h) |> filter(fn: (r) => r._measurement == "stat")`)
 	if err == nil {
 		for result.Next() {
 			if result.TableChanged() {

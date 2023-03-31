@@ -39,7 +39,13 @@ func createZitiListener() net.Listener {
 	options := ziti.ListenOptions{
 		ConnectTimeout: 5 * time.Minute,
 	}
-	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(os.Args[2], &options)
+	ctx, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := ctx.ListenWithOptions(os.Args[2], &options)
 	if err != nil {
 		fmt.Printf("Error binding service %+v\n", err)
 		panic(err)

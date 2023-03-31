@@ -139,7 +139,13 @@ func main() {
 		MaxConnections: 3,
 	}
 	logger.Infof("binding service %v\n", serviceName)
-	listener, err := ziti.NewContextWithConfig(cfg).ListenWithOptions(serviceName, &options)
+	ctx, err := ziti.NewContextWithConfig(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := ctx.ListenWithOptions(serviceName, &options)
 	if err != nil {
 		logrus.Errorf("Error binding service %+v", err)
 		panic(err)
