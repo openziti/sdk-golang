@@ -35,16 +35,29 @@ It will attempt to authenticate with the OIDC provider as:
 
 # Setup
 
+*Note: For Powershell ensure you escape pound (#) symbols with a grave tick (`)*
+
 1) Stand up an OpenZiti network
-2) Create at least one Edge Router
-3) Create two identities (client, server)
-   1) ensure they have the externalId's set to `cid1` (client) and `cid2` (server)
-   2) give them both an attribute named `jwtchat`
-4) Create a service named `jwtchat` with attribute `jwtchat`
-5) Creat an Edge Router Policy that gives the new identities access to your Edge Routers
-6) Create a Service Edge Router Policy that allows `jwtchat` service usage on your Edge Routers
-7) Create a Service Policy that allows your identities access to the `jwtchat` service
-8) Add an External JWT Signer with a JWKS endpoint of `https://localhost:1280/keys`
-9) Start the `jwtchat-idp` process
-10) Start the `jwtchat-server`
-11) Start the `jwtchat-client`
+2) Add an External JWT Signer with a JWKS endpoint
+   1) `ziti edge create ext-jwt-signer jwtchat-idp "http://localhost:9998" -a openziti -u "http://localhost:9998/keys"`
+   2) Save the resulting `ext-jwt-signer`
+3) Create an authentication policy that allows the new `ext-jwt-signer` to authenticate identities
+   1) `ziti edge create auth-policy jwtchat --primary-ext-jwt-allowed --primary-ext-jwt-allowed-signers<extjwtIdFromStep2>`
+   2) Save the resulting `auth-policy` id
+4) Create two identities (client, server)
+   1) `ziti edge create identity service cid1 --external-id cid1 -a jwtchat -P <authPolicyIdFromStep3>`
+   2) `ziti edge create identity service cid2 --external-id cid2 -a jwtchat -P <authPolicyIdFromStep3>`
+5) Create at least one Edge Router
+   1) `ziti edge create edge-router myRouter <myRouter.yml> -o myRouter.jwt`
+   2) `ziti router enroll <myRouter.yml> -j myRouter.jwt`
+6) Create a service named `jwtchat` with attribute `jwtchat`
+   1) `ziti edge create service jwtchat -a jwtchat`
+7) Creat an Edge Router Policy that gives the new identities access to your Edge Routers
+   1) `ziti edge create edge-router-policy jwtchat --identity-roles #jwtchat --edge-router-roles #all`
+8) Create a Service Edge Router Policy that allows `jwtchat` service usage on your Edge Routers
+   1) `ziti edge create service-edge-router-policy jwtchat --service-roles #jwtchat --edge-router-roles #all`
+9) Create a Service Policy that allows your identities access to the `jwtchat` service
+   1) `ziti edge create service-policy jwtchat --service-roles #jwtchat --identity-roles #jwtchat`
+10) Start the `jwtchat-idp` process
+11) Start the `jwtchat-server` process
+12) Start the `jwtchat-client` process
