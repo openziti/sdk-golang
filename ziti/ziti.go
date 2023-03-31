@@ -972,7 +972,7 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 }
 
 func (context *ContextImpl) refreshSession(id string) (*rest_model.SessionDetail, error) {
-	session, err := context.ctrlClt.RefreshSession(id)
+	session, err := context.ctrlClt.GetSession(id)
 	if err != nil {
 		return nil, err
 	}

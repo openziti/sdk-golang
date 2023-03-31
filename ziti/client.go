@@ -52,6 +52,7 @@ type CtrlClient struct {
 	PostureCache *posture.Cache
 }
 
+// AuthenticateRequest allows a CtrlClient to act as a ClientAuthInfoWriter, authenticating go-swagger generated client requests.
 func (client *CtrlClient) AuthenticateRequest(request runtime.ClientRequest, registry strfmt.Registry) error {
 	if client.ApiSession != nil {
 		return request.SetHeaderParam("zt-session", *client.ApiSession.Token)
@@ -60,10 +61,12 @@ func (client *CtrlClient) AuthenticateRequest(request runtime.ClientRequest, reg
 	return nil
 }
 
+// GetCurrentApiSession returns the current cached ApiSession or nil
 func (client *CtrlClient) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
 	return client.ApiSession
 }
 
+// Refresh will contact the controller extending the current ApiSession
 func (client *CtrlClient) Refresh() (*time.Time, error) {
 	resp, err := client.CurrentAPISession.GetCurrentAPISession(&current_api_session.GetCurrentAPISessionParams{}, nil)
 
@@ -74,6 +77,9 @@ func (client *CtrlClient) Refresh() (*time.Time, error) {
 	return &expiresAt, nil
 }
 
+// IsServiceListUpdateAvailable will contact the controller to determine if a new set of services are available. Service
+// updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
+// checks.
 func (client *CtrlClient) IsServiceListUpdateAvailable() (bool, error) {
 	if client.lastServiceUpdate == nil {
 		return true, nil
@@ -88,10 +94,14 @@ func (client *CtrlClient) IsServiceListUpdateAvailable() (bool, error) {
 	return resp.Payload.Data.LastChangeAt.Equal(*client.lastServiceUpdate), nil
 }
 
+// SetInfo is used to set the environment and SDK information that is submitted during authentication requests.
+// Environment information includes OS level information while SDK information includes application and build
+// information.
 func (client *CtrlClient) SetInfo(envInfo *rest_model.EnvInfo, sdkInfo *rest_model.SdkInfo) {
 	client.Authenticator.SetInfo(envInfo, sdkInfo)
 }
 
+// Authenticate attempts to use authenticate, overwriting any existing ApiSession.
 func (client *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, error) {
 	var err error
 
@@ -124,6 +134,8 @@ func (client *CtrlClient) AuthenticateMFA(code string) error {
 	return nil
 }
 
+// SendPostureResponse creates a posture response (some state data the controller has requested) for services. This
+// information is used to determine runtime authorization access to services via posture checks.
 func (client *CtrlClient) SendPostureResponse(response rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseParams()
 	params.PostureResponse = response
@@ -135,6 +147,8 @@ func (client *CtrlClient) SendPostureResponse(response rest_model.PostureRespons
 	return nil
 }
 
+// SendPostureResponseBulk provides the same functionality as SendPostureResponse but allows multiple responses
+// to be sent in a single request.
 func (client *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
@@ -146,6 +160,7 @@ func (client *CtrlClient) SendPostureResponseBulk(responses []rest_model.Posture
 	return nil
 }
 
+// GetCurrentIdentity returns the rest_model.IdentityDetail for the currently authenticated ApiSession.
 func (client *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
 	params := current_identity.NewGetCurrentIdentityParams()
 	resp, err := client.CurrentIdentity.GetCurrentIdentity(params, nil)
@@ -157,7 +172,8 @@ func (client *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, erro
 	return resp.Payload.Data, nil
 }
 
-func (client *CtrlClient) RefreshSession(id string) (*rest_model.SessionDetail, error) {
+// GetSession returns the full rest_model.SessionDetail for a specific id
+func (client *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
 	params := session.NewDetailSessionParams()
 	params.ID = id
 	resp, err := client.Session.DetailSession(params, nil)
@@ -169,6 +185,8 @@ func (client *CtrlClient) RefreshSession(id string) (*rest_model.SessionDetail, 
 	return resp.Payload.Data, nil
 }
 
+// GetIdentity returns the identity.Identity used to facilitate authentication. Each identity.Identity instance
+// may provide authentication material in the form of x509 certificates and private keys and/or trusted CA pools.
 func (client *CtrlClient) GetIdentity() (identity.Identity, error) {
 	if client.ApiSessionIdentity != nil {
 		return client.ApiSessionIdentity, nil
@@ -190,6 +208,7 @@ func (client *CtrlClient) GetIdentity() (identity.Identity, error) {
 	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{client.ApiSessionCertificate}, client.ApiSessionPrivateKey, client.CaPool), nil
 }
 
+// EnsureApiSessionCertificate will create an ApiSessionCertificate if one does not already exist.
 func (client *CtrlClient) EnsureApiSessionCertificate() error {
 	if client.ApiSessionCertificate == nil {
 		return client.NewApiSessionCertificate()
@@ -198,6 +217,9 @@ func (client *CtrlClient) EnsureApiSessionCertificate() error {
 	return nil
 }
 
+// NewApiSessionCertificate will create a new ephemeral private key used to generate an ephemeral certificate
+// that may be used with the current ApiSession. The generated certificate and private key are scoped to the
+// ApiSession used to create it.
 func (client *CtrlClient) NewApiSessionCertificate() error {
 	if client.ApiSessionCertInstance == "" {
 		client.ApiSessionCertInstance = uuid.NewString()
@@ -255,6 +277,8 @@ func (client *CtrlClient) NewApiSessionCertificate() error {
 	return nil
 }
 
+// GetServices will fetch the list of services that the identity of the current ApiSession has access to for dialing
+// or binding.
 func (client *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	params := service.NewListServicesParams()
 
@@ -290,7 +314,8 @@ func (client *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	return services, nil
 }
 
-func (client *CtrlClient) GetServiceTerminators(detail *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
+// GetServiceTerminators returns the client terminator details for a specific service.
+func (client *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
 	params := service.NewListServiceTerminatorsParams()
 
 	pageOffset := int64(offset)
@@ -298,6 +323,8 @@ func (client *CtrlClient) GetServiceTerminators(detail *rest_model.ServiceDetail
 
 	pageLimit := int64(limit)
 	params.Limit = &pageLimit
+
+	params.ID = *svc.ID
 
 	resp, err := client.ZitiEdgeClient.Service.ListServiceTerminators(params, nil)
 
@@ -308,6 +335,7 @@ func (client *CtrlClient) GetServiceTerminators(detail *rest_model.ServiceDetail
 	return resp.Payload.Data, int(*resp.Payload.Meta.Pagination.TotalCount), nil
 }
 
+// CreateSession will attempt to obtain a session token for a specific service id and type.
 func (client *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	params := session.NewCreateSessionParams()
 	params.Session = &rest_model.SessionCreate{
@@ -325,6 +353,7 @@ func (client *CtrlClient) CreateSession(id string, sessionType SessionType) (*re
 
 }
 
+// EnrollMfa will attempt to start TOTP MFA enrollment for the currently authenticated identity.
 func (client *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	enrollMfaParams := current_identity.NewEnrollMfaParams()
 
@@ -344,6 +373,7 @@ func (client *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	return detailMfaResp.Payload.Data, nil
 }
 
+// VerifyMfa will complete a TOTP MFA enrollment created via EnrollMfa.
 func (client *CtrlClient) VerifyMfa(code string) error {
 	params := current_identity.NewVerifyMfaParams()
 
@@ -356,6 +386,7 @@ func (client *CtrlClient) VerifyMfa(code string) error {
 	return err
 }
 
+// RemoveMfa will remove the currently enrolled TOTP MFA added by EnrollMfa() and verified by VerifyMfa()
 func (client *CtrlClient) RemoveMfa(code string) error {
 	params := current_identity.NewDeleteMfaParams()
 	params.MfaValidation = &rest_model.MfaCode{
