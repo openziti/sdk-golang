@@ -100,6 +100,10 @@ func (mux *CowMapMsgMux) HandleClose(channel.Channel) {
 }
 
 func (mux *CowMapMsgMux) AddMsgSink(sink MsgSink) error {
+	if mux.closed.Load() {
+		return errors.Errorf("mux is closed, can't add sink with id [%v]", sink.Id())
+	}
+
 	var err error
 	mux.updateSinkMap(func(m map[uint32]MsgSink) {
 		if _, found := m[sink.Id()]; found {
@@ -108,6 +112,12 @@ func (mux *CowMapMsgMux) AddMsgSink(sink MsgSink) error {
 			m[sink.Id()] = sink
 		}
 	})
+
+	// check again, just in case it was closed while we were adding
+	if mux.closed.Load() {
+		return errors.Errorf("mux is closed, can't add sink with id [%v]", sink.Id())
+	}
+
 	return err
 }
 
