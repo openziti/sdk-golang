@@ -14,7 +14,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/netfoundry/secretstream v0.1.5
-	github.com/openziti/channel/v2 v2.0.54
+	github.com/openziti/channel/v2 v2.0.55
 	github.com/openziti/edge-api v0.25.9
 	github.com/openziti/foundation/v2 v2.0.20
 	github.com/openziti/identity v1.0.43
