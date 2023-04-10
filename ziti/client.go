@@ -389,9 +389,7 @@ func (client *CtrlClient) VerifyMfa(code string) error {
 // RemoveMfa will remove the currently enrolled TOTP MFA added by EnrollMfa() and verified by VerifyMfa()
 func (client *CtrlClient) RemoveMfa(code string) error {
 	params := current_identity.NewDeleteMfaParams()
-	params.MfaValidation = &rest_model.MfaCode{
-		Code: &code,
-	}
+	params.MfaValidationCode = &code
 
 	_, err := client.ZitiEdgeClient.CurrentIdentity.DeleteMfa(params, nil)
 

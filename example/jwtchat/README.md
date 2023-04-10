@@ -57,7 +57,8 @@ It will attempt to authenticate with the OIDC provider as:
 8) Create a Service Edge Router Policy that allows `jwtchat` service usage on your Edge Routers
    1) `ziti edge create service-edge-router-policy jwtchat --service-roles #jwtchat --edge-router-roles #all`
 9) Create a Service Policy that allows your identities access to the `jwtchat` service
-   1) `ziti edge create service-policy jwtchat --service-roles #jwtchat --identity-roles #jwtchat`
+   1) `ziti edge create service-policy jwtchat Dial --service-roles #jwtchat --identity-roles #jwtchat`
+   2) `ziti edge create service-policy jwtchat Bind --service-roles #jwtchat --identity-roles #jwtchat`
 10) Start the `jwtchat-idp` process
 11) Start the `jwtchat-server` process
 12) Start the `jwtchat-client` process
