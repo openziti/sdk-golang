@@ -13,12 +13,12 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/netfoundry/secretstream v0.1.5
 	github.com/openziti/channel/v2 v2.0.58
 	github.com/openziti/edge-api v0.25.14
 	github.com/openziti/foundation/v2 v2.0.21
 	github.com/openziti/identity v1.0.45
 	github.com/openziti/metrics v1.2.19
+	github.com/openziti/secretstream v0.1.6
 	github.com/openziti/transport/v2 v2.0.72
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
@@ -51,7 +51,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect

@@ -29,8 +29,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/netfoundry/secretstream"
-	"github.com/netfoundry/secretstream/kx"
+	"github.com/openziti/secretstream"
+	"github.com/openziti/secretstream/kx"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"

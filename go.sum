@@ -296,8 +296,8 @@ github.com/mattn/go-isatty v0.0.3/go.mod h1:M+lRXTBqGeGNdLjl/ufCoiOlB5xdOkqRJdNx
 github.com/mattn/go-isatty v0.0.5/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
 github.com/mattn/go-isatty v0.0.7/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
-github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
-github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
+github.com/mattn/go-isatty v0.0.18 h1:DOKFKCQ7FNG2L1rbrmstDN4QVRdS89Nkh85u68Uwp98=
+github.com/mattn/go-isatty v0.0.18/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
 github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d h1:5PJl274Y63IEHC+7izoQE9x6ikvDFZS2mDVS3drnohI=
 github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
@@ -323,8 +323,6 @@ github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJ
 github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
 github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
 github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe/go.mod h1:wL8QJuTMNUDYhXwkmfOly8iTdp5TEcJFWZD2D7SIkUc=
-github.com/netfoundry/secretstream v0.1.5 h1:iQ4brqUeZO7xNlSpwZDhekPW8d5LlRyHwvvevBOP1IM=
-github.com/netfoundry/secretstream v0.1.5/go.mod h1:N6Mvl9Lk8xs84hFS9qZfjcJWiXmpzqaXW/L9W0JYfXY=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
@@ -350,6 +348,8 @@ github.com/openziti/identity v1.0.45 h1:e2kXoMCPcaUXy+k6GwasuKeGSJwavFEr+eOvUA22
 github.com/openziti/identity v1.0.45/go.mod h1:fQ5bjNu4L1Yqk011xNB1QXvsmBRHnm5d498fi1bhl24=
 github.com/openziti/metrics v1.2.19 h1:gQO3e2lUotRHBdGUXYBPWMIErIyyF5hw0EakwQbJzuM=
 github.com/openziti/metrics v1.2.19/go.mod h1:ovvxTpDBxGLcVLHgPTFFvwT4ur8p4Z76BPUhIE5iwqc=
+github.com/openziti/secretstream v0.1.6 h1:TbpTwW/lc/0kuvaoRNjpiyebxh2Hyx8XSTB269QtHN4=
+github.com/openziti/secretstream v0.1.6/go.mod h1:Gc6fhaDC46UUvwJD4ogbYji22YSdz3fe8bno+BFIpcE=
 github.com/openziti/transport/v2 v2.0.72 h1:yjJtxy3Ckx5I4pDicmxILTdqQB6D18LSg2Zvsde0T00=
 github.com/openziti/transport/v2 v2.0.72/go.mod h1:YuDvm+syZc9nfdhbdPZdtuL1Dfw+bELWhWVYAg73ups=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=

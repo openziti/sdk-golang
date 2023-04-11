@@ -18,7 +18,7 @@ package network
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/netfoundry/secretstream/kx"
+	"github.com/openziti/secretstream/kx"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
