@@ -32,7 +32,7 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		services:   cmap.New[*rest_model.ServiceDetail](),
 		sessions:   cmap.New[*rest_model.SessionDetail](),
 		intercepts: cmap.New[*edge.InterceptV1Config](),
-		ctrlClt: &CtrlClient{
+		CtrlClt: &CtrlClient{
 			PostureCache: posture.NewCache(nil, closeNotify),
 		},
 	}
@@ -179,7 +179,7 @@ func Test_AddressMatch(t *testing.T) {
 		services:   cmap.New[*rest_model.ServiceDetail](),
 		sessions:   cmap.New[*rest_model.SessionDetail](),
 		intercepts: cmap.New[*edge.InterceptV1Config](),
-		ctrlClt: &CtrlClient{
+		CtrlClt: &CtrlClient{
 			PostureCache: posture.NewCache(nil, nil),
 		},
 	}
