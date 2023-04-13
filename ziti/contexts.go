@@ -113,7 +113,7 @@ func NewContextWithOpts(cfg *config.Config, options *Options) (Context, error) {
 		return nil, err
 	}
 
-	newContext.ctrlClt = &CtrlClient{
+	newContext.CtrlClt = &CtrlClient{
 		CaPool: cfg.CaPool,
 	}
 
@@ -134,17 +134,17 @@ func NewContextWithOpts(cfg *config.Config, options *Options) (Context, error) {
 	}
 
 	clientRuntime := httptransport.NewWithClient(ctrlUrl.Host, rest_client_api_client.DefaultBasePath, rest_client_api_client.DefaultSchemes, httpClient)
-	clientRuntime.DefaultAuthentication = newContext.ctrlClt
+	clientRuntime.DefaultAuthentication = newContext.CtrlClt
 
-	newContext.ctrlClt.ZitiEdgeClient = rest_client_api_client.New(clientRuntime, nil)
-	newContext.ctrlClt.Authenticator = cfg.Authenticator
-	newContext.ctrlClt.EdgeClientApiUrl = ztUrl
+	newContext.CtrlClt.ZitiEdgeClient = rest_client_api_client.New(clientRuntime, nil)
+	newContext.CtrlClt.Authenticator = cfg.Authenticator
+	newContext.CtrlClt.EdgeClientApiUrl = ztUrl
 
 	if err != nil {
 		return nil, err
 	}
 
-	newContext.ctrlClt.PostureCache = posture.NewCache(newContext.ctrlClt, newContext.closeNotify)
+	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
 
 	return newContext, nil
 }

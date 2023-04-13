@@ -149,7 +149,7 @@ type ContextImpl struct {
 	options           *Options
 	routerConnections cmap.ConcurrentMap[string, edge.RouterConn]
 
-	ctrlClt *CtrlClient
+	CtrlClt *CtrlClient
 
 	services   cmap.ConcurrentMap[string, *rest_model.ServiceDetail] // name -> Service
 	sessions   cmap.ConcurrentMap[string, *rest_model.SessionDetail] // svcID:type -> Session
@@ -165,11 +165,11 @@ type ContextImpl struct {
 }
 
 func (context *ContextImpl) SetAuthenticator(authenticator rest_util.Authenticator) {
-	context.ctrlClt.Authenticator = authenticator
+	context.CtrlClt.Authenticator = authenticator
 }
 
 func (context *ContextImpl) GetAuthenticator() rest_util.Authenticator {
-	return context.ctrlClt.Authenticator
+	return context.CtrlClt.Authenticator
 }
 
 func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
@@ -275,7 +275,7 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 		}
 	})
 
-	context.ctrlClt.PostureCache.SetServiceQueryMap(serviceQueryMap)
+	context.CtrlClt.PostureCache.SetServiceQueryMap(serviceQueryMap)
 }
 
 func (context *ContextImpl) refreshSessions() {
@@ -313,7 +313,7 @@ func (context *ContextImpl) RefreshServices() error {
 
 	log := pfxlog.Logger()
 	log.Debug("refreshing services")
-	services, err := context.ctrlClt.GetServices()
+	services, err := context.CtrlClt.GetServices()
 	if err != nil {
 		return err
 	}
@@ -326,7 +326,7 @@ func (context *ContextImpl) runSessionRefresh() {
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
 	defer svcUpdateTick.Stop()
 
-	expireTime := time.Time(*context.ctrlClt.GetCurrentApiSession().ExpiresAt)
+	expireTime := time.Time(*context.CtrlClt.GetCurrentApiSession().ExpiresAt)
 	sleepDuration := time.Until(expireTime) - (10 * time.Second)
 
 	var serviceUpdateApiAvailable = true
@@ -337,7 +337,7 @@ func (context *ContextImpl) runSessionRefresh() {
 			return
 
 		case <-time.After(sleepDuration):
-			exp, err := context.ctrlClt.Refresh()
+			exp, err := context.CtrlClt.Refresh()
 			if err != nil {
 				log.Errorf("could not refresh apiSession: %v", err)
 
@@ -354,7 +354,7 @@ func (context *ContextImpl) runSessionRefresh() {
 
 			if serviceUpdateApiAvailable {
 				var err error
-				if checkService, err = context.ctrlClt.IsServiceListUpdateAvailable(); err != nil {
+				if checkService, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 					log.WithError(err).Errorf("failed to check if service list update is available")
 					if _, ok := err.(*current_api_session.ListServiceUpdatesUnauthorized); !ok {
 						serviceUpdateApiAvailable = false
@@ -367,7 +367,7 @@ func (context *ContextImpl) runSessionRefresh() {
 
 			if checkService {
 				log.Debug("refreshing services")
-				services, err := context.ctrlClt.GetServices()
+				services, err := context.CtrlClt.GetServices()
 				if err != nil {
 					log.Errorf("failed to load service updates %+v", err)
 				} else {
@@ -401,13 +401,13 @@ func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, er
 		return nil, errors.Wrap(err, "failed to establish api session")
 	}
 
-	return context.ctrlClt.GetCurrentIdentity()
+	return context.CtrlClt.GetCurrentIdentity()
 }
 
 func (context *ContextImpl) Authenticate() error {
-	if context.ctrlClt.GetCurrentApiSession() != nil {
+	if context.CtrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
-		if _, err := context.ctrlClt.Refresh(); err == nil {
+		if _, err := context.CtrlClt.Refresh(); err == nil {
 			logrus.Info("previous apiSession refreshed")
 			return nil
 		} else {
@@ -421,9 +421,9 @@ func (context *ContextImpl) Authenticate() error {
 	context.intercepts = cmap.New[*edge.InterceptV1Config]()
 
 	envInfo, sdkInfo := sdkinfo.GetSdkInfo()
-	context.ctrlClt.SetInfo(envInfo, sdkInfo)
+	context.CtrlClt.SetInfo(envInfo, sdkInfo)
 
-	apiSession, err := context.ctrlClt.Authenticate()
+	apiSession, err := context.CtrlClt.Authenticate()
 
 	if err != nil {
 		return err
@@ -452,13 +452,13 @@ func (context *ContextImpl) Authenticate() error {
 		go context.runSessionRefresh()
 
 		metricsTags := map[string]string{
-			"srcId": context.ctrlClt.GetCurrentApiSession().Identity.ID,
+			"srcId": context.CtrlClt.GetCurrentApiSession().Identity.ID,
 		}
 
-		context.metrics = metrics.NewRegistry(context.ctrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
+		context.metrics = metrics.NewRegistry(context.CtrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
 
 		// get services
-		if services, err := context.ctrlClt.GetServices(); err != nil {
+		if services, err := context.CtrlClt.GetServices(); err != nil {
 			doOnceErr = err
 		} else {
 			context.processServiceUpdates(services)
@@ -480,7 +480,7 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 			return fmt.Errorf("no handler registered for: %v", authQuery.Provider)
 		}
 
-		return handler(authQuery, context.ctrlClt.AuthenticateMFA)
+		return handler(authQuery, context.CtrlClt.AuthenticateMFA)
 	}
 
 	return fmt.Errorf("unsupported MFA provider: %v", authQuery.Provider)
@@ -510,9 +510,9 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 		return nil, errors.Errorf("service '%s' not found", serviceName)
 	}
 
-	context.ctrlClt.PostureCache.AddActiveService(*svc.ID)
+	context.CtrlClt.PostureCache.AddActiveService(*svc.ID)
 
-	edgeDialOptions.CallerId = context.ctrlClt.GetCurrentApiSession().Identity.Name
+	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().Identity.Name
 
 	session, err := context.GetSession(*svc.ID)
 	if err != nil {
@@ -633,7 +633,7 @@ func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, sessi
 }
 
 func (context *ContextImpl) ensureApiSession() error {
-	if context.ctrlClt.GetCurrentApiSession() == nil {
+	if context.CtrlClt.GetCurrentApiSession() == nil {
 		if err := context.Authenticate(); err != nil {
 			return fmt.Errorf("no apiSession, authentication attempt failed: %v", err)
 		}
@@ -772,15 +772,15 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Debugf("connection to edge router using api session token %v", context.ctrlClt.GetCurrentApiSession().Token)
-	id, err := context.ctrlClt.GetIdentity()
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", context.CtrlClt.GetCurrentApiSession().Token)
+	id, err := context.CtrlClt.GetIdentity()
 
 	if err != nil {
 		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: err})
 	}
 
 	dialer := channel.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(*context.ctrlClt.GetCurrentApiSession().Token),
+		edge.SessionTokenHeader: []byte(*context.CtrlClt.GetCurrentApiSession().Token),
 	})
 
 	start := time.Now().UnixNano()
@@ -894,7 +894,7 @@ func (context *ContextImpl) GetServiceTerminators(serviceName string, offset, li
 	if !found {
 		return nil, 0, errors.Errorf("did not find service named %v", serviceName)
 	}
-	return context.ctrlClt.GetServiceTerminators(svc, offset, limit)
+	return context.CtrlClt.GetServiceTerminators(svc, offset, limit)
 }
 
 func (context *ContextImpl) GetSession(serviceId string) (*rest_model.SessionDetail, error) {
@@ -915,8 +915,8 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 		}
 	}
 
-	context.ctrlClt.PostureCache.AddActiveService(serviceId)
-	session, err := context.ctrlClt.CreateSession(serviceId, sessionType)
+	context.CtrlClt.PostureCache.AddActiveService(serviceId)
+	session, err := context.CtrlClt.CreateSession(serviceId, sessionType)
 
 	if err != nil {
 		return nil, err
@@ -942,7 +942,7 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	}
 
 	if session != nil {
-		context.ctrlClt.PostureCache.AddActiveService(*service.ID)
+		context.CtrlClt.PostureCache.AddActiveService(*service.ID)
 		context.cacheSession("create", session)
 	}
 
@@ -972,7 +972,7 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 }
 
 func (context *ContextImpl) refreshSession(id string) (*rest_model.SessionDetail, error) {
-	session, err := context.ctrlClt.GetSession(id)
+	session, err := context.CtrlClt.GetSession(id)
 	if err != nil {
 		return nil, err
 	}
@@ -1027,14 +1027,14 @@ func (context *ContextImpl) Metrics() metrics.Registry {
 }
 
 func (context *ContextImpl) EnrollZitiMfa() (*rest_model.DetailMfa, error) {
-	return context.ctrlClt.EnrollMfa()
+	return context.CtrlClt.EnrollMfa()
 }
 
 func (context *ContextImpl) VerifyZitiMfa(code string) error {
-	return context.ctrlClt.VerifyMfa(code)
+	return context.CtrlClt.VerifyMfa(code)
 }
 func (context *ContextImpl) RemoveZitiMfa(code string) error {
-	return context.ctrlClt.RemoveMfa(code)
+	return context.CtrlClt.RemoveMfa(code)
 }
 
 func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) *listenerManager {
@@ -1077,11 +1077,11 @@ func (mgr *listenerManager) run() {
 	mgr.makeMoreListeners()
 
 	if mgr.options.BindUsingEdgeIdentity {
-		mgr.options.Identity = mgr.context.ctrlClt.GetCurrentApiSession().Identity.Name
+		mgr.options.Identity = mgr.context.CtrlClt.GetCurrentApiSession().Identity.Name
 	}
 
 	if mgr.options.Identity != "" {
-		id, err := mgr.context.ctrlClt.GetIdentity()
+		id, err := mgr.context.CtrlClt.GetIdentity()
 
 		if err != nil {
 			panic("could not get identity during run")
