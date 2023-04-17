@@ -4,14 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"net"
 	"os"
 	"strings"
 )
 
-func Server(zitiCfg *config.Config, serviceName string) {
-	ctx, err := ziti.NewContextWithConfig(zitiCfg)
+func Server(zitiCfg *ziti.Config, serviceName string) {
+	ctx, err := ziti.NewContext(zitiCfg)
 
 	if err != nil {
 		panic(err)

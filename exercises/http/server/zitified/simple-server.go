@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"net"
 	"net/http"
 	"os"
@@ -32,14 +31,14 @@ func add(w http.ResponseWriter, req *http.Request) {
 }
 
 func createZitiListener() net.Listener {
-	cfg, err := config.NewFromFile(os.Args[1])
+	cfg, err := ziti.NewConfigFromFile(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
 	options := ziti.ListenOptions{
 		ConnectTimeout: 5 * time.Minute,
 	}
-	ctx, err := ziti.NewContextWithConfig(cfg)
+	ctx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

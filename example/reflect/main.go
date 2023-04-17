@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/examples/reflect/cmd"
-	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/openziti/sdk-golang/ziti"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -54,9 +54,9 @@ func main() {
 	_ = rootCmd.Execute()
 }
 
-func getConfig() (zitiCfg *config.Config) {
+func getConfig() (zitiCfg *ziti.Config) {
 	identityJson := rootCmd.Flag("identity").Value.String()
-	zitiCfg, err := config.NewFromFile(identityJson)
+	zitiCfg, err := ziti.NewConfigFromFile(identityJson)
 	if err != nil {
 		log.Fatalf("failed to load ziti configuration file: %v", err)
 	}

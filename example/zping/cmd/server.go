@@ -1,25 +1,25 @@
 /*
-	Copyright 2019 NetFoundry Inc.
+Copyright 2019 NetFoundry Inc.
 
-	Licensed under the Apache License, Version 2.0 (the "License");
-	you may not use this file except in compliance with the License.
-	You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-	https://www.apache.org/licenses/LICENSE-2.0
+https://www.apache.org/licenses/LICENSE-2.0
 
-	Unless required by applicable law or agreed to in writing, software
-	distributed under the License is distributed on an "AS IS" BASIS,
-	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-	See the License for the specific language governing permissions and
-	limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 */
+
 package cmd
 
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
 	"net"
@@ -70,12 +70,12 @@ var serverCmd = &cobra.Command{
 		var listener edge.Listener
 		if len(cflag) > 0 {
 			file := cflag
-			configFile, err := config.NewFromFile(file)
+			configFile, err := ziti.NewConfigFromFile(file)
 			if err != nil {
 				logrus.WithError(err).Error("Error loading config file")
 				os.Exit(1)
 			}
-			context, err := ziti.NewContextWithConfig(configFile)
+			context, err := ziti.NewContext(configFile)
 
 			if err != nil {
 				panic(err)
@@ -93,23 +93,7 @@ var serverCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		} else {
-			context, err := ziti.NewContext()
-
-			if err != nil {
-				panic(err)
-			}
-
-			identity, err := context.GetCurrentIdentity()
-			if err != nil {
-				logrus.WithError(err).Error("Error resolving local Identity")
-				os.Exit(1)
-			}
-			fmt.Printf("\n%+v now serving\n\n", identity.Name)
-			listener, err = context.ListenWithOptions(service, &options)
-			if err != nil {
-				logrus.WithError(err).Error("Error Binding Service")
-				os.Exit(1)
-			}
+			panic("a config file is required")
 		}
 
 		for {

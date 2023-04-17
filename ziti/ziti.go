@@ -19,6 +19,7 @@ package ziti
 import (
 	"encoding/json"
 	"fmt"
+	apis "github.com/openziti/sdk-golang/edge-apis"
 	"math"
 	"net"
 	"reflect"
@@ -35,13 +36,11 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	"github.com/openziti/metrics"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/network"
-	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"github.com/openziti/sdk-golang/ziti/signing"
 	"github.com/openziti/transport/v2"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -68,15 +67,15 @@ const (
 // services.
 type Context interface {
 	// Authenticate attempts to use credentials configured on the Context to perform authentication. The authentication
-	// implementation used is configured via the Authenticator field on an Option struct provided during Context
+	// implementation used is configured via the Credentials field on an Option struct provided during Context
 	// creation.
 	Authenticate() error
 
-	// SetAuthenticator sets the current Authenticator to use for subsequent authentication requests
-	SetAuthenticator(authenticator rest_util.Authenticator)
+	// SetCredentials sets the credentials used to authenticate against the Edge Client API.
+	SetCredentials(authenticator apis.Credentials)
 
-	// GetAuthenticator returns the currently set Authenticator used to authenticate requests
-	GetAuthenticator() rest_util.Authenticator
+	// GetCredentials returns the currently set credentials used to authenticate against the Edge Client API.
+	GetCredentials() apis.Credentials
 
 	// GetCurrentIdentity returns the Edge API details of the currently authenticated identity.
 	GetCurrentIdentity() (*rest_model.IdentityDetail, error)
@@ -164,12 +163,12 @@ type ContextImpl struct {
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error
 }
 
-func (context *ContextImpl) SetAuthenticator(authenticator rest_util.Authenticator) {
-	context.CtrlClt.Authenticator = authenticator
+func (context *ContextImpl) SetCredentials(credentials apis.Credentials) {
+	context.CtrlClt.Credentials = credentials
 }
 
-func (context *ContextImpl) GetAuthenticator() rest_util.Authenticator {
-	return context.CtrlClt.Authenticator
+func (context *ContextImpl) GetCredentials() apis.Credentials {
+	return context.CtrlClt.Credentials
 }
 
 func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
@@ -420,9 +419,6 @@ func (context *ContextImpl) Authenticate() error {
 	context.sessions = cmap.New[*rest_model.SessionDetail]()
 	context.intercepts = cmap.New[*edge.InterceptV1Config]()
 
-	envInfo, sdkInfo := sdkinfo.GetSdkInfo()
-	context.CtrlClt.SetInfo(envInfo, sdkInfo)
-
 	apiSession, err := context.CtrlClt.Authenticate()
 
 	if err != nil {
@@ -603,13 +599,13 @@ func (context *ContextImpl) dialServiceFromAddr(service, network, host string, p
 }
 
 func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, error) {
-	host, portstr, err := net.SplitHostPort(addr)
+	host, portStr, err := net.SplitHostPort(addr)
 
 	if err != nil {
 		return nil, err
 	}
 
-	port, err := strconv.Atoi(portstr)
+	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		return nil, err
 	}
@@ -1252,7 +1248,7 @@ func (mgr *listenerManager) refreshSession() {
 		}
 	}
 
-	// token only returned on created, so if we refreshed the session (as opposed to creating a new one) we have to backfill it on lookups
+	// token only returned on created, so if we refreshed the session (as opposed to creating a new one) we have to back-fill it on lookups
 	if session != nil {
 		session.Token = mgr.session.Token
 		mgr.session = session

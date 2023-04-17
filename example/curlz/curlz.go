@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"io"
 	"net"
 	"net/http"
@@ -39,12 +38,12 @@ func (dc *ZitiDialContext) Dial(_ context.Context, _ string, addr string) (net.C
 
 func newZitiClient() *http.Client {
 	// Get identity config
-	cfg, err := config.NewFromFile(os.Args[2])
+	cfg, err := ziti.NewConfigFromFile(os.Args[2])
 	if err != nil {
 		panic(err)
 	}
 
-	ctx, err := ziti.NewContextWithConfig(cfg)
+	ctx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

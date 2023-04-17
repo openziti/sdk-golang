@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"google.golang.org/grpc"
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 	"log"
@@ -28,12 +27,12 @@ func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloRepl
 
 func main() {
 	flag.Parse()
-	cfg, err := config.NewFromFile(*identity)
+	cfg, err := ziti.NewConfigFromFile(*identity)
 	if err != nil {
 		log.Fatalf("failed to load ziti identity{%v}: %v", identity, err)
 	}
 
-	ztx, err := ziti.NewContextWithConfig(cfg)
+	ztx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

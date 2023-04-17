@@ -4,9 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/Jeffail/gabs"
-	"github.com/openziti/edge-api/rest_util"
+	edge_apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/resty.v1"
@@ -24,20 +23,19 @@ func main() {
 		panic(err)
 	}
 
-	auth := rest_util.NewAuthenticatorAuthHeader("Bearer " + jwtToken)
-
-	caPool, err := rest_util.GetControllerWellKnownCaPool("https://localhost:1280")
+	caPool, err := ziti.GetControllerWellKnownCaPool("https://localhost:1280")
 
 	if err != nil {
 		panic(err)
 	}
 
-	cfg := &config.Config{
-		ZtAPI:         "https://localhost:1280/edge/client/v1",
-		Authenticator: auth,
-		CaPool:        caPool,
+	credentials := edge_apis.NewJwtCredentials(jwtToken, caPool)
+
+	cfg := &ziti.Config{
+		ZtAPI:       "https://localhost:1280/edge/client/v1",
+		Credentials: credentials,
 	}
-	ctx, err := ziti.NewContextWithConfig(cfg)
+	ctx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

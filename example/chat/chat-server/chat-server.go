@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"net"
 	"os"
@@ -123,7 +122,7 @@ func main() {
 	}
 
 	// Get identity config
-	cfg, err := config.NewFromFile(os.Args[1])
+	cfg, err := ziti.NewConfigFromFile(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
@@ -139,7 +138,7 @@ func main() {
 		MaxConnections: 3,
 	}
 	logger.Infof("binding service %v\n", serviceName)
-	ctx, err := ziti.NewContextWithConfig(cfg)
+	ctx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)
