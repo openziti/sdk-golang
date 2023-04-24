@@ -29,9 +29,12 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_client_api_client/well_known"
+	edge_apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/ziti"
 	"io"
 	"net/http"
 	"net/url"
@@ -47,17 +50,16 @@ import (
 	nfx509 "github.com/openziti/foundation/v2/x509"
 	"github.com/openziti/identity"
 	"github.com/openziti/identity/certtools"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/pkg/errors"
 )
 
 type EnrollmentFlags struct {
-	Token         *config.EnrollmentClaims
+	Token         *ziti.EnrollmentClaims
 	JwtToken      *jwt.Token
 	JwtString     string
 	CertFile      string
 	KeyFile       string
-	KeyAlg        config.KeyAlgVar
+	KeyAlg        ziti.KeyAlgVar
 	IDName        string
 	AdditionalCAs string
 	Username      string
@@ -81,11 +83,11 @@ func (enFlags *EnrollmentFlags) GetCertPool() (*x509.CertPool, []*x509.Certifica
 	return pool, certs
 }
 
-func ParseToken(tokenStr string) (*config.EnrollmentClaims, *jwt.Token, error) {
+func ParseToken(tokenStr string) (*ziti.EnrollmentClaims, *jwt.Token, error) {
 	parser := &jwt.Parser{
 		SkipClaimsValidation: false,
 	}
-	enrollmentClaims := &config.EnrollmentClaims{}
+	enrollmentClaims := &ziti.EnrollmentClaims{}
 	tokenStr = strings.TrimSpace(tokenStr)
 	jwtToken, err := parser.ParseWithClaims(tokenStr, enrollmentClaims, ValidateToken)
 
@@ -101,7 +103,7 @@ func ValidateToken(token *jwt.Token) (interface{}, error) {
 		return nil, errors.New("could not validate token, token is nil")
 	}
 
-	claims, ok := token.Claims.(*config.EnrollmentClaims)
+	claims, ok := token.Claims.(*ziti.EnrollmentClaims)
 
 	if !ok {
 		return nil, errors.New("could not validate token, token is not EnrollmentClaims")
@@ -162,11 +164,11 @@ func EnrollUpdb(enFlags EnrollmentFlags) error {
 	return nil
 }
 
-func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
+func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 	var key crypto.PrivateKey
 	var err error
 
-	cfg := &config.Config{
+	cfg := &ziti.Config{
 		ZtAPI: enFlags.Token.Issuer,
 	}
 
@@ -259,6 +261,8 @@ func Enroll(enFlags EnrollmentFlags) (*config.Config, error) {
 		cfg.ID.CA = "pem:" + buf.String()
 	}
 
+	cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+
 	return cfg, nil
 }
 
@@ -285,7 +289,7 @@ func useSystemCasIfEmpty(caPool *x509.CertPool) *x509.CertPool {
 	}
 }
 
-func enrollUpdb(username, password string, token *config.EnrollmentClaims, caPool *x509.CertPool) error {
+func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool *x509.CertPool) error {
 	caPool = useSystemCasIfEmpty(caPool)
 	client := http.Client{
 		Transport: &http.Transport{
@@ -322,7 +326,7 @@ func enrollUpdb(username, password string, token *config.EnrollmentClaims, caPoo
 	}
 }
 
-func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.CertPool) error {
+func enrollOTT(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertPool) error {
 
 	pk, err := identity.LoadKey(cfg.ID.Key)
 	if err != nil {
@@ -421,7 +425,7 @@ func enrollOTT(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.
 	return errors.Errorf("enroll error: %s: unrecognized response: %s", resp.Status, body)
 }
 
-func enrollCA(token *config.EnrollmentClaims, cfg *config.Config, caPool *x509.CertPool) error {
+func enrollCA(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertPool) error {
 
 	if id, err := identity.LoadIdentity(cfg.ID); err != nil {
 		return err
@@ -457,7 +461,7 @@ type autoEnrollInput struct {
 	Name string `json:"name"`
 }
 
-func enrollCAAuto(enFlags EnrollmentFlags, cfg *config.Config, caPool *x509.CertPool) error {
+func enrollCAAuto(enFlags EnrollmentFlags, cfg *ziti.Config, caPool *x509.CertPool) error {
 	if id, err := identity.LoadIdentity(cfg.ID); err != nil {
 		return err
 	} else {
@@ -532,7 +536,7 @@ func FetchServerCert(urlRoot string) (*x509.Certificate, error) {
 	return resp.TLS.PeerCertificates[0], nil
 }
 
-// FetchCertificates will accecss the server insecurely to pull down the latest CA to be used to communicate with the
+// FetchCertificates will access the server insecurely to pull down the latest CA to be used to communicate with the
 // server adding certificates to the provided pool
 func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certificate {
 	ctrlUrl, err := url.Parse(urlRoot)
@@ -555,9 +559,22 @@ func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certif
 	}
 
 	clientRuntime := httptransport.NewWithClient(ctrlUrl.Host, path, rest_client_api_client.DefaultSchemes, httpClient)
+	clientRuntime.Consumers["application/pkcs7-mime"] = runtime.ConsumerFunc(func(reader io.Reader, i interface{}) error {
+		out := i.(*string)
+
+		buff, err := io.ReadAll(reader)
+
+		if err != nil {
+			return err
+		}
+
+		*out = string(buff)
+
+		return nil
+	})
 	client := rest_client_api_client.New(clientRuntime, nil)
 
-	resp, err := client.WellKnown.ListWellKnownCas(well_known.NewListWellKnownCasParams(), nil, nil)
+	resp, err := client.WellKnown.ListWellKnownCas(well_known.NewListWellKnownCasParams())
 
 	if err != nil {
 		return nil

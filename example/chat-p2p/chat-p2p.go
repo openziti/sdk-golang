@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -175,18 +174,13 @@ func (self *chatPeerToPeer) run(*cobra.Command, []string) {
 
 	logger := pfxlog.Logger()
 	if self.cfg.configFile == "" {
-		var err error
-		self.context, err = ziti.NewContext()
-
-		if err != nil {
-			panic(err)
-		}
+		panic("a config file is required")
 	} else {
-		cfg, err := config.NewFromFile(self.cfg.configFile)
+		cfg, err := ziti.NewConfigFromFile(self.cfg.configFile)
 		if err != nil {
 			panic(err)
 		}
-		self.context, err = ziti.NewContextWithConfig(cfg)
+		self.context, err = ziti.NewContext(cfg)
 
 		if err != nil {
 			panic(err)

@@ -14,7 +14,7 @@
 	limitations under the License.
 */
 
-package config
+package ziti
 
 import (
 	"crypto/x509"
@@ -33,12 +33,6 @@ var EnrollUrl, _ = url.Parse("/edge/client/v1/enroll")
 type Versions struct {
 	Api           string `json:"api"`
 	EnrollmentApi string `json:"enrollmentApi"`
-}
-
-type Identity struct {
-	Type string `json:"type"`
-	Id   string `json:"id"`
-	Name string `json:"name"`
 }
 
 type EnrollmentClaims struct {
@@ -106,6 +100,6 @@ func isZeroValue(x interface{}) bool {
 	return x == reflect.Zero(reflect.TypeOf(x)).Interface()
 }
 
-func (t EnrollmentClaims) Valid() error {
+func (t *EnrollmentClaims) Valid() error {
 	return t.StandardClaims.Valid()
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"io"
@@ -79,12 +78,12 @@ func runFunc(_ *cobra.Command, args []string) {
 	service := args[0]
 
 	// Get identity config
-	cfg, err := config.NewFromFile(identityFile)
+	cfg, err := ziti.NewConfigFromFile(identityFile)
 	if err != nil {
 		panic(err)
 	}
 
-	context, err := ziti.NewContextWithConfig(cfg)
+	context, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"log"
 	"net"
 	"time"
@@ -27,12 +26,12 @@ var (
 
 func main() {
 	flag.Parse()
-	cfg, err := config.NewFromFile(*identity)
+	cfg, err := ziti.NewConfigFromFile(*identity)
 	if err != nil {
 		log.Fatalf("failed to load config err=%v", err)
 	}
 
-	ztx, err := ziti.NewContextWithConfig(cfg)
+	ztx, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

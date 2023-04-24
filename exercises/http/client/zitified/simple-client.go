@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"io"
 	"net"
 	"net/http"
@@ -41,12 +40,12 @@ func Dial(_ context.Context, _ string, addr string) (net.Conn, error) {
 	return zitiContext.Dial(service)
 }
 func createZitifiedHttpClient(idFile string) http.Client {
-	cfg, err := config.NewFromFile(idFile)
+	cfg, err := ziti.NewConfigFromFile(idFile)
 	if err != nil {
 		panic(err)
 	}
 
-	zitiContext, err = ziti.NewContextWithConfig(cfg)
+	zitiContext, err = ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package cmd
 
 import (
@@ -28,7 +29,6 @@ import (
 	"time"
 
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -166,22 +166,18 @@ in server mode`,
 		}
 		if len(cflag) > 0 {
 			file := cflag
-			configFile, err := config.NewFromFile(file)
+			configFile, err := ziti.NewConfigFromFile(file)
 			if err != nil {
 				logrus.WithError(err).Error("Error loading config file")
 				os.Exit(1)
 			}
 
-			context, err = ziti.NewContextWithConfig(configFile)
+			context, err = ziti.NewContext(configFile)
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			context, err = ziti.NewContext()
-
-			if err != nil {
-				panic(err)
-			}
+			panic("a config file is required")
 		}
 		c := make(chan os.Signal)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)

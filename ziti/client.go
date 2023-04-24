@@ -9,11 +9,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	"github.com/openziti/edge-api/rest_client_api_client/current_identity"
@@ -21,54 +19,38 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	"github.com/openziti/edge-api/rest_client_api_client/session"
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/edge-api/rest_util"
 	nfPem "github.com/openziti/foundation/v2/pem"
 	"github.com/openziti/identity"
+	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
-	"net/url"
 	"time"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
 type CtrlClient struct {
-	*rest_client_api_client.ZitiEdgeClient
-	Authenticator rest_util.Authenticator
-
-	ApiSession *rest_model.CurrentAPISessionDetail
+	*apis.ClientApiClient
+	Credentials apis.Credentials
 
 	lastServiceUpdate  *strfmt.DateTime
 	lastServiceRefresh *strfmt.DateTime
 
-	EdgeClientApiUrl *url.URL
-
-	ApiSessionIdentity          identity.Identity
 	ApiSessionCertificateDetail rest_model.CurrentAPISessionCertificateDetail
 	ApiSessionCsr               x509.CertificateRequest
 	ApiSessionCertificate       *x509.Certificate
 	ApiSessionPrivateKey        *ecdsa.PrivateKey
-	CaPool                      *x509.CertPool
 	ApiSessionCertInstance      string
 
 	PostureCache *posture.Cache
 }
 
-// AuthenticateRequest allows a CtrlClient to act as a ClientAuthInfoWriter, authenticating go-swagger generated client requests.
-func (client *CtrlClient) AuthenticateRequest(request runtime.ClientRequest, registry strfmt.Registry) error {
-	if client.ApiSession != nil {
-		return request.SetHeaderParam("zt-session", *client.ApiSession.Token)
-	}
-
-	return nil
-}
-
 // GetCurrentApiSession returns the current cached ApiSession or nil
-func (client *CtrlClient) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
-	return client.ApiSession
+func (self *CtrlClient) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
+	return self.ClientApiClient.GetCurrentApiSession()
 }
 
 // Refresh will contact the controller extending the current ApiSession
-func (client *CtrlClient) Refresh() (*time.Time, error) {
-	resp, err := client.CurrentAPISession.GetCurrentAPISession(&current_api_session.GetCurrentAPISessionParams{}, nil)
+func (self *CtrlClient) Refresh() (*time.Time, error) {
+	resp, err := self.API.CurrentAPISession.GetCurrentAPISession(&current_api_session.GetCurrentAPISessionParams{}, nil)
 
 	if err != nil {
 		return nil, err
@@ -80,48 +62,44 @@ func (client *CtrlClient) Refresh() (*time.Time, error) {
 // IsServiceListUpdateAvailable will contact the controller to determine if a new set of services are available. Service
 // updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
 // checks.
-func (client *CtrlClient) IsServiceListUpdateAvailable() (bool, error) {
-	if client.lastServiceUpdate == nil {
+func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, error) {
+	if self.lastServiceUpdate == nil {
 		return true, nil
 	}
 
-	resp, err := client.CurrentAPISession.ListServiceUpdates(&current_api_session.ListServiceUpdatesParams{}, nil)
+	resp, err := self.API.CurrentAPISession.ListServiceUpdates(&current_api_session.ListServiceUpdatesParams{}, nil)
 
 	if err != nil {
 		return false, err
 	}
 
-	return resp.Payload.Data.LastChangeAt.Equal(*client.lastServiceUpdate), nil
-}
-
-// SetInfo is used to set the environment and SDK information that is submitted during authentication requests.
-// Environment information includes OS level information while SDK information includes application and build
-// information.
-func (client *CtrlClient) SetInfo(envInfo *rest_model.EnvInfo, sdkInfo *rest_model.SdkInfo) {
-	client.Authenticator.SetInfo(envInfo, sdkInfo)
+	return resp.Payload.Data.LastChangeAt.Equal(*self.lastServiceUpdate), nil
 }
 
 // Authenticate attempts to use authenticate, overwriting any existing ApiSession.
-func (client *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, error) {
+func (self *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, error) {
 	var err error
 
-	client.ApiSessionCertificate = nil
-	client.ApiSession, err = client.Authenticator.Authenticate(client.EdgeClientApiUrl)
+	self.ApiSessionCertificate = nil
 
-	if client.ApiSession != nil {
-		_, err := client.GetIdentity()
-		if err != nil {
-			return nil, err
-		}
+	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials)
+
+	if err != nil {
+		return nil, err
 	}
 
-	return client.ApiSession, err
+	_, err = self.GetIdentity()
+	if err != nil {
+		return nil, err
+	}
+
+	return apiSession, err
 }
 
 // AuthenticateMFA handles MFA authentication queries may be provided. AuthenticateMFA allows
 // the current identity for their current api session to attempt to pass MFA authentication.
-func (client *CtrlClient) AuthenticateMFA(code string) error {
-	_, err := client.ZitiEdgeClient.Authentication.AuthenticateMfa(&authentication.AuthenticateMfaParams{
+func (self *CtrlClient) AuthenticateMFA(code string) error {
+	_, err := self.API.Authentication.AuthenticateMfa(&authentication.AuthenticateMfaParams{
 		MfaAuth: &rest_model.MfaCode{
 			Code: &code,
 		},
@@ -136,10 +114,10 @@ func (client *CtrlClient) AuthenticateMFA(code string) error {
 
 // SendPostureResponse creates a posture response (some state data the controller has requested) for services. This
 // information is used to determine runtime authorization access to services via posture checks.
-func (client *CtrlClient) SendPostureResponse(response rest_model.PostureResponseCreate) error {
+func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseParams()
 	params.PostureResponse = response
-	_, err := client.PostureChecks.CreatePostureResponse(params, nil)
+	_, err := self.API.PostureChecks.CreatePostureResponse(params, nil)
 
 	if err != nil {
 		return err
@@ -149,10 +127,10 @@ func (client *CtrlClient) SendPostureResponse(response rest_model.PostureRespons
 
 // SendPostureResponseBulk provides the same functionality as SendPostureResponse but allows multiple responses
 // to be sent in a single request.
-func (client *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
+func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
-	_, err := client.PostureChecks.CreatePostureResponseBulk(params, nil)
+	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, nil)
 
 	if err != nil {
 		return err
@@ -161,9 +139,9 @@ func (client *CtrlClient) SendPostureResponseBulk(responses []rest_model.Posture
 }
 
 // GetCurrentIdentity returns the rest_model.IdentityDetail for the currently authenticated ApiSession.
-func (client *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
+func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
 	params := current_identity.NewGetCurrentIdentityParams()
-	resp, err := client.CurrentIdentity.GetCurrentIdentity(params, nil)
+	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, nil)
 
 	if err != nil {
 		return nil, err
@@ -173,10 +151,10 @@ func (client *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, erro
 }
 
 // GetSession returns the full rest_model.SessionDetail for a specific id
-func (client *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
+func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
 	params := session.NewDetailSessionParams()
 	params.ID = id
-	resp, err := client.Session.DetailSession(params, nil)
+	resp, err := self.API.Session.DetailSession(params, nil)
 
 	if err != nil {
 		return nil, err
@@ -187,31 +165,26 @@ func (client *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, erro
 
 // GetIdentity returns the identity.Identity used to facilitate authentication. Each identity.Identity instance
 // may provide authentication material in the form of x509 certificates and private keys and/or trusted CA pools.
-func (client *CtrlClient) GetIdentity() (identity.Identity, error) {
-	if client.ApiSessionIdentity != nil {
-		return client.ApiSessionIdentity, nil
+func (self *CtrlClient) GetIdentity() (identity.Identity, error) {
+	if idProvider, ok := self.Credentials.(apis.IdentityProvider); ok {
+		return idProvider.GetIdentity(), nil
 	}
 
-	if certProvider, ok := client.Authenticator.(rest_util.CertProvider); ok {
-		clientConfig := certProvider.ClientTLSConfig()
-		return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{clientConfig.Certificates[0].Leaf}, clientConfig.Certificates[0].PrivateKey, certProvider.CA()), nil
-	}
-
-	if client.ApiSessionCertificate == nil {
-		err := client.EnsureApiSessionCertificate()
+	if self.ApiSessionCertificate == nil {
+		err := self.EnsureApiSessionCertificate()
 
 		if err != nil {
 			return nil, fmt.Errorf("could not ensure an API Session certificate is available: %v", err)
 		}
 	}
 
-	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{client.ApiSessionCertificate}, client.ApiSessionPrivateKey, client.CaPool), nil
+	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{self.ApiSessionCertificate}, self.ApiSessionPrivateKey, self.HttpTransport.TLSClientConfig.RootCAs), nil
 }
 
 // EnsureApiSessionCertificate will create an ApiSessionCertificate if one does not already exist.
-func (client *CtrlClient) EnsureApiSessionCertificate() error {
-	if client.ApiSessionCertificate == nil {
-		return client.NewApiSessionCertificate()
+func (self *CtrlClient) EnsureApiSessionCertificate() error {
+	if self.ApiSessionCertificate == nil {
+		return self.NewApiSessionCertificate()
 	}
 
 	return nil
@@ -220,14 +193,14 @@ func (client *CtrlClient) EnsureApiSessionCertificate() error {
 // NewApiSessionCertificate will create a new ephemeral private key used to generate an ephemeral certificate
 // that may be used with the current ApiSession. The generated certificate and private key are scoped to the
 // ApiSession used to create it.
-func (client *CtrlClient) NewApiSessionCertificate() error {
-	if client.ApiSessionCertInstance == "" {
-		client.ApiSessionCertInstance = uuid.NewString()
+func (self *CtrlClient) NewApiSessionCertificate() error {
+	if self.ApiSessionCertInstance == "" {
+		self.ApiSessionCertInstance = uuid.NewString()
 	}
 
-	if client.ApiSessionPrivateKey == nil {
+	if self.ApiSessionPrivateKey == nil {
 		var err error
-		client.ApiSessionPrivateKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		self.ApiSessionPrivateKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 		if err != nil {
 			return fmt.Errorf("could not generate private key for api session certificate: %v", err)
@@ -238,11 +211,11 @@ func (client *CtrlClient) NewApiSessionCertificate() error {
 		Subject: pkix.Name{
 			Organization:       []string{"Ziti SDK"},
 			OrganizationalUnit: []string{"golang"},
-			CommonName:         "golang-sdk-" + client.ApiSessionCertInstance + "-" + uuid.NewString(),
+			CommonName:         "golang-sdk-" + self.ApiSessionCertInstance + "-" + uuid.NewString(),
 		},
 	}
 
-	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, client.ApiSessionPrivateKey)
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, self.ApiSessionPrivateKey)
 	if err != nil {
 		panic(err)
 	}
@@ -258,7 +231,7 @@ func (client *CtrlClient) NewApiSessionCertificate() error {
 		Csr: &csrPemString,
 	}
 
-	resp, err := client.ZitiEdgeClient.CurrentAPISession.CreateCurrentAPISessionCertificate(params, nil)
+	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, nil)
 
 	if err != nil {
 		return err
@@ -272,14 +245,14 @@ func (client *CtrlClient) NewApiSessionCertificate() error {
 
 	pfxlog.Logger().Infof("new API Session Certificate: %x", sha1.Sum(certs[0].Raw))
 
-	client.ApiSessionCertificate = certs[0]
+	self.ApiSessionCertificate = certs[0]
 
 	return nil
 }
 
 // GetServices will fetch the list of services that the identity of the current ApiSession has access to for dialing
 // or binding.
-func (client *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
+func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	params := service.NewListServicesParams()
 
 	pageOffset := int64(0)
@@ -291,7 +264,7 @@ func (client *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 		params.Limit = &pageLimit
 		params.Offset = &pageOffset
 
-		resp, err := client.ZitiEdgeClient.Service.ListServices(params, nil)
+		resp, err := self.API.Service.ListServices(params, nil)
 
 		if err != nil {
 			return nil, err
@@ -308,14 +281,14 @@ func (client *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 			break
 		}
 
-		client.lastServiceRefresh = client.lastServiceUpdate
+		self.lastServiceRefresh = self.lastServiceUpdate
 	}
 
 	return services, nil
 }
 
 // GetServiceTerminators returns the client terminator details for a specific service.
-func (client *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
+func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
 	params := service.NewListServiceTerminatorsParams()
 
 	pageOffset := int64(offset)
@@ -326,7 +299,7 @@ func (client *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, o
 
 	params.ID = *svc.ID
 
-	resp, err := client.ZitiEdgeClient.Service.ListServiceTerminators(params, nil)
+	resp, err := self.API.Service.ListServiceTerminators(params, nil)
 
 	if err != nil {
 		return nil, 0, err
@@ -336,14 +309,14 @@ func (client *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, o
 }
 
 // CreateSession will attempt to obtain a session token for a specific service id and type.
-func (client *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest_model.SessionDetail, error) {
+func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	params := session.NewCreateSessionParams()
 	params.Session = &rest_model.SessionCreate{
 		ServiceID: id,
 		Type:      rest_model.DialBind(sessionType),
 	}
 
-	resp, err := client.ZitiEdgeClient.Session.CreateSession(params, nil)
+	resp, err := self.API.Session.CreateSession(params, nil)
 
 	if err != nil {
 		return nil, err
@@ -354,17 +327,17 @@ func (client *CtrlClient) CreateSession(id string, sessionType SessionType) (*re
 }
 
 // EnrollMfa will attempt to start TOTP MFA enrollment for the currently authenticated identity.
-func (client *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
+func (self *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	enrollMfaParams := current_identity.NewEnrollMfaParams()
 
-	_, enrollMfaErr := client.ZitiEdgeClient.CurrentIdentity.EnrollMfa(enrollMfaParams, nil)
+	_, enrollMfaErr := self.API.CurrentIdentity.EnrollMfa(enrollMfaParams, nil)
 
 	if enrollMfaErr != nil {
 		return nil, enrollMfaErr
 	}
 
 	detailMfaParams := current_identity.NewDetailMfaParams()
-	detailMfaResp, detailMfaErr := client.ZitiEdgeClient.CurrentIdentity.DetailMfa(detailMfaParams, nil)
+	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, nil)
 
 	if detailMfaErr != nil {
 		return nil, detailMfaResp
@@ -374,24 +347,24 @@ func (client *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 }
 
 // VerifyMfa will complete a TOTP MFA enrollment created via EnrollMfa.
-func (client *CtrlClient) VerifyMfa(code string) error {
+func (self *CtrlClient) VerifyMfa(code string) error {
 	params := current_identity.NewVerifyMfaParams()
 
 	params.MfaValidation = &rest_model.MfaCode{
 		Code: &code,
 	}
 
-	_, err := client.ZitiEdgeClient.CurrentIdentity.VerifyMfa(params, nil)
+	_, err := self.API.CurrentIdentity.VerifyMfa(params, nil)
 
 	return err
 }
 
 // RemoveMfa will remove the currently enrolled TOTP MFA added by EnrollMfa() and verified by VerifyMfa()
-func (client *CtrlClient) RemoveMfa(code string) error {
+func (self *CtrlClient) RemoveMfa(code string) error {
 	params := current_identity.NewDeleteMfaParams()
 	params.MfaValidationCode = &code
 
-	_, err := client.ZitiEdgeClient.CurrentIdentity.DeleteMfa(params, nil)
+	_, err := self.API.CurrentIdentity.DeleteMfa(params, nil)
 
 	return err
 }

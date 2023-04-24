@@ -4,11 +4,9 @@
 package ziti
 
 import (
-	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/sdk-golang/ziti/config"
+	edge_apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -41,21 +39,39 @@ func init() {
 	}
 }
 
-// LoadContext returns Ziti context for the given identity file loading it if needed
-func LoadContext(config_ string) (Context, error) {
-	var cfg *config.Config
+// LoadContext loads a configuration from the supplied path. The configuration specifies
+// location of the controller's Edge Client API, the configuration types to request for
+// services, and the identity configuration that specifies where the client certificate
+// and private key are loaded from. See the [identity repository](https://githb.com/openziti/identity
+// for more details.
+//
+// Creating a Context using this function requires an identity configuration and only
+// supports certificate based authentication. For other authentication flows
+// see NewContext().
+//
+// ```
+//
+//	{
+//	  "ztAPI": "https://ziti.controller.example.com/edge/client/v1",
+//	  "configTypes": ["config1", "config2"],
+//	  "id": { "cert": "...", "key": "..." },
+//	}
+//
+// ```
+func LoadContext(configPath string) (Context, error) {
+	var cfg *Config
 
-	path, err := filepath.Abs(config_)
+	path, err := filepath.Abs(configPath)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err = config.NewFromFile(path)
+	cfg, err = NewConfigFromFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg.ConfigTypes = append(cfg.ConfigTypes, InterceptV1, ClientConfigV1)
-	newCtx, err := NewContextWithConfig(cfg)
+	newCtx, err := NewContext(cfg)
 
 	if err != nil {
 		return nil, err
@@ -87,15 +103,14 @@ func ForAllContexts(f func(ctx Context) bool) {
 	})
 }
 
-func NewContext() (Context, error) {
-	return NewContextWithConfig(nil)
-}
-
-func NewContextWithConfig(cfg *config.Config) (Context, error) {
+// NewContext creates a Context from the supplied Config with the default options. See NewContextWithOpts().
+func NewContext(cfg *Config) (Context, error) {
 	return NewContextWithOpts(cfg, nil)
 }
 
-func NewContextWithOpts(cfg *config.Config, options *Options) (Context, error) {
+// NewContextWithOpts creates a Context from the supplied Config and Options. The configuration requires
+// either the `ID` field or the  `Credentials` field to be populated. If both are supplied the, the ID field is used.
+func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	if options == nil {
 		options = DefaultOptions
 	}
@@ -107,41 +122,25 @@ func NewContextWithOpts(cfg *config.Config, options *Options) (Context, error) {
 		closeNotify:       make(chan struct{}),
 	}
 
-	ztUrl, err := url.Parse(cfg.ZtAPI)
-
-	if err != nil {
-		return nil, err
+	if cfg == nil {
+		return nil, errors.New("a config is required")
 	}
 
-	newContext.CtrlClt = &CtrlClient{
-		CaPool: cfg.CaPool,
+	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
+		cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+	} else if cfg.Credentials == nil {
+		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
 	}
 
-	ctrlUrl, err := url.Parse(cfg.ZtAPI)
+	apiUrl, err := url.Parse(cfg.ZtAPI)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "could not parse ZtAPI from configuration as URI")
 	}
 
-	if cfg.Authenticator == nil {
-		return nil, errors.New("authenticator must not be nil")
-	}
-
-	httpClient, err := cfg.Authenticator.BuildHttpClient()
-
-	if err != nil {
-		return nil, errors.Wrap(err, "could not build HTTP client")
-	}
-
-	clientRuntime := httptransport.NewWithClient(ctrlUrl.Host, rest_client_api_client.DefaultBasePath, rest_client_api_client.DefaultSchemes, httpClient)
-	clientRuntime.DefaultAuthentication = newContext.CtrlClt
-
-	newContext.CtrlClt.ZitiEdgeClient = rest_client_api_client.New(clientRuntime, nil)
-	newContext.CtrlClt.Authenticator = cfg.Authenticator
-	newContext.CtrlClt.EdgeClientApiUrl = ztUrl
-
-	if err != nil {
-		return nil, err
+	newContext.CtrlClt = &CtrlClient{
+		ClientApiClient: edge_apis.NewClientApiClient(apiUrl, cfg.Credentials.GetCaPool()),
+		Credentials:     cfg.Credentials,
 	}
 
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)

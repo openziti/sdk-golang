@@ -19,7 +19,6 @@ package main
 import (
 	"fmt"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
 	"io"
 	"os"
 )
@@ -32,7 +31,7 @@ func main() {
 	name := os.Args[1]
 
 	// Get identity config
-	cfg, err := config.NewFromFile(os.Args[2])
+	cfg, err := ziti.NewConfigFromFile(os.Args[2])
 	if err != nil {
 		panic(err)
 	}
@@ -43,7 +42,7 @@ func main() {
 		serviceName = os.Args[3]
 	}
 
-	context, err := ziti.NewContextWithConfig(cfg)
+	context, err := ziti.NewContext(cfg)
 
 	if err != nil {
 		panic(err)

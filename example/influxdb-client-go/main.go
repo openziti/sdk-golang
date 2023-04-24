@@ -4,20 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"net"
-	gohttp "net/http"
-	"time"
-
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/config"
+	"github.com/sirupsen/logrus"
+	"net"
+	"net/http"
+	"time"
 )
 
 var svcName = "httpsdk"
 
 type ZitiDoer struct {
-	httpClient *gohttp.Client
+	httpClient *http.Client
 }
 type ZitiDialContext struct {
 	context     ziti.Context
@@ -28,26 +26,26 @@ func (dc *ZitiDialContext) Dial(_ context.Context, _ string, _ string) (net.Conn
 	return dc.context.Dial(dc.serviceName)
 }
 func NewZitiDoer(cfgFile string) *ZitiDoer {
-	zitiCfg, err := config.NewFromFile(cfgFile)
+	zitiCfg, err := ziti.NewConfigFromFile(cfgFile)
 	if err != nil {
 		logrus.Errorf("failed to load ziti configuration file: %v", err)
 	}
-	ctx, err := ziti.NewContextWithConfig(zitiCfg)
+	ctx, err := ziti.NewContext(zitiCfg)
 
 	if err != nil {
 		panic(err)
 	}
 
 	zitiDialContext := ZitiDialContext{context: ctx, serviceName: svcName}
-	zitiTransport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() // copy default transport
+	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = zitiDialContext.Dial
 	doer := &ZitiDoer{}
-	doer.httpClient = &gohttp.Client{
+	doer.httpClient = &http.Client{
 		Transport: zitiTransport,
 	}
 	return doer
 }
-func (doer *ZitiDoer) Do(httpReq *gohttp.Request) (*gohttp.Response, error) {
+func (doer *ZitiDoer) Do(httpReq *http.Request) (*http.Response, error) {
 	return doer.httpClient.Do(httpReq)
 }
 
