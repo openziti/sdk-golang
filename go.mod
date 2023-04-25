@@ -13,7 +13,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.60
+	github.com/openziti/channel/v2 v2.0.61
 	github.com/openziti/edge-api v0.25.15
 	github.com/openziti/foundation/v2 v2.0.21
 	github.com/openziti/identity v1.0.47
