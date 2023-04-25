@@ -221,35 +221,35 @@ func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, _ st
 	return request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
 }
 
-var _ Credentials = &SecondaryCredentials{}
+var _ Credentials = &DualAuthCredentials{}
 
-type SecondaryCredentials struct {
+type DualAuthCredentials struct {
 	IdentityCredentials
-	Credentials
+	JWT string
 }
 
-// NewSecondaryCredentials creates a Credentials instance based on previously created credentials sent in params.
-func NewSecondaryCredentials(idCreds *IdentityCredentials, creds *Credentials) *SecondaryCredentials {
-	return &SecondaryCredentials{
+// NewDualAuthCredentials creates a Credentials instance based on Identity with JWT string added.
+func NewDualAuthCredentials(idCreds *IdentityCredentials, jwt string) *DualAuthCredentials {
+	return &DualAuthCredentials{
 		IdentityCredentials: *idCreds,
-		Credentials:         *creds,
+		JWT:                 jwt,
 	}
 }
 
-func (c *SecondaryCredentials) Method() string {
-	return c.IdentityCredentials.Method()
-}
+//func (c *DualAuthCredentials) Method() string {
+//	return c.IdentityCredentials.Method()
+//}
+//
+//func (c *DualAuthCredentials) GetCaPool() *x509.CertPool {
+//	return c.IdentityCredentials.GetCaPool()
+//}
+//
+//func (c *DualAuthCredentials) TlsCerts() []tls.Certificate {
+//	return c.IdentityCredentials.TlsCerts()
+//}
 
-func (c *SecondaryCredentials) GetCaPool() *x509.CertPool {
-	return c.IdentityCredentials.GetCaPool()
-}
-
-func (c *SecondaryCredentials) TlsCerts() []tls.Certificate {
-	return c.IdentityCredentials.TlsCerts()
-}
-
-func (c *SecondaryCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
-	return c.Credentials.AuthenticateRequest(request, reg)
+func (c *DualAuthCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+	return request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
 }
 
 var _ Credentials = &UpdbCredentials{}
