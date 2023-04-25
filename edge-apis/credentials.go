@@ -221,6 +221,37 @@ func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, _ st
 	return request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
 }
 
+var _ Credentials = &SecondaryCredentials{}
+
+type SecondaryCredentials struct {
+	IdentityCredentials
+	Credentials
+}
+
+// NewSecondaryCredentials creates a Credentials instance based on previously created credentials sent in params.
+func NewSecondaryCredentials(idCreds *IdentityCredentials, creds *Credentials) *SecondaryCredentials {
+	return &SecondaryCredentials{
+		IdentityCredentials: *idCreds,
+		Credentials:         *creds,
+	}
+}
+
+func (c *SecondaryCredentials) Method() string {
+	return c.IdentityCredentials.Method()
+}
+
+func (c *SecondaryCredentials) GetCaPool() *x509.CertPool {
+	return c.IdentityCredentials.GetCaPool()
+}
+
+func (c *SecondaryCredentials) TlsCerts() []tls.Certificate {
+	return c.IdentityCredentials.TlsCerts()
+}
+
+func (c *SecondaryCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
+	return c.Credentials.AuthenticateRequest(request, reg)
+}
+
 var _ Credentials = &UpdbCredentials{}
 
 type UpdbCredentials struct {
