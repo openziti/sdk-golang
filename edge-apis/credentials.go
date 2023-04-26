@@ -224,29 +224,36 @@ func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, _ st
 var _ Credentials = &DualAuthCredentials{}
 
 type DualAuthCredentials struct {
-	IdentityCredentials
-	JWT string
+	BaseCredentials
+	Identity identity.Identity
+	JWT      string
 }
 
 // NewDualAuthCredentials creates a Credentials instance based on Identity with JWT string added.
-func NewDualAuthCredentials(idCreds *IdentityCredentials, jwt string) *DualAuthCredentials {
+func NewDualAuthCredentials(config identity.Config, jwt string) *DualAuthCredentials {
 	return &DualAuthCredentials{
-		IdentityCredentials: *idCreds,
-		JWT:                 jwt,
+		BaseCredentials: BaseCredentials{},
+		Identity:        &identity.LazyIdentity{Config: &config},
+		JWT:             jwt,
 	}
 }
 
-//func (c *DualAuthCredentials) Method() string {
-//	return c.IdentityCredentials.Method()
-//}
-//
-//func (c *DualAuthCredentials) GetCaPool() *x509.CertPool {
-//	return c.IdentityCredentials.GetCaPool()
-//}
-//
-//func (c *DualAuthCredentials) TlsCerts() []tls.Certificate {
-//	return c.IdentityCredentials.TlsCerts()
-//}
+func (c *DualAuthCredentials) Method() string {
+	return "dual"
+}
+
+func (c *DualAuthCredentials) GetCaPool() *x509.CertPool {
+	return c.Identity.CA()
+}
+
+func (c *DualAuthCredentials) TlsCerts() []tls.Certificate {
+	tlsCert := c.Identity.Cert()
+
+	if tlsCert != nil {
+		return []tls.Certificate{*tlsCert}
+	}
+	return nil
+}
 
 func (c *DualAuthCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
 	return request.SetHeaderParam("Authorization", "Bearer "+c.JWT)

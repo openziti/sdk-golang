@@ -88,8 +88,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
 		if cfg.Credentials != nil {
-			idCreds := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
-			cfg.Credentials = edge_apis.NewDualAuthCredentials(idCreds, cfg.Credentials.(*edge_apis.JwtCredentials).JWT)
+			cfg.Credentials = edge_apis.NewDualAuthCredentials(cfg.ID, cfg.Credentials.(*edge_apis.JwtCredentials).JWT)
 		} else {
 			cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
 		}
