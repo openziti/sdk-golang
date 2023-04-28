@@ -239,7 +239,7 @@ func NewDualAuthCredentials(config identity.Config, jwt string) *DualAuthCredent
 }
 
 func (c *DualAuthCredentials) Method() string {
-	return "dual-auth"
+	return "cert"
 }
 
 func (c *DualAuthCredentials) GetCaPool() *x509.CertPool {
