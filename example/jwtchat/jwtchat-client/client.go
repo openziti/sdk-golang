@@ -29,7 +29,8 @@ func main() {
 		panic(err)
 	}
 
-	credentials := edge_apis.NewJwtCredentials(jwtToken, caPool)
+	credentials := edge_apis.NewJwtCredentials(jwtToken)
+	credentials.CaPool = caPool
 
 	cfg := &ziti.Config{
 		ZtAPI:       "https://localhost:1280/edge/client/v1",

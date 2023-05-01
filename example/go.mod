@@ -29,7 +29,7 @@ require (
 	github.com/MichaelMure/go-term-text v0.3.1 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/cenkalti/backoff/v4 v4.2.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2 v1.8.1 // indirect
 	github.com/eliukblau/pixterm/pkg/ansimage v0.0.0-20191210081756-9fb6cf8c2f75 // indirect
@@ -69,12 +69,12 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v2 v2.0.59 // indirect
+	github.com/openziti/channel/v2 v2.0.62 // indirect
 	github.com/openziti/edge-api v0.25.15 // indirect
-	github.com/openziti/identity v1.0.46 // indirect
+	github.com/openziti/identity v1.0.47 // indirect
 	github.com/openziti/metrics v1.2.19 // indirect
 	github.com/openziti/secretstream v0.1.6 // indirect
-	github.com/openziti/transport/v2 v2.0.73 // indirect
+	github.com/openziti/transport/v2 v2.0.75 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/power-devops/perfstat v0.0.0-20221212215047-62379fc7944b // indirect
