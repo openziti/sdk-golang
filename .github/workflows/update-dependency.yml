@@ -34,7 +34,9 @@ jobs:
           $(go env GOPATH)/bin/ziti-ci update-go-dependency  ${{ github.event.inputs.updated-dependency }}
 
       - name: Build and Test
-        run: go test ./... --tags apitests
+        run: |
+          go test ./... --tags apitests
+          go test -C example ./...
 
       - name: Complete Dependency Update
         run: $(go env GOPATH)/bin/ziti-ci complete-update-go-dependency

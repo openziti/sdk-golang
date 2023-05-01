@@ -29,6 +29,7 @@ jobs:
         run: |
           $(go env GOPATH)/bin/ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
           go test ./...
+          go test -C example ./...
 
       - name: Release
         env:
