@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/Jeffail/gabs"
-	"github.com/openziti/sdk-golang/edge-apis/client_api"
+	edge_apis "github.com/openziti/sdk-golang/edge-apis"
+
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -29,7 +30,8 @@ func main() {
 		panic(err)
 	}
 
-	authenticator := client_api.NewJwtAuthenticator(jwtToken, caPool)
+	authenticator := edge_apis.NewJwtCredentials(jwtToken)
+	authenticator.CaPool = caPool
 
 	cfg := &ziti.Config{
 		ZtAPI:       "https://localhost:1280/edge/client/v1",
