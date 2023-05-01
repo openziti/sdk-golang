@@ -147,9 +147,9 @@ func EnrollUpdb(enFlags EnrollmentFlags) error {
 			allowedCerts = append(allowedCerts, xcert)
 			caPool.AddCert(xcert)
 		}
-		//try again
+
 		if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
-			return fmt.Errorf("unabled to enroll after fetching server certs: %v", err)
+			return fmt.Errorf("unable to enroll after fetching server certs: %v", err)
 		} else {
 			return nil
 		}
