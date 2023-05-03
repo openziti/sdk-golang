@@ -38,6 +38,7 @@ import (
 
 var idCount = 0
 
+// NewId will return a unique string id suitable for ziti.Context Id functionality.
 func NewId() string {
 	idCount = idCount + 1
 
