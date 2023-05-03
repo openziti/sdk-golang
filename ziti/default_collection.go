@@ -22,8 +22,11 @@ package ziti
 // NewSdkCollectionFromEnv() on their own.
 var DefaultCollection *SdkCollection
 
+// IdentitiesEnv is the string environment variable that is used to load identity files to populate DefaultCollection
+const IdentitiesEnv = "ZITI_IDENTITIES"
+
 func init() {
-	DefaultCollection = NewSdkCollectionFromEnv("ZITI_IDENTITIES")
+	DefaultCollection = NewSdkCollectionFromEnv(IdentitiesEnv)
 	DefaultCollection.ConfigTypes = []string{InterceptV1, ClientConfigV1}
 }
 
