@@ -9,9 +9,11 @@ import (
 
 // An SdkCollection allows Context instances to be instantiated and maintained as a group. Useful in scenarios
 // where multiple Context instances are managed together. Instead of using ziti.NewContext() like functions, use
-// the function provided on this type to automatically have contexts added as they are created.
+// the function provided on this type to automatically have contexts added as they are created. If ConfigTypes
+// is set, they will be automatically added to any instantiated Context through `New*` functions.
 type SdkCollection struct {
-	contexts cmap.ConcurrentMap[string, Context]
+	contexts    cmap.ConcurrentMap[string, Context]
+	ConfigTypes []string
 }
 
 // NewSdkCollection creates a new empty collection.
@@ -111,6 +113,8 @@ func (set *SdkCollection) NewContext(cfg *Config) (Context, error) {
 // NewContextWithOpts is the same as ziti.NewContextWithOpts but will also add the resulting context to the current
 // collection.
 func (set *SdkCollection) NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
+	cfg.ConfigTypes = append(cfg.ConfigTypes, set.ConfigTypes...)
+
 	ctx, err := NewContextWithOpts(cfg, options)
 
 	if err != nil {
