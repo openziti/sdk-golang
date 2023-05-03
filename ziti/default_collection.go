@@ -41,6 +41,10 @@ func LoadContext(configPath string) (Context, error) {
 
 	ctx, err := DefaultCollection.NewContext(cfg)
 
+	if err != nil {
+		return nil, err
+	}
+
 	err = ctx.Authenticate()
 
 	if err != nil {
