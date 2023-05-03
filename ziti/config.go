@@ -44,7 +44,7 @@ type Config struct {
 }
 
 // NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.
-// The Ziti Edge Client API is usually in the format of `https://host:por/edge/client/v1`.
+// The Ziti Edge Client API is usually in the format of `https://host:port/edge/client/v1`.
 func NewConfig(ztApi string, idConfig identity.Config) *Config {
 	return &Config{
 		ZtAPI: ztApi,
