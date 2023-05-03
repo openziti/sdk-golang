@@ -82,8 +82,6 @@ func (set *CtxCollection) Add(ctx Context) {
 
 		return newValue
 	})
-
-	set.contexts.Set(ctx.GetId(), ctx)
 }
 
 // Remove removes the supplied Context from the collection. It is not closed or altered in any way.
