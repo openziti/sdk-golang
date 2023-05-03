@@ -20,7 +20,7 @@ package ziti
 // It powers two other deprecated functions: `ForAllContext() and and `LoadContext()` which rely on it. The intended
 // replacement is for implementations that wish to have this functionality to use NewSdkCollection() or
 // NewSdkCollectionFromEnv() on their own.
-var DefaultCollection *SdkCollection
+var DefaultCollection *CtxCollection
 
 // IdentitiesEnv is the string environment variable that is used to load identity files to populate DefaultCollection
 const IdentitiesEnv = "ZITI_IDENTITIES"
@@ -32,14 +32,22 @@ func init() {
 
 // Deprecated: ForAllContexts iterates over all Context instances in the DefaultCollection and call the provided function `f`.
 // Usage of the DefaultCollection is advised against, and if this functionality is needed, implementations should
-// instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv()
+// instantiate their own CtxCollection via NewSdkCollection() or NewSdkCollectionFromEnv()
 func ForAllContexts(f func(ctx Context) bool) {
-	DefaultCollection.ForAll(f)
+	//Recreates sync.Map's Range() function which uses a bool return value to stop iterating (false == stop).
+	//Done for backwards compatibility with ForAllContexts implementation
+	keepGoing := true
+	DefaultCollection.ForAll(func(c Context) {
+		if !keepGoing {
+			return
+		}
+		keepGoing = f(c)
+	})
 }
 
 // Deprecated: LoadContext loads a configuration from the supplied path into the DefaultCollection as a convenience.
 // Usage of the DefaultCollection is advised against, and if this functionality is needed, implementations should
-// instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv().
+// instantiate their own CtxCollection via NewSdkCollection() or NewSdkCollectionFromEnv().
 //
 // This function's behavior can be replicated with:
 // ```

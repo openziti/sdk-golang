@@ -23,25 +23,25 @@ import (
 	"strings"
 )
 
-// An SdkCollection allows Context instances to be instantiated and maintained as a group. Useful in scenarios
+// An CtxCollection allows Context instances to be instantiated and maintained as a group. Useful in scenarios
 // where multiple Context instances are managed together. Instead of using ziti.NewContext() like functions, use
 // the function provided on this type to automatically have contexts added as they are created. If ConfigTypes
 // is set, they will be automatically added to any instantiated Context through `New*` functions.
-type SdkCollection struct {
+type CtxCollection struct {
 	contexts    cmap.ConcurrentMap[string, Context]
 	ConfigTypes []string
 }
 
 // NewSdkCollection creates a new empty collection.
-func NewSdkCollection() *SdkCollection {
-	return &SdkCollection{
+func NewSdkCollection() *CtxCollection {
+	return &CtxCollection{
 		contexts: cmap.New[Context](),
 	}
 }
 
-// NewSdkCollectionFromEnv will create an empty SdkCollection and then attempt to populate it from configuration files
+// NewSdkCollectionFromEnv will create an empty CtxCollection and then attempt to populate it from configuration files
 // provided in a semicolon separate list of file paths retrieved from an environment variable.
-func NewSdkCollectionFromEnv(envVariable string) *SdkCollection {
+func NewSdkCollectionFromEnv(envVariable string) *CtxCollection {
 	collection := NewSdkCollection()
 
 	envValue := os.Getenv(envVariable)
@@ -74,7 +74,7 @@ func NewSdkCollectionFromEnv(envVariable string) *SdkCollection {
 
 // Add allows the arbitrary idempotent inclusion of a Context in the current collection. If a Context with the same id
 // as an existing Context is added and is a different instance, the original is closed and removed.
-func (set *SdkCollection) Add(ctx Context) {
+func (set *CtxCollection) Add(ctx Context) {
 	set.contexts.Upsert(ctx.GetId(), ctx, func(exist bool, valueInMap Context, newValue Context) Context {
 		if exist && valueInMap != nil && valueInMap != newValue {
 			valueInMap.Close()
@@ -87,31 +87,31 @@ func (set *SdkCollection) Add(ctx Context) {
 }
 
 // Remove removes the supplied Context from the collection. It is not closed or altered in any way.
-func (set *SdkCollection) Remove(ctx Context) {
+func (set *CtxCollection) Remove(ctx Context) {
 	set.contexts.Remove(ctx.GetId())
 }
 
 // RemoveById removes a context by its string id.  It is not closed or altered in any way.
-func (set *SdkCollection) RemoveById(id string) {
+func (set *CtxCollection) RemoveById(id string) {
 	set.contexts.Remove(id)
 }
 
 // ForAll call the provided function `f` on each Context.
-func (set *SdkCollection) ForAll(f func(ctx Context) bool) {
+func (set *CtxCollection) ForAll(f func(ctx Context)) {
 	set.contexts.IterCb(func(key string, ctx Context) {
-		_ = f(ctx)
+		f(ctx)
 	})
 }
 
 // NewContextFromFile is the same as ziti.NewContextFromFile but will also add the resulting
 // context to the current collection.
-func (set *SdkCollection) NewContextFromFile(file string) (Context, error) {
+func (set *CtxCollection) NewContextFromFile(file string) (Context, error) {
 	return set.NewContextFromFileWithOpts(file, nil)
 }
 
 // NewContextFromFileWithOpts is the same as ziti.NewContextFromFileWithOpts but will also add
 // the resulting context to the current collection.
-func (set *SdkCollection) NewContextFromFileWithOpts(file string, options *Options) (Context, error) {
+func (set *CtxCollection) NewContextFromFileWithOpts(file string, options *Options) (Context, error) {
 	cfg, err := NewConfigFromFile(file)
 
 	if err != nil {
@@ -122,13 +122,13 @@ func (set *SdkCollection) NewContextFromFileWithOpts(file string, options *Optio
 }
 
 // NewContext is the same as ziti.NewContext but will also add the resulting context to the current collection.
-func (set *SdkCollection) NewContext(cfg *Config) (Context, error) {
+func (set *CtxCollection) NewContext(cfg *Config) (Context, error) {
 	return set.NewContextWithOpts(cfg, nil)
 }
 
 // NewContextWithOpts is the same as ziti.NewContextWithOpts but will also add the resulting context to the current
 // collection.
-func (set *SdkCollection) NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
+func (set *CtxCollection) NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	cfg.ConfigTypes = append(cfg.ConfigTypes, set.ConfigTypes...)
 
 	ctx, err := NewContextWithOpts(cfg, options)

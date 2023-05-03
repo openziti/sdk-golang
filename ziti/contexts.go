@@ -21,7 +21,7 @@
 // form of identity files, username/password, JWTs, and more.
 //
 // Identity files specified in `ZITI_IDENTITIES` environment variable (semicolon separates) are loaded automatically
-// at startup to populate the DefaultCollection. This behavior is deprecated, and explicit usage of an SdkCollection
+// at startup to populate the DefaultCollection. This behavior is deprecated, and explicit usage of an CtxCollection
 // is suggested. This behavior can be replicated via NewSdkCollectionFromEnv().
 package ziti
 
