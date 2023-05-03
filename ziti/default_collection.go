@@ -36,7 +36,16 @@ func ForAllContexts(f func(ctx Context) bool) {
 
 // Deprecated: LoadContext loads a configuration from the supplied path into the DefaultCollection as a convenience.
 // Usage of the DefaultCollection is advised against, and if this functionality is needed, implementations should
-// instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv()
+// instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv().
+//
+// This function's behavior can be replicated with:
+// ```
+//
+// collection = NewSdkCollection()
+// collection.ConfigTypes = []string{InterceptV1, ClientConfigV1}
+// collection.NewContextFromFile(configPath)
+//
+// ```
 //
 // LoadContext will attempt to load a Config from the provided path, see NewConfigFromFile() for details. Additionally,
 // LoadContext will attempt to authenticate the Context. If it does not authenticate, it will not be added to the
