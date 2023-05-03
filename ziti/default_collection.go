@@ -12,7 +12,7 @@ func init() {
 	DefaultCollection = NewSdkCollectionFromEnv("ZITI_IDENTITIES")
 }
 
-// ForAllContexts iterates over all Context instances in the DefaultCollection and call the provided function `f`.
+// Deprecated: ForAllContexts iterates over all Context instances in the DefaultCollection and call the provided function `f`.
 // Usage of the DefaultCollection is advised against, and if this functionality is needed, implementations should
 // instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv()
 func ForAllContexts(f func(ctx Context) bool) {
