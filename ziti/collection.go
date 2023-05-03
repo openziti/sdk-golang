@@ -28,8 +28,8 @@ import (
 // the function provided on this type to automatically have contexts added as they are created. If ConfigTypes
 // is set, they will be automatically added to any instantiated Context through `New*` functions.
 //
-// Context can be created directly from CtxCollection instances. Doing so automatically adds the Context
-// to the CtxCollection instance:
+// Context instances can be created directly from CtxCollection instances. Doing so automatically adds new Context
+// instances to the CtxCollection:
 //
 // ```
 // collection := ziti.NewCtxCollection()
