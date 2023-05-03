@@ -22,7 +22,9 @@ func ForAllContexts(f func(ctx Context) bool) {
 // Usage of the DefaultCollection is advised against, and if this functionality is needed, implementations should
 // instantiate their own SdkCollection via NewSdkCollection() or NewSdkCollectionFromEnv()
 //
-// LoadContext will attempt to load a Config from the provided path. See NewConfigFromFile() for details.
+// LoadContext will attempt to load a Config from the provided path, see NewConfigFromFile() for details. Additionally,
+// LoadContext will attempt to authenticate the Context. If it does not authenticate, it will not be added to the
+// DefaultCollection and an error will be returned.
 // ```
 func LoadContext(configPath string) (Context, error) {
 	ctx, err := DefaultCollection.NewContextFromFile(configPath)
