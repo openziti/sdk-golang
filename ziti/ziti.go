@@ -140,12 +140,19 @@ type Context interface {
 
 	// RemoveZitiMfa will attempt to remove TOTP 2FA for the current identity
 	RemoveZitiMfa(code string) error
+
+	// GetId returns a unique context id
+	GetId() string
+
+	// SetId allows the setting of a context's id
+	SetId(id string)
 }
 
 var _ Context = &ContextImpl{}
 
 type ContextImpl struct {
 	options           *Options
+	Id                string
 	routerConnections cmap.ConcurrentMap[string, edge.RouterConn]
 
 	CtrlClt *CtrlClient
@@ -161,6 +168,14 @@ type ContextImpl struct {
 	closed            atomic.Bool
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error
+}
+
+func (context *ContextImpl) GetId() string {
+	return context.Id
+}
+
+func (context *ContextImpl) SetId(id string) {
+	context.Id = id
 }
 
 func (context *ContextImpl) SetCredentials(credentials apis.Credentials) {
