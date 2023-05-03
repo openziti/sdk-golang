@@ -27,6 +27,25 @@ import (
 // where multiple Context instances are managed together. Instead of using ziti.NewContext() like functions, use
 // the function provided on this type to automatically have contexts added as they are created. If ConfigTypes
 // is set, they will be automatically added to any instantiated Context through `New*` functions.
+//
+// Context can be created directly from CtxCollection instances. Doing so automatically adds the Context
+// to the CtxCollection instance:
+//
+// ```
+// collection := ziti.NewCtxCollection()
+// cfg, err := ziti.NewConfigFromFile(str)
+// ctx, err := collection.NewContext(cfg) //return the ctx and adds it to the collection
+// ```
+//
+// If more control over Config and Context instantiation is desired before the Context is added to the collection
+// the Add() function can be used:
+//
+// ```
+// collection := ziti.NewCtxCollection()
+// cfg, err := ziti.NewConfigFromFile(str)
+// ctx, err := ziti.NewContext(cfg)
+// collection.Add(ctx) //manual collection add
+// ```
 type CtxCollection struct {
 	contexts    cmap.ConcurrentMap[string, Context]
 	ConfigTypes []string
