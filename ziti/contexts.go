@@ -141,6 +141,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	newContext.CtrlClt = &CtrlClient{
 		ClientApiClient: edge_apis.NewClientApiClient(apiUrl, cfg.Credentials.GetCaPool()),
 		Credentials:     cfg.Credentials,
+		ConfigTypes:     cfg.ConfigTypes,
 	}
 
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
