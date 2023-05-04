@@ -139,26 +139,20 @@ func EnrollUpdb(enFlags EnrollmentFlags) error {
 	ztApiRoot := enFlags.Token.Issuer
 
 	if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
-		if urlErr, isUrlError := err.(*url.Error); isUrlError {
-			if _, isUnknownAuthorityErr := urlErr.Err.(x509.UnknownAuthorityError); isUnknownAuthorityErr {
-				pfxlog.Logger().Debug("fetching certificates from server")
-				rootCaPool := x509.NewCertPool()
-				rootCaPool.AddCert(enFlags.Token.SignatureCert)
+		pfxlog.Logger().Debug("fetching certificates from server")
+		rootCaPool := x509.NewCertPool()
+		rootCaPool.AddCert(enFlags.Token.SignatureCert)
 
-				for _, xcert := range FetchCertificates(ztApiRoot, rootCaPool) {
-					allowedCerts = append(allowedCerts, xcert)
-					caPool.AddCert(xcert)
-				}
-				//try again
-				if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
-					return fmt.Errorf("unabled to enroll after fetching server certs: %v", err)
-				} else {
-					return nil
-				}
-			}
+		for _, xcert := range FetchCertificates(ztApiRoot, rootCaPool) {
+			allowedCerts = append(allowedCerts, xcert)
+			caPool.AddCert(xcert)
 		}
 
-		return fmt.Errorf("unhandled error: %v", err)
+		if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
+			return fmt.Errorf("unable to enroll after fetching server certs: %v", err)
+		} else {
+			return nil
+		}
 	}
 
 	return nil
