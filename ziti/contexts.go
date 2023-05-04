@@ -87,16 +87,12 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
-		idCreds := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
-		// If Credentials already exist, assume they are JWT creds and attempt to add them to the identity creds
+		baseCreds := &edge_apis.BaseCredentials{}
 		if cfg.Credentials != nil {
-			// Validate the assertion to avoid a panic
-			jwtCreds, ok := cfg.Credentials.(*edge_apis.JwtCredentials)
-			if ok {
-				idCreds.AddJwt(jwtCreds.JWT)
-			}
+			baseCreds = cfg.Credentials.(*edge_apis.BaseCredentials)
 		}
-		cfg.Credentials = idCreds
+		cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+		cfg.Credentials.(*edge_apis.IdentityCredentials).BaseCredentials = *baseCreds
 	} else if cfg.Credentials == nil {
 		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
 	}
