@@ -18,7 +18,7 @@ func Client(zitiCfg *ziti.Config, serviceName string) {
 	if !ok {
 		panic("error when retrieving all the services for the provided config")
 	}
-	log.Infof("found service named: %s", foundSvc.Name)
+	log.Infof("found service named: %s", *foundSvc.Name)
 
 	svc, err := ctx.Dial(serviceName) //dial the service using the given name
 	if err != nil {
