@@ -37,7 +37,7 @@ func (self *BaseClient[A]) GetCurrentApiSession() *rest_model.CurrentAPISessionD
 // the API Session details will be returned and the current client will make authenticated requests on future
 // calls. On an error the API Session in use will be cleared and subsequent requests will become/continue to be
 // made in an unauthenticated fashion.
-func (self *BaseClient[A]) Authenticate(credentials Credentials) (*rest_model.CurrentAPISessionDetail, error) {
+func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (*rest_model.CurrentAPISessionDetail, error) {
 	//casting to `any` works around golang error that happens when type asserting a generic typed field
 	myAny := any(self.API)
 	if a, ok := myAny.(AuthEnabledApi); ok {
@@ -50,7 +50,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials) (*rest_model.Cu
 			self.HttpTransport.TLSClientConfig.RootCAs = self.Components.CaPool
 		}
 
-		apiSession, err := a.Authenticate(credentials, self.HttpClient)
+		apiSession, err := a.Authenticate(credentials, configTypes, self.HttpClient)
 
 		if err != nil {
 			return nil, err

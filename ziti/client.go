@@ -41,6 +41,7 @@ type CtrlClient struct {
 	ApiSessionCertInstance      string
 
 	PostureCache *posture.Cache
+	ConfigTypes  []string
 }
 
 // GetCurrentApiSession returns the current cached ApiSession or nil
@@ -82,7 +83,7 @@ func (self *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, err
 
 	self.ApiSessionCertificate = nil
 
-	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials)
+	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials, self.ConfigTypes)
 
 	if err != nil {
 		return nil, err

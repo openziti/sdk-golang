@@ -15,19 +15,20 @@ import (
 // limitation dealing with accessing field of generically typed fields.
 type AuthEnabledApi interface {
 	//Authenticate will attempt to issue an authentication request using the provided credentials and http client.
-	//These function acts as abstraction around the underlying go-swagger generated client and will use the default
+	//These functions act as abstraction around the underlying go-swagger generated client and will use the default
 	//http client if not provided.
-	Authenticate(credentials Credentials, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error)
+	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error)
 }
 
 // ZitiEdgeManagement is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeManagement rest_management_api_client.ZitiEdgeManagement
 
-func (self ZitiEdgeManagement) Authenticate(credentials Credentials, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error) {
+func (self ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error) {
 	params := managementAuthentication.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
+	params.Auth.ConfigTypes = append(params.Auth.ConfigTypes, configTypes...)
 
 	resp, err := self.Authentication.Authenticate(params, getClientAuthInfoOp(credentials, httpClient))
 
@@ -42,10 +43,11 @@ func (self ZitiEdgeManagement) Authenticate(credentials Credentials, httpClient 
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeClient rest_client_api_client.ZitiEdgeClient
 
-func (self ZitiEdgeClient) Authenticate(credentials Credentials, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error) {
+func (self ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*rest_model.CurrentAPISessionDetail, error) {
 	params := clientAuthentication.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
+	params.Auth.ConfigTypes = append(params.Auth.ConfigTypes, configTypes...)
 
 	resp, err := self.Authentication.Authenticate(params, getClientAuthInfoOp(credentials, httpClient))
 
