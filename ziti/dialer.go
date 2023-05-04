@@ -18,8 +18,30 @@ type ContextDialer interface {
 }
 
 type dialer struct {
-	fallback Dialer
-	context  context.Context
+	fallback   Dialer
+	context    context.Context
+	collection *CtxCollection
+}
+
+// Deprecated: NewDialer will return a dialer from the DefaultCollection that will iterate over the Context instances
+// inside the collection searching for the context that best matches the service.
+//
+// It is suggested that implementations construct their own CtxCollection and use the NewDialer/NewDialerWithFallback present there.
+//
+// If a matching service is not found, an error is returned. Matching is based on Match() logic in edge.InterceptV1Config.
+func NewDialer() Dialer {
+	return DefaultCollection.NewDialer()
+}
+
+// Deprecated: NewDialerWithFallback will return a dialer from the DefaultCollection that will iterate over the Context
+// instances inside the collection searching for the context that best matches the service.
+//
+// It is suggested that implementations construct their own CtxCollection and use the NewDialer/NewDialerWithFallback present there.
+//
+// If a matching service is not found, a dial is attempted with the fallback dialer. Matching is based on Match() logic
+// in edge.InterceptV1Config.
+func NewDialerWithFallback(ctx context.Context, fallback Dialer) Dialer {
+	return DefaultCollection.NewDialerWithFallback(ctx, fallback)
 }
 
 func (dialer *dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
@@ -28,13 +50,13 @@ func (dialer *dialer) DialContext(ctx context.Context, network, address string) 
 }
 
 func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
-	host, portstr, err := net.SplitHostPort(address)
+	host, portString, err := net.SplitHostPort(address)
 
 	if err != nil {
 		return nil, err
 	}
 
-	port, err := strconv.Atoi(portstr)
+	port, err := strconv.Atoi(portString)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +65,13 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 
 	var ztx Context
 	var service *rest_model.ServiceDetail
+	var bestFound = false
 	best := math.MaxInt
-	ForAllContexts(func(ctx Context) bool {
+	dialer.collection.ForAll(func(ctx Context) {
+		if bestFound {
+			return
+		}
+
 		srv, score, err := ctx.GetServiceForAddr(network, host, uint16(port))
 		if err == nil {
 			if score < best {
@@ -54,10 +81,9 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 			}
 
 			if score == 0 { // best possible score
-				return false
+				bestFound = true
 			}
 		}
-		return true
 	})
 
 	if ztx != nil && service != nil {
@@ -74,20 +100,6 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	}
 
 	return nil, fmt.Errorf("address [%s:%s:%d] is not intercepted by any ziti context", network, host, port)
-}
-
-func NewDialer() Dialer {
-	return &dialer{}
-}
-
-func NewDialerWithFallback(ctx context.Context, fallback Dialer) Dialer {
-	if fallback == nil {
-		fallback = &net.Dialer{}
-	}
-	return &dialer{
-		fallback: fallback,
-		context:  ctx,
-	}
 }
 
 func normalizeProtocol(proto string) string {

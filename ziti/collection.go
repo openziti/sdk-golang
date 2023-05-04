@@ -17,8 +17,10 @@
 package ziti
 
 import (
+	"context"
 	"github.com/michaelquigley/pfxlog"
 	cmap "github.com/orcaman/concurrent-map/v2"
+	"net"
 	"os"
 	"strings"
 )
@@ -157,4 +159,30 @@ func (set *CtxCollection) NewContextWithOpts(cfg *Config, options *Options) (Con
 	set.Add(ctx)
 
 	return ctx, nil
+}
+
+// NewDialer will return a dialer that will iterate over the Context instances inside the collection, searching for the
+// context that best matches the service.
+//
+// If a matching service is not found, an error is returned. Matching is based on Match() logic in edge.InterceptV1Config.
+func (set *CtxCollection) NewDialer() Dialer {
+	return &dialer{
+		collection: set,
+	}
+}
+
+// NewDialerWithFallback will return a dialer that will iterate over the Context instances inside the collection,
+// searching for the context that best matches the service.
+//
+// If a matching service is not found, a dial is attempted using the fallback dialer. Matching is based on Match() logic
+// in edge.InterceptV1Config.
+func (set *CtxCollection) NewDialerWithFallback(ctx context.Context, fallback Dialer) Dialer {
+	if fallback == nil {
+		fallback = &net.Dialer{}
+	}
+	return &dialer{
+		fallback:   fallback,
+		context:    ctx,
+		collection: set,
+	}
 }

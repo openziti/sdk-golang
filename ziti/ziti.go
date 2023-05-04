@@ -963,10 +963,10 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	start := time.Now()
 	logger := pfxlog.Logger()
-	logger.Debugf("establishing %v session to service %v", sessionType, service.Name)
+	logger.Debugf("establishing %s session to service %s", sessionType, *service.Name)
 	session, err := context.getOrCreateSession(*service.ID, sessionType)
 	if err != nil {
-		logger.WithError(err).Warnf("failure creating %v session to service %v", sessionType, service.Name)
+		logger.WithError(err).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
 		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusUnauthorized {
 			if err := context.Authenticate(); err != nil {
 				if authErr, ok := err.(*runtime.APIError); ok && authErr.Code == http.StatusUnauthorized {
@@ -978,7 +978,7 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 		return nil, err
 	}
 	elapsed := time.Since(start)
-	logger.Debugf("successfully created %v session to service %v in %vms", sessionType, service.Name, elapsed.Milliseconds())
+	logger.Debugf("successfully created %s session to service %s in %vms", sessionType, *service.Name, elapsed.Milliseconds())
 	return session, nil
 }
 
