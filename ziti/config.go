@@ -43,6 +43,8 @@ type Config struct {
 	Credentials apis.Credentials `json:"-"`
 }
 
+// NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.
+// The Ziti Edge Client API is usually in the format of `https://host:port/edge/client/v1`.
 func NewConfig(ztApi string, idConfig identity.Config) *Config {
 	return &Config{
 		ZtAPI: ztApi,
@@ -50,6 +52,18 @@ func NewConfig(ztApi string, idConfig identity.Config) *Config {
 	}
 }
 
+// NewConfigFromFile attempts to load a Config object from the provided path.
+//
+// The file that is indicated should be in the following format:
+// ```
+//
+//	{
+//	  "ztAPI": "https://ziti.controller.example.com/edge/client/v1",
+//	  "configTypes": ["config1", "config2"],
+//	  "id": { "cert": "...", "key": "..." },
+//	}
+//
+// ```
 func NewConfigFromFile(confFile string) (*Config, error) {
 	conf, err := os.ReadFile(confFile)
 	if err != nil {
@@ -67,7 +81,7 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 }
 
 // GetControllerWellKnownCaPool will return a x509.CertPool. The target controller will not be verified via TLS and
-// must be verified by some other means (i.e enrollment JWT token).
+// must be verified by some other means (i.e. enrollment JWT token).
 func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error) {
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
 }

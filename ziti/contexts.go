@@ -1,10 +1,31 @@
-// Package ziti provides methods for loading ziti contexts from identity JSON files
-// Identity files specifies in `ZITI_IDENTITIES` environment variable (semicolon separates) are loaded automatically
-// at startup
+/*
+	Copyright 2019 NetFoundry Inc.
+
+	Licensed under the Apache License, Version 2.0 (the "License");
+	you may not use this file except in compliance with the License.
+	You may obtain a copy of the License at
+
+	https://www.apache.org/licenses/LICENSE-2.0
+
+	Unless required by applicable law or agreed to in writing, software
+	distributed under the License is distributed on an "AS IS" BASIS,
+	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+	See the License for the specific language governing permissions and
+	limitations under the License.
+*/
+
+// Package ziti provides methods for loading Contexts which interact with an OpenZiti Controller via the Edge Client
+// API to bind (host) services or dial (connect) to services.
+//
+// Each context is required to authenticate with the Edge Client API via Credentials instance. Credentials come in the
+// form of identity files, username/password, JWTs, and more.
+//
+// Identity files specified in `ZITI_IDENTITIES` environment variable (semicolon separates) are loaded automatically
+// at startup to populate the DefaultCollection. This behavior is deprecated, and explicit usage of an CtxCollection
+// is suggested. This behavior can be replicated via NewSdkCollectionFromEnv().
 package ziti
 
 import (
-	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	edge_apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -12,95 +33,33 @@ import (
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
+	"strconv"
 )
 
-var contexts = new(sync.Map)
+var idCount = 0
 
-func init() {
-	ids := os.Getenv("ZITI_IDENTITIES")
+// NewId will return a unique string id suitable for ziti.Context Id functionality.
+func NewId() string {
+	idCount = idCount + 1
 
-	idlist := strings.Split(ids, ";")
-
-	for _, id := range idlist {
-
-		if id == "" {
-			continue
-		}
-
-		_, err := LoadContext(id)
-		if err != nil {
-			pfxlog.Logger().Errorf("failed to load config from '%s'", id)
-			continue
-		}
-	}
+	return strconv.Itoa(idCount)
 }
 
-// LoadContext loads a configuration from the supplied path. The configuration specifies
-// location of the controller's Edge Client API, the configuration types to request for
-// services, and the identity configuration that specifies where the client certificate
-// and private key are loaded from. See the [identity repository](https://githb.com/openziti/identity
-// for more details.
-//
-// Creating a Context using this function requires an identity configuration and only
-// supports certificate based authentication. For other authentication flows
-// see NewContext().
-//
-// ```
-//
-//	{
-//	  "ztAPI": "https://ziti.controller.example.com/edge/client/v1",
-//	  "configTypes": ["config1", "config2"],
-//	  "id": { "cert": "...", "key": "..." },
-//	}
-//
-// ```
-func LoadContext(configPath string) (Context, error) {
-	var cfg *Config
-
-	path, err := filepath.Abs(configPath)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err = NewConfigFromFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.ConfigTypes = append(cfg.ConfigTypes, InterceptV1, ClientConfigV1)
-	newCtx, err := NewContext(cfg)
-
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, exists := contexts.LoadOrStore(path, newCtx)
-
-	ztx := ctx.(*ContextImpl)
-	if exists {
-		newCtx.Close()
-	} else {
-		err = ztx.Authenticate()
-		if err != nil {
-			contexts.Delete(path)
-			ztx.Close()
-			return nil, err
-		}
-	}
-
-	return ztx, nil
+// NewContextFromFile attempts to load a new Config from the provided path and then uses that
+// config to instantiate a new Context. See NewConfigFromFile() for configuration file details.
+func NewContextFromFile(path string) (Context, error) {
+	return NewContextFromFileWithOpts(path, nil)
 }
 
-// ForAllContexts iterates over all Ziti contexts loaded from ZITI_IDENTITIES environment variable,
-// or with LoadContext() call
-func ForAllContexts(f func(ctx Context) bool) {
-	contexts.Range(func(key, value any) bool {
-		ziti := value.(Context)
-		return f(ziti)
-	})
+// NewContextFromFileWithOpts does the same as NewContextFromFile but allow Options to be supplied.
+func NewContextFromFileWithOpts(path string, options *Options) (Context, error) {
+	cfg, err := NewConfigFromFile(path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewContextWithOpts(cfg, options)
 }
 
 // NewContext creates a Context from the supplied Config with the default options. See NewContextWithOpts().
@@ -109,13 +68,14 @@ func NewContext(cfg *Config) (Context, error) {
 }
 
 // NewContextWithOpts creates a Context from the supplied Config and Options. The configuration requires
-// either the `ID` field or the  `Credentials` field to be populated. If both are supplied the, the ID field is used.
+// either the `ID` field or the `Credentials` field to be populated. If both are supplied, the `ID` field is used.
 func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	if options == nil {
 		options = DefaultOptions
 	}
 
 	newContext := &ContextImpl{
+		Id:                NewId(),
 		routerConnections: cmap.New[edge.RouterConn](),
 		options:           options,
 		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error{},

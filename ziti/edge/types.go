@@ -22,9 +22,9 @@ type InterceptV1Config struct {
 	Service     *rest_model.ServiceDetail
 }
 
-// Match returns the matching score of the given target address against this intercept
-// returns -1 in case address is not matched
-// if the address is matched returns a 32bit integer with upper bits set to hostname match and lower bits to port match
+// Match returns the matching score of the given target address against this intercept. A negative one (-1) is returned
+// if no match is found. If the address is matched, a 32bit integer with upper bits set to the hostname match and lower
+// bits to port match.
 func (intercept *InterceptV1Config) Match(network, hostname string, port uint16) int {
 	if !slices.Contains(intercept.Protocols, network) {
 		return -1
