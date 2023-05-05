@@ -296,7 +296,9 @@ func (context *ContextImpl) refreshSessions() {
 	log := pfxlog.Logger()
 	edgeRouters := make(map[string]string)
 	var toDelete []string
-	context.sessions.IterCb(func(key string, session *rest_model.SessionDetail) {
+	for entry := range context.sessions.IterBuffered() {
+		key := entry.Key
+		session := entry.Val
 		log.Debugf("refreshing session for %s", key)
 
 		if s, err := context.refreshSession(*session.ID); err != nil {
@@ -309,7 +311,7 @@ func (context *ContextImpl) refreshSessions() {
 				}
 			}
 		}
-	})
+	}
 
 	for _, id := range toDelete {
 		context.sessions.Remove(id)
