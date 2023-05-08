@@ -42,7 +42,7 @@ It will attempt to authenticate with the OIDC provider as:
    1) `ziti edge create ext-jwt-signer jwtchat-idp "http://localhost:9998" -a openziti -u "http://localhost:9998/keys"`
    2) Save the resulting `ext-jwt-signer`
 3) Create an authentication policy that allows the new `ext-jwt-signer` to authenticate identities
-   1) `ziti edge create auth-policy jwtchat --primary-ext-jwt-allowed --primary-ext-jwt-allowed-signers<extjwtIdFromStep2>`
+   1) `ziti edge create auth-policy jwtchat --primary-ext-jwt-allowed --primary-ext-jwt-allowed-signers <extjwtIdFromStep2>`
    2) Save the resulting `auth-policy` id
 4) Create two identities (client, server)
    1) `ziti edge create identity service cid1 --external-id cid1 -a jwtchat -P <authPolicyIdFromStep3>`
@@ -57,8 +57,8 @@ It will attempt to authenticate with the OIDC provider as:
 8) Create a Service Edge Router Policy that allows `jwtchat` service usage on your Edge Routers
    1) `ziti edge create service-edge-router-policy jwtchat --service-roles #jwtchat --edge-router-roles #all`
 9) Create a Service Policy that allows your identities access to the `jwtchat` service
-   1) `ziti edge create service-policy jwtchat Dial --service-roles #jwtchat --identity-roles #jwtchat`
-   2) `ziti edge create service-policy jwtchat Bind --service-roles #jwtchat --identity-roles #jwtchat`
+   1) `ziti edge create service-policy jwtchatDial Dial --service-roles #jwtchat --identity-roles #jwtchat`
+   2) `ziti edge create service-policy jwtchatBind Bind --service-roles #jwtchat --identity-roles #jwtchat`
 10) Start the `jwtchat-idp` process
 11) Start the `jwtchat-server` process
 12) Start the `jwtchat-client` process
