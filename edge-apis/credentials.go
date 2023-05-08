@@ -94,11 +94,6 @@ type BaseCredentials struct {
 	CaPool *x509.CertPool
 }
 
-// NewCredentials creates a new BaseCredentials instance.
-func NewCredentials() *BaseCredentials {
-	return &BaseCredentials{}
-}
-
 // Payload will produce the object used to construct the body of an authentication requests. The base version
 // sets shared information available in BaseCredentials.
 func (c *BaseCredentials) Payload() *rest_model.Authenticate {
@@ -122,11 +117,6 @@ func (c *BaseCredentials) Payload() *rest_model.Authenticate {
 // GetCaPool provides a base implementation to return the certificate pool of a Credentials instance.
 func (c *BaseCredentials) GetCaPool() *x509.CertPool {
 	return c.CaPool
-}
-
-// Method provides a base implementation to return the authentication method of a Credentials instance.
-func (c *BaseCredentials) Method() string {
-	return ""
 }
 
 // AddHeader provides a base implementation to add a header to the request.

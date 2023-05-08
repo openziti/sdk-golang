@@ -87,12 +87,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
-		baseCreds := &edge_apis.BaseCredentials{}
-		if cfg.Credentials != nil {
-			baseCreds = cfg.Credentials.(*edge_apis.BaseCredentials)
-		}
 		cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
-		cfg.Credentials.(*edge_apis.IdentityCredentials).BaseCredentials = *baseCreds
 	} else if cfg.Credentials == nil {
 		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
 	}
