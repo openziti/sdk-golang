@@ -17,7 +17,7 @@ require (
 	github.com/openziti/edge-api v0.25.18
 	github.com/openziti/foundation/v2 v2.0.22
 	github.com/openziti/identity v1.0.48
-	github.com/openziti/metrics v1.2.20
+	github.com/openziti/metrics v1.2.21
 	github.com/openziti/secretstream v0.1.6
 	github.com/openziti/transport/v2 v2.0.77
 	github.com/orcaman/concurrent-map/v2 v2.0.1

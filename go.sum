@@ -346,8 +346,8 @@ github.com/openziti/foundation/v2 v2.0.22 h1:oPjp83CwrVnldkPQiDykhfH5D8EokBk2xK+
 github.com/openziti/foundation/v2 v2.0.22/go.mod h1:4vBINq6Y9aSA6Bu1pOP2mBoepsWBrYWElJvTa4o+ceU=
 github.com/openziti/identity v1.0.48 h1:spfZK7A3hPV/VC9ACGLpbmOX/peRCPAhnA1jtm6S8Qg=
 github.com/openziti/identity v1.0.48/go.mod h1:cLc4VVIfke9Rs59q0Ft1xlbZABcBvKRO2+leZ05uwFM=
-github.com/openziti/metrics v1.2.20 h1:MS5NUhBXM9cEVfTqx1B06FkxkRiLAu/xBAzgUhQNMDU=
-github.com/openziti/metrics v1.2.20/go.mod h1:DJkQzrO8+CewGNoAJhuW1d+//dPjhIbOQO9AStFlKK4=
+github.com/openziti/metrics v1.2.21 h1:9hdw7xuSxRcLYsqV/wm59ukU3270RJTlAxDVy/Ga+mQ=
+github.com/openziti/metrics v1.2.21/go.mod h1:DJkQzrO8+CewGNoAJhuW1d+//dPjhIbOQO9AStFlKK4=
 github.com/openziti/secretstream v0.1.6 h1:TbpTwW/lc/0kuvaoRNjpiyebxh2Hyx8XSTB269QtHN4=
 github.com/openziti/secretstream v0.1.6/go.mod h1:Gc6fhaDC46UUvwJD4ogbYji22YSdz3fe8bno+BFIpcE=
 github.com/openziti/transport/v2 v2.0.77 h1:TeIUlX/zBf0FAG8ID7lqiUqbOgY8/HwBevaZE/3jzhQ=
