@@ -18,7 +18,7 @@ require (
 	github.com/openziti/foundation/v2 v2.0.22
 	github.com/openziti/identity v1.0.48
 	github.com/openziti/metrics v1.2.21
-	github.com/openziti/secretstream v0.1.6
+	github.com/openziti/secretstream v0.1.7
 	github.com/openziti/transport/v2 v2.0.77
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
@@ -67,7 +67,7 @@ require (
 	go.mongodb.org/mongo-driver v1.11.4 // indirect
 	go.opentelemetry.io/otel v1.14.0 // indirect
 	go.opentelemetry.io/otel/trace v1.14.0 // indirect
-	golang.org/x/crypto v0.8.0 // indirect
+	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/term v0.8.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
