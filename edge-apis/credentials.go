@@ -8,6 +8,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/identity"
+	"github.com/openziti/sdk-golang/ziti/edge/network"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
 	"net/http"
 )
@@ -15,19 +16,25 @@ import (
 // Credentials represents the minimal information needed across all authentication mechanisms to authenticate an identity
 // to an OpenZiti network.
 type Credentials interface {
-	//Payload constructs the objects that represent the JSON authentication payload for this set of credentials.
+	// Payload constructs the objects that represent the JSON authentication payload for this set of credentials.
 	Payload() *rest_model.Authenticate
 
-	//TlsCerts returns zero or more tls.Certificates used for client authentication.
+	// TlsCerts returns zero or more tls.Certificates used for client authentication.
 	TlsCerts() []tls.Certificate
 
-	//GetCaPool will return the CA pool that this credential was configured to trust.
+	// GetCaPool returns the CA pool that this credential was configured to trust.
 	GetCaPool() *x509.CertPool
 
-	//Method return the authentication necessary to complete an authentication request.
+	// Method returns the authentication necessary to complete an authentication request.
 	Method() string
 
-	//ClientAuthInfoWriter is used to pass a Credentials instance to the openapi runtime to authenticate outgoing
+	// AddHeader adds a header to the request.
+	AddHeader(key, value string)
+
+	// AuthenticateRequest authenticates an outgoing request.
+	AuthenticateRequest(runtime.ClientRequest, strfmt.Registry) error
+
+	// ClientAuthInfoWriter is used to pass a Credentials instance to the openapi runtime to authenticate outgoing
 	//requests.
 	runtime.ClientAuthInfoWriter
 }
@@ -71,34 +78,37 @@ func getClientAuthInfoOp(credentials Credentials, client *http.Client) func(*run
 
 // BaseCredentials is a shared struct of information all Credentials implementations require.
 type BaseCredentials struct {
-	//ConfigTypes is used to set the configuration types for services during authentication
+	// ConfigTypes is used to set the configuration types for services during authentication
 	ConfigTypes []string
 
-	//EnvInfo is provided during authentication to set environmental information about the client.
+	// Headers is a map of strings to string arrays of headers to send with auth requests.
+	Headers *http.Header
+
+	// EnvInfo is provided during authentication to set environmental information about the client.
 	EnvInfo *rest_model.EnvInfo
 
-	//SdkInfo is provided during authentication to set SDK information about the client.
+	// SdkInfo is provided during authentication to set SDK information about the client.
 	SdkInfo *rest_model.SdkInfo
 
-	//CaPool will override the client's default certificate pool if set to a non-nil value.
+	// CaPool will override the client's default certificate pool if set to a non-nil value.
 	CaPool *x509.CertPool
 }
 
 // Payload will produce the object used to construct the body of an authentication requests. The base version
 // sets shared information available in BaseCredentials.
-func (self *BaseCredentials) Payload() *rest_model.Authenticate {
+func (c *BaseCredentials) Payload() *rest_model.Authenticate {
 	envInfo, sdkInfo := sdkinfo.GetSdkInfo()
 
-	if self.EnvInfo != nil {
-		envInfo = self.EnvInfo
+	if c.EnvInfo != nil {
+		envInfo = c.EnvInfo
 	}
 
-	if self.SdkInfo != nil {
-		sdkInfo = self.SdkInfo
+	if c.SdkInfo != nil {
+		sdkInfo = c.SdkInfo
 	}
 
 	return &rest_model.Authenticate{
-		ConfigTypes: self.ConfigTypes,
+		ConfigTypes: c.ConfigTypes,
 		EnvInfo:     envInfo,
 		SdkInfo:     sdkInfo,
 	}
@@ -109,15 +119,38 @@ func (c *BaseCredentials) GetCaPool() *x509.CertPool {
 	return c.CaPool
 }
 
+// AddHeader provides a base implementation to add a header to the request.
+func (c *BaseCredentials) AddHeader(key, value string) {
+	if c.Headers == nil {
+		c.Headers = &http.Header{}
+	}
+	c.Headers.Add(key, value)
+}
+
 // AuthenticateRequest provides a base implementation to authenticate an outgoing request. This is provided here
 // for authentication methods such as `cert` which do not have to provide any more request level information.
-func (c *BaseCredentials) AuthenticateRequest(_ runtime.ClientRequest, _ strfmt.Registry) error {
+func (c *BaseCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+	var errors []error
+
+	if c.Headers != nil {
+		for hName, hVals := range *c.Headers {
+			for _, hVal := range hVals {
+				err := request.SetHeaderParam(hName, hVal)
+				if err != nil {
+					errors = append(errors, err)
+				}
+			}
+		}
+	}
+	if len(errors) > 0 {
+		return network.MultipleErrors(errors)
+	}
 	return nil
 }
 
 // TlsCerts provides a base implementation of returning the tls.Certificate array that will be used to setup
 // mTLS connections. This is provided here for authentication methods that do not initially require mTLS (e.g. JWTs).
-func (self *BaseCredentials) TlsCerts() []tls.Certificate {
+func (c *BaseCredentials) TlsCerts() []tls.Certificate {
 	return nil
 }
 
@@ -197,6 +230,10 @@ func (c *IdentityCredentials) TlsCerts() []tls.Certificate {
 	return nil
 }
 
+func (c *IdentityCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
+	return c.BaseCredentials.AuthenticateRequest(request, reg)
+}
+
 var _ Credentials = &JwtCredentials{}
 
 type JwtCredentials struct {
@@ -217,8 +254,21 @@ func (c *JwtCredentials) Method() string {
 	return "ext-jwt"
 }
 
-func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
-	return request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
+func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
+	var errors []error
+
+	err := c.BaseCredentials.AuthenticateRequest(request, reg)
+	if err != nil {
+		errors = append(errors, err)
+	}
+	err = request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
+	if err != nil {
+		errors = append(errors, err)
+	}
+	if len(errors) > 0 {
+		return network.MultipleErrors(errors)
+	}
+	return nil
 }
 
 var _ Credentials = &UpdbCredentials{}
@@ -229,7 +279,7 @@ type UpdbCredentials struct {
 	Password string
 }
 
-func (self *UpdbCredentials) Method() string {
+func (c *UpdbCredentials) Method() string {
 	return "password"
 }
 
@@ -242,10 +292,14 @@ func NewUpdbCredentials(username string, password string) *UpdbCredentials {
 	}
 }
 
-func (self *UpdbCredentials) Payload() *rest_model.Authenticate {
-	payload := self.BaseCredentials.Payload()
-	payload.Username = rest_model.Username(self.Username)
-	payload.Password = rest_model.Password(self.Password)
+func (c *UpdbCredentials) Payload() *rest_model.Authenticate {
+	payload := c.BaseCredentials.Payload()
+	payload.Username = rest_model.Username(c.Username)
+	payload.Password = rest_model.Password(c.Password)
 
 	return payload
+}
+
+func (c *UpdbCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
+	return c.BaseCredentials.AuthenticateRequest(request, reg)
 }
