@@ -450,9 +450,9 @@ func (context *ContextImpl) Authenticate() error {
 	}
 
 	// router connections are establishing using the api token. If we re-authenticate we must re-establish connections
-	context.routerConnections.IterCb(func(key string, conn edge.RouterConn) {
-		_ = conn.Close()
-	})
+	for entry := range context.routerConnections.IterBuffered() {
+		_ = entry.Val.Close()
+	}
 
 	context.routerConnections = cmap.New[edge.RouterConn]()
 
