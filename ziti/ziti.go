@@ -19,6 +19,8 @@ package ziti
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/openziti/edge-api/rest_client_api_client/authentication"
+	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"math"
 	"net"
@@ -29,12 +31,10 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/channel/v2/latency"
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
-	"github.com/openziti/edge-api/rest_client_api_client/service"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
@@ -47,7 +47,6 @@ import (
 	"github.com/pkg/errors"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"net/http"
 )
 
 type SessionType rest_model.DialBind
@@ -696,7 +695,7 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
 	if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
-		if _, isNotFound := err.(*service.DetailServiceNotFound); isNotFound {
+		if _, isNotFound := err.(*rest_session.DetailSessionNotFound); isNotFound {
 			sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
 			context.sessions.Remove(sessionKey)
 		}
@@ -969,9 +968,9 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 	session, err := context.getOrCreateSession(*service.ID, sessionType)
 	if err != nil {
 		logger.WithError(err).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
-		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusUnauthorized {
+		if _, ok := err.(*rest_session.CreateSessionUnauthorized); ok {
 			if err := context.Authenticate(); err != nil {
-				if authErr, ok := err.(*runtime.APIError); ok && authErr.Code == http.StatusUnauthorized {
+				if _, ok := err.(*authentication.AuthenticateUnauthorized); ok {
 					return nil, backoff.Permanent(err)
 				}
 				return nil, err
@@ -1225,30 +1224,26 @@ func (mgr *listenerManager) refreshSession() {
 
 	session, err := mgr.context.refreshSession(*mgr.session.ID)
 	if err != nil {
-		apiErr, ok := err.(*runtime.APIError)
-
-		if ok {
-			switch apiErr.Code {
-			case http.StatusNotFound:
-				// try to create new session
-				mgr.createSessionWithBackoff()
-				return
-			case http.StatusUnauthorized:
-				pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
-				if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
-					err := fmt.Errorf("unable to establish API session (%w)", err)
-					if len(mgr.routerConnections) == 0 {
-						mgr.listener.CloseWithError(err)
-					}
-					return
+		switch err.(type) {
+		case *rest_session.DetailSessionNotFound:
+			// try to create new session
+			mgr.createSessionWithBackoff()
+			return
+		case *rest_session.DetailSessionUnauthorized:
+			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
+			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
+				err := fmt.Errorf("unable to establish API session (%w)", err)
+				if len(mgr.routerConnections) == 0 {
+					mgr.listener.CloseWithError(err)
 				}
+				return
 			}
 		}
 
 		session, err = mgr.context.refreshSession(*mgr.session.ID)
 		if err != nil {
-			apiErr, ok = err.(*runtime.APIError)
-			if ok && apiErr.Code == http.StatusUnauthorized {
+			switch err.(type) {
+			case *rest_session.DetailSessionUnauthorized:
 				pfxlog.Logger().Errorf(
 					"failure refreshing bind session even after re-authenticating api session. service %v (%v)",
 					mgr.listener.GetServiceName(), err)
