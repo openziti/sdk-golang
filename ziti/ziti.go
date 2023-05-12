@@ -19,7 +19,9 @@ package ziti
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-openapi/strfmt"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
+	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"math"
@@ -187,15 +189,9 @@ func (context *ContextImpl) GetCredentials() apis.Credentials {
 
 func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
 	var sessions []*rest_model.SessionDetail
-	var err error
 	context.sessions.IterCb(func(key string, s *rest_model.SessionDetail) {
 		sessions = append(sessions, s)
 	})
-
-	if err != nil {
-		return nil, err
-	}
-
 	return sessions, nil
 }
 
@@ -322,17 +318,58 @@ func (context *ContextImpl) refreshSessions() {
 }
 
 func (context *ContextImpl) RefreshServices() error {
+	return context.refreshServices(true)
+}
+
+func (context *ContextImpl) refreshServices(forceCheck bool) error {
 	if err := context.ensureApiSession(); err != nil {
 		return fmt.Errorf("failed to refresh services: %v", err)
 	}
 
+	var checkService bool
+	var lastServiceUpdate *strfmt.DateTime
+	var err error
+
 	log := pfxlog.Logger()
-	log.Debug("refreshing services")
-	services, err := context.CtrlClt.GetServices()
-	if err != nil {
-		return err
+	log.Debug("checking if service updates available")
+	if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
+		log.WithError(err).Error("failed to check if service list update is available")
+		if _, ok := err.(*current_api_session.ListServiceUpdatesUnauthorized); !ok {
+			checkService = true
+		} else {
+			if err = context.Authenticate(); err != nil {
+				log.WithError(err).Error("unable to re-authenticate during session refresh")
+			} else {
+				if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
+					checkService = true
+				}
+			}
+		}
 	}
-	context.processServiceUpdates(services)
+
+	if checkService || forceCheck {
+		log.Debug("refreshing services")
+
+		services, err := context.CtrlClt.GetServices()
+		if err != nil {
+			if _, ok := err.(*service.ListServicesUnauthorized); ok {
+				log.Info("attempting to re-authenticate")
+				if authErr := context.Authenticate(); authErr != nil {
+					log.WithError(authErr).Error("unable to re-authenticate during session refresh")
+					return err
+				}
+				if services, err = context.CtrlClt.GetServices(); err != nil {
+					return err
+				}
+
+			} else {
+				return err
+			}
+		}
+		context.CtrlClt.lastServiceUpdate = lastServiceUpdate
+		context.processServiceUpdates(services)
+	}
+
 	return nil
 }
 
@@ -343,8 +380,6 @@ func (context *ContextImpl) runSessionRefresh() {
 
 	expireTime := time.Time(*context.CtrlClt.GetCurrentApiSession().ExpiresAt)
 	sleepDuration := time.Until(expireTime) - (10 * time.Second)
-
-	var serviceUpdateApiAvailable = true
 
 	for {
 		select {
@@ -365,30 +400,10 @@ func (context *ContextImpl) runSessionRefresh() {
 
 		case <-svcUpdateTick.C:
 			log.Debug("refreshing services")
-			checkService := false
-
-			if serviceUpdateApiAvailable {
-				var err error
-				if checkService, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-					log.WithError(err).Errorf("failed to check if service list update is available")
-					if _, ok := err.(*current_api_session.ListServiceUpdatesUnauthorized); !ok {
-						serviceUpdateApiAvailable = false
-						checkService = true
-					}
-				}
+			if err := context.refreshServices(false); err != nil {
+				log.WithError(err).Error("failed to load service updates")
 			} else {
-				checkService = true
-			}
-
-			if checkService {
-				log.Debug("refreshing services")
-				services, err := context.CtrlClt.GetServices()
-				if err != nil {
-					log.Errorf("failed to load service updates %+v", err)
-				} else {
-					context.processServiceUpdates(services)
-					context.refreshSessions()
-				}
+				context.refreshSessions()
 			}
 		}
 	}
@@ -470,10 +485,8 @@ func (context *ContextImpl) Authenticate() error {
 		context.metrics = metrics.NewRegistry(context.CtrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
 
 		// get services
-		if services, err := context.CtrlClt.GetServices(); err != nil {
+		if err := context.RefreshServices(); err != nil {
 			doOnceErr = err
-		} else {
-			context.processServiceUpdates(services)
 		}
 	})
 
