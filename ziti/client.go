@@ -31,8 +31,7 @@ type CtrlClient struct {
 	*apis.ClientApiClient
 	Credentials apis.Credentials
 
-	lastServiceUpdate  *strfmt.DateTime
-	lastServiceRefresh *strfmt.DateTime
+	lastServiceUpdate *strfmt.DateTime
 
 	ApiSessionCertificateDetail rest_model.CurrentAPISessionCertificateDetail
 	ApiSessionCsr               x509.CertificateRequest
@@ -63,18 +62,14 @@ func (self *CtrlClient) Refresh() (*time.Time, error) {
 // IsServiceListUpdateAvailable will contact the controller to determine if a new set of services are available. Service
 // updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
 // checks.
-func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, error) {
-	if self.lastServiceUpdate == nil {
-		return true, nil
-	}
-
-	resp, err := self.API.CurrentAPISession.ListServiceUpdates(&current_api_session.ListServiceUpdatesParams{}, nil)
+func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, error) {
+	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), nil)
 
 	if err != nil {
-		return false, err
+		return true, nil, err
 	}
 
-	return resp.Payload.Data.LastChangeAt.Equal(*self.lastServiceUpdate), nil
+	return self.lastServiceUpdate == nil || !resp.Payload.Data.LastChangeAt.Equal(*self.lastServiceUpdate), resp.Payload.Data.LastChangeAt, nil
 }
 
 // Authenticate attempts to use authenticate, overwriting any existing ApiSession.
@@ -288,8 +283,6 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 		if pageOffset >= *resp.Payload.Meta.Pagination.TotalCount {
 			break
 		}
-
-		self.lastServiceRefresh = self.lastServiceUpdate
 	}
 
 	return services, nil
