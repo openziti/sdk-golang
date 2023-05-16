@@ -1,3 +1,19 @@
+/*
+	Copyright 2019 NetFoundry Inc.
+
+	Licensed under the Apache License, Version 2.0 (the "License");
+	you may not use this file except in compliance with the License.
+	You may obtain a copy of the License at
+
+	https://www.apache.org/licenses/LICENSE-2.0
+
+	Unless required by applicable law or agreed to in writing, software
+	distributed under the License is distributed on an "AS IS" BASIS,
+	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+	See the License for the specific language governing permissions and
+	limitations under the License.
+*/
+
 package ziti
 
 import (
@@ -21,6 +37,7 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	"github.com/openziti/edge-api/rest_client_api_client/session"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/edge-api/rest_util"
 	nfPem "github.com/openziti/foundation/v2/pem"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
@@ -51,11 +68,15 @@ func (self *CtrlClient) GetCurrentApiSession() *rest_model.CurrentAPISessionDeta
 
 // Refresh will contact the controller extending the current ApiSession
 func (self *CtrlClient) Refresh() (*time.Time, error) {
-	resp, err := self.API.CurrentAPISession.GetCurrentAPISession(&current_api_session.GetCurrentAPISessionParams{}, nil)
+	params := current_api_session.NewGetCurrentAPISessionParams()
+	resp, err := self.API.CurrentAPISession.GetCurrentAPISession(params, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
+
+	self.CurrentAPISessionDetail = resp.Payload.Data
+
 	expiresAt := time.Time(*resp.Payload.Data.ExpiresAt)
 	return &expiresAt, nil
 }
@@ -82,28 +103,28 @@ func (self *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, err
 	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials, self.ConfigTypes)
 
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
 
 	_, err = self.GetIdentity()
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
 
-	return apiSession, err
+	return apiSession, nil
 }
 
 // AuthenticateMFA handles MFA authentication queries may be provided. AuthenticateMFA allows
 // the current identity for their current api session to attempt to pass MFA authentication.
 func (self *CtrlClient) AuthenticateMFA(code string) error {
-	_, err := self.API.Authentication.AuthenticateMfa(&authentication.AuthenticateMfaParams{
-		MfaAuth: &rest_model.MfaCode{
-			Code: &code,
-		},
-	}, nil, nil)
+	params := authentication.NewAuthenticateMfaParams()
+	params.MfaAuth = &rest_model.MfaCode{
+		Code: &code,
+	}
+	_, err := self.API.Authentication.AuthenticateMfa(params, nil)
 
 	if err != nil {
-		return err
+		return rest_util.WrapErr(err)
 	}
 
 	return nil
@@ -117,7 +138,7 @@ func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseC
 	_, err := self.API.PostureChecks.CreatePostureResponse(params, nil)
 
 	if err != nil {
-		return err
+		return rest_util.WrapErr(err)
 	}
 	return nil
 }
@@ -130,7 +151,7 @@ func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureRe
 	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, nil)
 
 	if err != nil {
-		return err
+		return rest_util.WrapErr(err)
 	}
 	return nil
 }
@@ -141,7 +162,7 @@ func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error)
 	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
 
 	return resp.Payload.Data, nil
@@ -154,7 +175,7 @@ func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error)
 	resp, err := self.API.Session.DetailSession(params, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
 
 	return resp.Payload.Data, nil
@@ -231,7 +252,7 @@ func (self *CtrlClient) NewApiSessionCertificate() error {
 	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, nil)
 
 	if err != nil {
-		return err
+		return rest_util.WrapErr(err)
 	}
 
 	certs := nfPem.PemBytesToCertificates([]byte(*resp.Payload.Data.Certificate))
@@ -264,7 +285,7 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 		resp, err := self.API.Service.ListServices(params, nil)
 
 		if err != nil {
-			return nil, err
+			return nil, rest_util.WrapErr(err)
 		}
 
 		if services == nil {
@@ -297,7 +318,7 @@ func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, off
 	resp, err := self.API.Service.ListServiceTerminators(params, nil)
 
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, rest_util.WrapErr(err)
 	}
 
 	return resp.Payload.Data, int(*resp.Payload.Meta.Pagination.TotalCount), nil
@@ -314,7 +335,7 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 	resp, err := self.API.Session.CreateSession(params, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, rest_util.WrapErr(err)
 	}
 
 	return resp.Payload.Data, nil
@@ -335,7 +356,7 @@ func (self *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, nil)
 
 	if detailMfaErr != nil {
-		return nil, detailMfaResp
+		return nil, rest_util.WrapErr(detailMfaErr)
 	}
 
 	return detailMfaResp.Payload.Data, nil
@@ -351,7 +372,7 @@ func (self *CtrlClient) VerifyMfa(code string) error {
 
 	_, err := self.API.CurrentIdentity.VerifyMfa(params, nil)
 
-	return err
+	return rest_util.WrapErr(err)
 }
 
 // RemoveMfa will remove the currently enrolled TOTP MFA added by EnrollMfa() and verified by VerifyMfa()
@@ -361,5 +382,5 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 
 	_, err := self.API.CurrentIdentity.DeleteMfa(params, nil)
 
-	return err
+	return rest_util.WrapErr(err)
 }

@@ -2,6 +2,7 @@ package ziti
 
 import (
 	"fmt"
+	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
@@ -35,6 +36,7 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		CtrlClt: &CtrlClient{
 			PostureCache: posture.NewCache(nil, closeNotify),
 		},
+		EventEmmiter: events.New(),
 	}
 
 	var services []*rest_model.ServiceDetail
@@ -182,6 +184,7 @@ func Test_AddressMatch(t *testing.T) {
 		CtrlClt: &CtrlClient{
 			PostureCache: posture.NewCache(nil, nil),
 		},
+		EventEmmiter: events.New(),
 	}
 	ctx.processServiceUpdates(services)
 
