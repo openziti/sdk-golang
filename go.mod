@@ -13,18 +13,18 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.64
+	github.com/openziti/channel/v2 v2.0.65
 	github.com/openziti/edge-api v0.25.19
 	github.com/openziti/foundation/v2 v2.0.22
-	github.com/openziti/identity v1.0.48
+	github.com/openziti/identity v1.0.49
 	github.com/openziti/metrics v1.2.21
 	github.com/openziti/secretstream v0.1.7
-	github.com/openziti/transport/v2 v2.0.77
+	github.com/openziti/transport/v2 v2.0.78
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/shirou/gopsutil/v3 v3.23.4
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.1
 	github.com/stretchr/testify v1.8.2
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
