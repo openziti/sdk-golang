@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	openapiclient "github.com/go-openapi/runtime/client"
 	"github.com/openziti/edge-api/rest_util"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -27,10 +26,6 @@ func NewComponents(api *url.URL, schemes []string) *Components {
 
 	httpTransport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 10 * time.Second,
-		}).DialContext,
 		TLSClientConfig:       tlsClientConfig,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,
