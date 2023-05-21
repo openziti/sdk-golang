@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 NetFoundry Inc.
+	Copyright NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -30,11 +30,10 @@ import (
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/sequence"
 	"github.com/openziti/transport/v2"
-	"github.com/openziti/transport/v2/tls"
 )
 
 type addrParser struct {
-	p tls.AddressParser
+	p transport.AddressParser
 }
 
 func (ap addrParser) Parse(addressString string) (transport.Address, error) {
@@ -42,7 +41,7 @@ func (ap addrParser) Parse(addressString string) (transport.Address, error) {
 }
 
 func init() {
-	transport.AddAddressParser(new(addrParser))
+	AddAddressParsers()
 }
 
 type RouterClient interface {
