@@ -21,8 +21,10 @@ package edge
 import (
 	"github.com/openziti/transport/v2"
 	"github.com/openziti/transport/v2/tls"
+	"github.com/openziti/transport/v2/ws"
 )
 
 func AddAddressParsers() {
 	transport.AddAddressParser(&addrParser{p: new(tls.AddressParser)})
+	transport.AddAddressParser(&addrParser{p: new(ws.AddressParser)})
 }
