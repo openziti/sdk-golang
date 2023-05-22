@@ -9,6 +9,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"time"
+
 	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
@@ -23,7 +25,6 @@ import (
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
-	"time"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -154,6 +155,12 @@ func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error)
 
 	if err != nil {
 		return nil, err
+	}
+
+	// The go SDK supports dialing websockets, but currently only the ws: listener is functional
+	// Removing wss: until the listener is revisted
+	for _, er := range resp.Payload.Data.EdgeRouters {
+		delete(er.Urls, "wss")
 	}
 
 	return resp.Payload.Data, nil
