@@ -20,9 +20,9 @@ package edge
 
 import (
 	"github.com/openziti/transport/v2"
-	"github.com/openziti/transport/v2/ws"
+	"github.com/openziti/transport/v2/wss"
 )
 
 func AddAddressParsers() {
-	transport.AddAddressParser(&addrParser{p: new(ws.AddressParser)})
+	transport.AddAddressParser(&addrParser{p: new(wss.AddressParser)})
 }
