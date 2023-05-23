@@ -157,12 +157,6 @@ func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error)
 		return nil, err
 	}
 
-	// The go SDK supports dialing websockets, but currently only the ws: listener is functional
-	// Removing wss: until the listener is revisted
-	for _, er := range resp.Payload.Data.EdgeRouters {
-		delete(er.Urls, "wss")
-	}
-
 	return resp.Payload.Data, nil
 }
 
