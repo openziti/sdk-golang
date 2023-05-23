@@ -18,7 +18,7 @@ require (
 	github.com/openziti/foundation/v2 v2.0.24
 	github.com/openziti/identity v1.0.53
 	github.com/openziti/metrics v1.2.25
-	github.com/openziti/secretstream v0.1.7
+	github.com/openziti/secretstream v0.1.8
 	github.com/openziti/transport/v2 v2.0.86
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
