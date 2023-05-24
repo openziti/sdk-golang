@@ -246,19 +246,21 @@ func (context *ContextImpl) AddServiceRemovedListener(handler func(Context, *res
 	}
 }
 
-func (context *ContextImpl) AddRouterConnectedListener(handler func(Context, string)) func() {
+func (context *ContextImpl) AddRouterConnectedListener(handler func(Context, string, string)) func() {
 	listener := func(args ...interface{}) {
-		key, ok := args[0].(string)
+		name, ok := args[0].(string)
 
 		if !ok {
-			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", key, args[0])
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", name, args[0])
 		}
 
-		if key == "" {
-			pfxlog.Logger().Fatalf("expected arg[0] was empty string, unexpected")
+		addr, ok := args[1].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", addr, args[1])
 		}
 
-		handler(context, key)
+		handler(context, name, addr)
 	}
 
 	context.AddListener(EventRouterConnected, listener)
@@ -268,19 +270,21 @@ func (context *ContextImpl) AddRouterConnectedListener(handler func(Context, str
 	}
 }
 
-func (context *ContextImpl) AddRouterDisconnectedListener(handler func(Context, string)) func() {
+func (context *ContextImpl) AddRouterDisconnectedListener(handler func(Context, string, string)) func() {
 	listener := func(args ...interface{}) {
-		key, ok := args[0].(string)
+		name, ok := args[0].(string)
 
 		if !ok {
-			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", key, args[0])
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", name, args[0])
 		}
 
-		if key == "" {
-			pfxlog.Logger().Fatalf("expected arg[0] was empty string, unexpected")
+		addr, ok := args[1].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", addr, args[1])
 		}
 
-		handler(context, key)
+		handler(context, name, addr)
 	}
 
 	context.AddListener(EventRouterDisconnected, listener)
@@ -440,7 +444,7 @@ func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
 
 func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
 	logrus.Debugf("connection to router [%s] was closed", routerConn.Key())
-	context.Emit(EventRouterDisconnected, routerConn.Key())
+	context.Emit(EventRouterDisconnected, routerConn.GetRouterName(), routerConn.Key())
 	context.routerConnections.Remove(routerConn.Key())
 }
 
@@ -1153,7 +1157,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 
 	logger.Debugf("connected to %s", ingressUrl)
 
-	context.Emit(EventRouterConnected, edgeConn.Key())
+	context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {

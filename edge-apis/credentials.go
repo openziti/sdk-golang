@@ -31,6 +31,10 @@ type Credentials interface {
 	// AddHeader adds a header to the request.
 	AddHeader(key, value string)
 
+	// AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
+	// provided token should be the base64 encoded version of the token.
+	AddJWT(string)
+
 	// AuthenticateRequest authenticates an outgoing request.
 	AuthenticateRequest(runtime.ClientRequest, strfmt.Registry) error
 
@@ -92,6 +96,12 @@ type BaseCredentials struct {
 
 	// CaPool will override the client's default certificate pool if set to a non-nil value.
 	CaPool *x509.CertPool
+}
+
+// AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
+// provided token should be the base64 encoded version of the token.
+func (c *BaseCredentials) AddJWT(token string) {
+	c.Headers.Add("authorization", "Bearer "+token)
 }
 
 // Payload will produce the object used to construct the body of an authentication requests. The base version

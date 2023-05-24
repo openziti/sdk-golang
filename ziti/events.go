@@ -47,14 +47,16 @@ const (
 	//
 	// Arguments:
 	// 1) Context - the context that triggered the listener
-	// 2) routerKey `string` - A string that uniquely identifies a router connection
+	// 2) routerName `string` - The string name of the target router
+	// 3) routerKey `string` - A string that uniquely identifies a router connection
 	EventRouterConnected = events.EventName("router-connected")
 
 	// EventRouterDisconnected is emitted when a connection to an Edge Router is disconnected.
 	//
 	// Arguments:
 	// 1) Context - the context that triggered the listener
-	// 2) routerKey `string` - A string that uniquely identifies a router connection
+	// 2) routerName `string` - The string name of the target router
+	// 3) routerKey `string` - A string that uniquely identifies a router connection
 	EventRouterDisconnected = events.EventName("router-disconnected")
 
 	// EventMfaTotpCode is emitted when a Ziti context requires an MFA TOTP code to proceed with authentication.
@@ -119,14 +121,12 @@ type Eventer interface {
 	AddServiceRemovedListener(func(Context, *rest_model.ServiceDetail)) func()
 
 	// AddRouterConnectedListener adds an event listener for the EventRouterConnected event and returns a function to remove
-	// the listener. It is emitted any time a router connection is established. The string provided is the router
-	// key.
-	AddRouterConnectedListener(func(Context, string)) func()
+	// the listener. It is emitted any time a router connection is established. The strings provided are router name and connection address.
+	AddRouterConnectedListener(func(ztx Context, name string, addr string)) func()
 
 	// AddRouterDisconnectedListener adds an event listener for the EventRouterDisconnected event and returns a function to remove
-	// the listener. It is emitted any time a router connection is closed. The string provided is the router
-	// key.
-	AddRouterDisconnectedListener(func(Context, string)) func()
+	// the listener. It is emitted any time a router connection is closed. The strings provided are router name and connection address.
+	AddRouterDisconnectedListener(func(ztx Context, name string, addr string)) func()
 
 	// AddMfaTotpCodeListener adds an event listener for the EventMfaTotpCode event and returns a function to remove
 	// the listener. It is emitted any time the currently authenticated API Session requires an MFA TOTP Code for

@@ -2,7 +2,7 @@
 
 ## What's New
 
-* Change log - This change log was added and is a reelection of all changes from `v0.20.0` to `v0.20.23`
+* Change log - This change log was added and is a reflection of all changes from `v0.20.0` to `v0.20.23`
 * Flattened Config Name Space - Reduce collisions for implementors by removing `config` package
 * New Authentication Options - alters the configuration options used to instantiate Ziti SDK contexts. This impacts
   context instantiation signatures.
@@ -110,77 +110,75 @@ is not backed by a x509 Certificate.
 OpenZiti Context's returned now support an `Event()` function which exposes the following function calls:
 
 ```go
-	// AddServiceAddedListener adds an event listener for the EventServiceAdded event and returns a function to remove
-	// the listener. It is emitted any time a new service definition is received. The service detail provided is the
-	// service that was added.
-	AddServiceAddedListener(func(Context, *rest_model.ServiceDetail)) func()
+// AddServiceAddedListener adds an event listener for the EventServiceAdded event and returns a function to remove
+// the listener. It is emitted any time a new service definition is received. The service detail provided is the
+// service that was added.
+AddServiceAddedListener(func(Context, *rest_model.ServiceDetail)) func()
 
-	// AddServiceChangedListener adds an event listener for the EventServiceChanged event and returns a function to remove
-	// the listener. It is emitted any time a known service definition is updated with new values. The service detail
-	// provided is the service that was changed.
-	AddServiceChangedListener(func(Context, *rest_model.ServiceDetail)) func()
+// AddServiceChangedListener adds an event listener for the EventServiceChanged event and returns a function to remove
+// the listener. It is emitted any time a known service definition is updated with new values. The service detail
+// provided is the service that was changed.
+AddServiceChangedListener(func(Context, *rest_model.ServiceDetail)) func()
 
-	// AddServiceRemovedListener adds an event listener for the EventServiceRemoved event and returns a function to remove
-	// the listener. It is emitted any time known service definition is no longer accessible. The service detail
-	// provided is the service that was removed.
-	AddServiceRemovedListener(func(Context, *rest_model.ServiceDetail)) func()
+// AddServiceRemovedListener adds an event listener for the EventServiceRemoved event and returns a function to remove
+// the listener. It is emitted any time known service definition is no longer accessible. The service detail
+// provided is the service that was removed.
+AddServiceRemovedListener(func(Context, *rest_model.ServiceDetail)) func()
 
-	// AddRouterConnectedListener adds an event listener for the EventRouterConnected event and returns a function to remove
-	// the listener. It is emitted any time a router connection is established. The string provided is the router
-	// key.
-	AddRouterConnectedListener(func(Context, string)) func()
+// AddRouterConnectedListener adds an event listener for the EventRouterConnected event and returns a function to remove
+// the listener. It is emitted any time a router connection is established. The strings provided are router name and connection address.
+AddRouterConnectedListener(func(ztx Context, name string, addr string)) func()
 
-	// AddRouterDisconnectedListener adds an event listener for the EventRouterDisconnected event and returns a function to remove
-	// the listener. It is emitted any time a router connection is closed. The string provided is the router
-	// key.
-	AddRouterDisconnectedListener(func(Context, string)) func()
+// AddRouterDisconnectedListener adds an event listener for the EventRouterDisconnected event and returns a function to remove
+// the listener. It is emitted any time a router connection is closed. The strings provided are router name and connection address.
+AddRouterDisconnectedListener(func(ztx Context, name string, addr string)) func()
 
-	// AddMfaTotpCodeListener adds an event listener for the EventMfaTotpCode event and returns a function to remove
-	// the listener. It is emitted any time the currently authenticated API Session requires an MFA TOTP Code for
-	// authentication. The authentication query detail and an MfaCodeResponse function are provided. The MfaCodeResponse
-	// should be invoked to answer the MFA TOTP challenge.
-	//
-	// Authentication challenges for MFA are modeled as authentication queries, and is provided to listeners for
-	// informational purposes. This event handler is a specific authentication query that responds to the internal Ziti
-	// MFA TOTP challenge only. All authentication queries, including MFA TOTP ones, are also available through
-	// AddAuthQueryListener, but does not provide typed response callbacks.
-	AddMfaTotpCodeListener(func(Context, *rest_model.AuthQueryDetail, MfaCodeResponse)) func()
+// AddMfaTotpCodeListener adds an event listener for the EventMfaTotpCode event and returns a function to remove
+// the listener. It is emitted any time the currently authenticated API Session requires an MFA TOTP Code for
+// authentication. The authentication query detail and an MfaCodeResponse function are provided. The MfaCodeResponse
+// should be invoked to answer the MFA TOTP challenge.
+//
+// Authentication challenges for MFA are modeled as authentication queries, and is provided to listeners for
+// informational purposes. This event handler is a specific authentication query that responds to the internal Ziti
+// MFA TOTP challenge only. All authentication queries, including MFA TOTP ones, are also available through
+// AddAuthQueryListener, but does not provide typed response callbacks.
+AddMfaTotpCodeListener(func(Context, *rest_model.AuthQueryDetail, MfaCodeResponse)) func()
 
-	// AddAuthQueryListener adds an event listener for the EventAuthQuery event and returns a function to remove
-	// the listener. The event is emitted any time the current API Session is required to pass additional authentication
-	// challenges - which enabled MFA functionality.
-	AddAuthQueryListener(func(Context, *rest_model.AuthQueryDetail)) func()
+// AddAuthQueryListener adds an event listener for the EventAuthQuery event and returns a function to remove
+// the listener. The event is emitted any time the current API Session is required to pass additional authentication
+// challenges - which enabled MFA functionality.
+AddAuthQueryListener(func(Context, *rest_model.AuthQueryDetail)) func()
 
-	// AddAuthenticationStatePartialListener adds an event listener for the EventAuthenticationStatePartial event and
-	// returns a function to remove the listener. Partial authentication occurs when there are unmet authentication
-	// queries - which are defined by the authentication policy associated with the identity. The
-	// EventAuthQuery or EventMfaTotpCode events will also coincide with this event. Additionally, the authentication
-	// queries that triggered this event are available on the API Session detail in the `AuthQueries` field.
-	//
-	// In the partially authenticated state, a context will have reduced capabilities. It will not be able to
-	// update/list services, create service sessions, etc. It will be able to enroll in TOTP MFA and answer
-	// authentication queries.
-	//
-	// One all authentication queries are answered, the EventAuthenticationStateFull event will be emitted. For
-	// identities that do not have secondary authentication challenges associated with them, this even will never
-	// be emitted.
-	AddAuthenticationStatePartialListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
+// AddAuthenticationStatePartialListener adds an event listener for the EventAuthenticationStatePartial event and
+// returns a function to remove the listener. Partial authentication occurs when there are unmet authentication
+// queries - which are defined by the authentication policy associated with the identity. The
+// EventAuthQuery or EventMfaTotpCode events will also coincide with this event. Additionally, the authentication
+// queries that triggered this event are available on the API Session detail in the `AuthQueries` field.
+//
+// In the partially authenticated state, a context will have reduced capabilities. It will not be able to
+// update/list services, create service sessions, etc. It will be able to enroll in TOTP MFA and answer
+// authentication queries.
+//
+// One all authentication queries are answered, the EventAuthenticationStateFull event will be emitted. For
+// identities that do not have secondary authentication challenges associated with them, this even will never
+// be emitted.
+AddAuthenticationStatePartialListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
 
-	// AddAuthenticationStateFullListener adds an event listener for the EventAuthenticationStateFull event and
-	// returns a function to remove the listener. Full authentication occurs when there are no unmet authentication
-	// queries - which are defined by the authentication policy associated with the identity. In a fully authenticated
-	// state, the context will be able to perform all client actions.
-	AddAuthenticationStateFullListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
+// AddAuthenticationStateFullListener adds an event listener for the EventAuthenticationStateFull event and
+// returns a function to remove the listener. Full authentication occurs when there are no unmet authentication
+// queries - which are defined by the authentication policy associated with the identity. In a fully authenticated
+// state, the context will be able to perform all client actions.
+AddAuthenticationStateFullListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
 
-	// AddAuthenticationStateUnauthenticatedListener adds an event listener for the EventAuthenticationStateUnauthenticated
-	// event and returns a function to remove the listener. The unauthenticated state occurs when the API session
-	// currently being used is no longer valid. API Sessions may become invalid due to prolonged inactivity due to
-	// network disconnection, the host machine entering a power saving/sleep mode, etc. It may also occur due to
-	// administrative action such as removing specific API Sessions or removing entire identities.
-	//
-	// The API Session detail provided to the listener may be nil. If it is not nil, the API Session detail is the
-	// now expired API Session.
-	AddAuthenticationStateUnauthenticatedListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
+// AddAuthenticationStateUnauthenticatedListener adds an event listener for the EventAuthenticationStateUnauthenticated
+// event and returns a function to remove the listener. The unauthenticated state occurs when the API session
+// currently being used is no longer valid. API Sessions may become invalid due to prolonged inactivity due to
+// network disconnection, the host machine entering a power saving/sleep mode, etc. It may also occur due to
+// administrative action such as removing specific API Sessions or removing entire identities.
+//
+// The API Session detail provided to the listener may be nil. If it is not nil, the API Session detail is the
+// now expired API Session.
+AddAuthenticationStateUnauthenticatedListener(func(Context, *rest_model.CurrentAPISessionDetail)) func()
 ```
 
 The above functions allow for the addition of strongly typed event handlers and removal of those listeners with the 
