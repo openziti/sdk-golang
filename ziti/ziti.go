@@ -189,7 +189,7 @@ func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_
 		}
 
 		if details == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, details)
@@ -211,7 +211,7 @@ func (context *ContextImpl) AddServiceChangedListener(handler func(Context, *res
 		}
 
 		if details == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, details)
@@ -233,7 +233,7 @@ func (context *ContextImpl) AddServiceRemovedListener(handler func(Context, *res
 		}
 
 		if details == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, details)
@@ -303,7 +303,7 @@ func (context *ContextImpl) AddMfaTotpCodeListener(handler func(Context, *rest_m
 		}
 
 		if authQuery == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		responder, ok := args[1].(MfaCodeResponse)
@@ -313,7 +313,7 @@ func (context *ContextImpl) AddMfaTotpCodeListener(handler func(Context, *rest_m
 		}
 
 		if responder == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, authQuery, responder)
@@ -335,7 +335,7 @@ func (context *ContextImpl) AddAuthQueryListener(handler func(Context, *rest_mod
 		}
 
 		if authQuery == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, authQuery)
@@ -357,7 +357,7 @@ func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(C
 		}
 
 		if apiSession == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, apiSession)
@@ -379,7 +379,7 @@ func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Cont
 		}
 
 		if apiSession == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, apiSession)
@@ -401,7 +401,7 @@ func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handle
 		}
 
 		if apiSession == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nill, unexpected")
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
 		}
 
 		handler(context, apiSession)
