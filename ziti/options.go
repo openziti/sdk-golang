@@ -25,7 +25,12 @@ type Options struct {
 
 	// Deprecated: OnServiceUpdate is a callback that is invoked when a service changes its definition.
 	// Use `zitiContext.AddListener(<eventName>, handler)` where `eventName` may be EventServiceAdded, EventServiceChanged, EventServiceRemoved.
-	OnServiceUpdate serviceCB
+	OnServiceUpdate     serviceCB
+	EdgeRouterUrlFilter func(string) bool
+}
+
+func (self *Options) isEdgeRouterUrlAccepted(url string) bool {
+	return self.EdgeRouterUrlFilter == nil || self.EdgeRouterUrlFilter(url)
 }
 
 var DefaultOptions = &Options{
