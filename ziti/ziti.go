@@ -559,7 +559,9 @@ func (context *ContextImpl) refreshSessions() {
 		} else {
 			for _, er := range s.EdgeRouters {
 				for _, u := range er.Urls {
-					edgeRouters[u] = *er.Name
+					if context.options.isEdgeRouterUrlAccepted(u) {
+						edgeRouters[u] = *er.Name
+					}
 				}
 			}
 		}
@@ -1068,7 +1070,9 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 
 	for _, edgeRouter := range unconnected {
 		for _, routerUrl := range edgeRouter.Urls {
-			go context.connectEdgeRouter(*edgeRouter.Name, routerUrl, ch)
+			if context.options.isEdgeRouterUrlAccepted(routerUrl) {
+				go context.connectEdgeRouter(*edgeRouter.Name, routerUrl, ch)
+			}
 		}
 	}
 
@@ -1534,6 +1538,10 @@ func (mgr *listenerManager) makeMoreListeners() {
 		}
 
 		for _, routerUrl := range edgeRouter.Urls {
+			if !mgr.context.options.isEdgeRouterUrlAccepted(routerUrl) {
+				continue
+			}
+
 			if _, ok := mgr.connects[routerUrl]; ok {
 				// this url already has a connect in progress
 				continue
