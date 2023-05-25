@@ -1,3 +1,11 @@
+# Release 0.20.50
+
+## What's New
+
+`ziti.Options` has a new field: `EdgeRouterUrlFilter func(string) bool`. This allows filtering which edge router URLS you
+want the SDK to try and connect to. In most cases, filtering will be done by protocol. If no filter is provided, all
+URL will be used.
+
 # Release 0.20.48
 
 ## What's New
