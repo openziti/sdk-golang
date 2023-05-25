@@ -82,6 +82,9 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 
 // GetControllerWellKnownCaPool will return a x509.CertPool. The target controller will not be verified via TLS and
 // must be verified by some other means (i.e. enrollment JWT token).
+//
+// WARNING: This call is unauthenticated and should only be used for example purposes or expliciltly when an unauthenticated
+// request is required.
 func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error) {
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
 }

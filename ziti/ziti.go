@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-openapi/strfmt"
+	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
@@ -63,6 +64,9 @@ const (
 	SessionDial = rest_model.DialBindDial
 	SessionBind = rest_model.DialBindBind
 )
+
+// MfaCodeResponse is a handler used to return a string (TOTP) code
+type MfaCodeResponse func(code string) error
 
 // Context is the main interface for SDK instances that may be used to authenticate, connect to services, or host
 // services.
@@ -130,8 +134,9 @@ type Context interface {
 	// Close closes any connections open to edge routers
 	Close()
 
-	// AddZitiMfaHandler adds a Ziti MFA handler, invoked during authentication
-	AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp func(code string) error) error)
+	// Deprecated: AddZitiMfaHandler adds a Ziti MFA handler, invoked during authentication.
+	// Replaced with event functionality. Use `zitiContext.AddListener(MfaTotpCode, handler)` instead.
+	AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp MfaCodeResponse) error)
 
 	// EnrollZitiMfa will attempt to enable TOTP 2FA on the currently authenticating identity if not already enrolled.
 	EnrollZitiMfa() (*rest_model.DetailMfa, error)
@@ -147,6 +152,8 @@ type Context interface {
 
 	// SetId allows the setting of a context's id
 	SetId(id string)
+
+	Events() Eventer
 }
 
 var _ Context = &ContextImpl{}
@@ -168,7 +175,247 @@ type ContextImpl struct {
 
 	closed            atomic.Bool
 	closeNotify       chan struct{}
-	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error
+	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
+
+	events.EventEmmiter
+}
+
+func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
+	listener := func(args ...interface{}) {
+		details, ok := args[0].(*rest_model.ServiceDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", details, args[0])
+		}
+
+		if details == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, details)
+	}
+
+	context.AddListener(EventServiceAdded, listener)
+
+	return func() {
+		context.RemoveListener(EventServiceAdded, listener)
+	}
+}
+
+func (context *ContextImpl) AddServiceChangedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
+	listener := func(args ...interface{}) {
+		details, ok := args[0].(*rest_model.ServiceDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", details, args[0])
+		}
+
+		if details == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, details)
+	}
+
+	context.AddListener(EventServiceChanged, listener)
+
+	return func() {
+		context.RemoveListener(EventServiceChanged, listener)
+	}
+}
+
+func (context *ContextImpl) AddServiceRemovedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
+	listener := func(args ...interface{}) {
+		details, ok := args[0].(*rest_model.ServiceDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", details, args[0])
+		}
+
+		if details == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, details)
+	}
+
+	context.AddListener(EventServiceRemoved, listener)
+
+	return func() {
+		context.RemoveListener(EventServiceRemoved, listener)
+	}
+}
+
+func (context *ContextImpl) AddRouterConnectedListener(handler func(Context, string, string)) func() {
+	listener := func(args ...interface{}) {
+		name, ok := args[0].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", name, args[0])
+		}
+
+		addr, ok := args[1].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", addr, args[1])
+		}
+
+		handler(context, name, addr)
+	}
+
+	context.AddListener(EventRouterConnected, listener)
+
+	return func() {
+		context.RemoveListener(EventRouterConnected, listener)
+	}
+}
+
+func (context *ContextImpl) AddRouterDisconnectedListener(handler func(Context, string, string)) func() {
+	listener := func(args ...interface{}) {
+		name, ok := args[0].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", name, args[0])
+		}
+
+		addr, ok := args[1].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", addr, args[1])
+		}
+
+		handler(context, name, addr)
+	}
+
+	context.AddListener(EventRouterDisconnected, listener)
+
+	return func() {
+		context.RemoveListener(EventRouterDisconnected, listener)
+	}
+}
+
+func (context *ContextImpl) AddMfaTotpCodeListener(handler func(Context, *rest_model.AuthQueryDetail, MfaCodeResponse)) func() {
+	listener := func(args ...interface{}) {
+		authQuery, ok := args[0].(*rest_model.AuthQueryDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", authQuery, args[0])
+		}
+
+		if authQuery == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		responder, ok := args[1].(MfaCodeResponse)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", responder, args[1])
+		}
+
+		if responder == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, authQuery, responder)
+	}
+
+	context.AddListener(EventMfaTotpCode, listener)
+
+	return func() {
+		context.RemoveListener(EventMfaTotpCode, listener)
+	}
+}
+
+func (context *ContextImpl) AddAuthQueryListener(handler func(Context, *rest_model.AuthQueryDetail)) func() {
+	listener := func(args ...interface{}) {
+		authQuery, ok := args[0].(*rest_model.AuthQueryDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", authQuery, args[0])
+		}
+
+		if authQuery == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, authQuery)
+	}
+
+	context.AddListener(EventAuthQuery, listener)
+
+	return func() {
+		context.RemoveListener(EventAuthQuery, listener)
+	}
+}
+
+func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+	listener := func(args ...interface{}) {
+		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
+		}
+
+		if apiSession == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, apiSession)
+	}
+
+	context.AddListener(EventAuthenticationStatePartial, listener)
+
+	return func() {
+		context.RemoveListener(EventAuthenticationStatePartial, listener)
+	}
+}
+
+func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+	listener := func(args ...interface{}) {
+		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
+		}
+
+		if apiSession == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, apiSession)
+	}
+
+	context.AddListener(EventAuthenticationStateFull, listener)
+
+	return func() {
+		context.RemoveListener(EventAuthenticationStateFull, listener)
+	}
+}
+
+func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+	listener := func(args ...interface{}) {
+		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
+		}
+
+		if apiSession == nil {
+			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+		}
+
+		handler(context, apiSession)
+	}
+
+	context.AddListener(EventAuthenticationStateUnauthenticated, listener)
+
+	return func() {
+		context.RemoveListener(EventAuthenticationStateUnauthenticated, listener)
+	}
+}
+
+func (context *ContextImpl) Events() Eventer {
+	return context
 }
 
 func (context *ContextImpl) GetId() string {
@@ -195,9 +442,10 @@ func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
 	return sessions, nil
 }
 
-func (context *ContextImpl) OnClose(factory edge.RouterConn) {
-	logrus.Debugf("connection to router [%s] was closed", factory.Key())
-	context.routerConnections.Remove(factory.Key())
+func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
+	logrus.Debugf("connection to router [%s] was closed", routerConn.Key())
+	context.Emit(EventRouterDisconnected, routerConn.GetRouterName(), routerConn.Key())
+	context.routerConnections.Remove(routerConn.Key())
 }
 
 func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
@@ -216,7 +464,10 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 			if context.options.OnServiceUpdate != nil {
 				context.options.OnServiceUpdate(ServiceRemoved, svc)
 			}
+			context.Emit(EventServiceRemoved, svc)
+
 			context.deleteServiceSessions(*svc.ID)
+
 		}
 	})
 
@@ -238,6 +489,12 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 
 			return newValue
 		})
+
+		if isChange {
+			context.Emit(EventServiceChanged, s)
+		} else {
+			context.Emit(EventServiceAdded, s)
+		}
 
 		if context.options.OnServiceUpdate != nil {
 			if isChange {
@@ -434,6 +691,55 @@ func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, er
 	return context.CtrlClt.GetCurrentIdentity()
 }
 
+func (context *ContextImpl) setUnauthenticated() {
+	willEmit := context.CtrlClt.CurrentAPISessionDetail != nil
+	prevApiSession := context.CtrlClt.CurrentAPISessionDetail
+
+	context.CtrlClt.CurrentAPISessionDetail = nil
+	context.CtrlClt.ApiSessionCertificate = nil
+
+	context.CloseAllEdgeRouterConns()
+
+	if willEmit {
+		context.Emit(EventAuthenticationStateUnauthenticated, prevApiSession)
+	}
+}
+
+func (context *ContextImpl) authenticate() error {
+	logrus.Debug("attempting to authenticate")
+	context.services = cmap.New[*rest_model.ServiceDetail]()
+	context.sessions = cmap.New[*rest_model.SessionDetail]()
+	context.intercepts = cmap.New[*edge.InterceptV1Config]()
+
+	context.setUnauthenticated()
+
+	apiSession, err := context.CtrlClt.Authenticate()
+
+	if err != nil {
+		return err
+	}
+
+	if len(apiSession.AuthQueries) != 0 {
+		context.Emit(EventAuthenticationStatePartial, apiSession)
+		for _, authQuery := range apiSession.AuthQueries {
+			if err := context.handleAuthQuery(authQuery); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	return context.onFullAuth()
+}
+
+func (context *ContextImpl) Reauthenticate() error {
+	context.CtrlClt.CurrentAPISessionDetail = nil
+	context.CtrlClt.ApiSessionCertificate = nil
+
+	return context.authenticate()
+}
+
 func (context *ContextImpl) Authenticate() error {
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
@@ -445,32 +751,23 @@ func (context *ContextImpl) Authenticate() error {
 		}
 	}
 
-	logrus.Debug("attempting to authenticate")
-	context.services = cmap.New[*rest_model.ServiceDetail]()
-	context.sessions = cmap.New[*rest_model.SessionDetail]()
-	context.intercepts = cmap.New[*edge.InterceptV1Config]()
+	return context.authenticate()
+}
 
-	apiSession, err := context.CtrlClt.Authenticate()
-
-	if err != nil {
-		return err
-	}
-
-	if len(apiSession.AuthQueries) != 0 {
-		for _, authQuery := range apiSession.AuthQueries {
-			if err := context.handleAuthQuery(authQuery); err != nil {
-				return err
+func (context *ContextImpl) CloseAllEdgeRouterConns() {
+	for entry := range context.routerConnections.IterBuffered() {
+		key, val := entry.Key, entry.Val
+		if !val.IsClosed() {
+			if err := val.Close(); err != nil {
+				pfxlog.Logger().WithError(err).Error("error while closing edge router connection")
 			}
 		}
+
+		context.routerConnections.Remove(key)
 	}
+}
 
-	// router connections are establishing using the api token. If we re-authenticate we must re-establish connections
-	for entry := range context.routerConnections.IterBuffered() {
-		_ = entry.Val.Close()
-	}
-
-	context.routerConnections = cmap.New[edge.RouterConn]()
-
+func (context *ContextImpl) onFullAuth() error {
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -483,29 +780,53 @@ func (context *ContextImpl) Authenticate() error {
 		}
 
 		context.metrics = metrics.NewRegistry(context.CtrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
-
-		// get services
-		if err := context.RefreshServices(); err != nil {
-			doOnceErr = err
-		}
 	})
+
+	context.Emit(EventAuthenticationStateFull, context.CtrlClt.GetCurrentApiSession())
+
+	// get services
+	if err := context.RefreshServices(); err != nil {
+		doOnceErr = err
+	}
 
 	return doOnceErr
 }
 
-func (context *ContextImpl) AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp func(code string) error) error) {
+func (context *ContextImpl) AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error) {
 	context.authQueryHandlers[string(rest_model.MfaProvidersZiti)] = handler
 }
 
+func (context *ContextImpl) authenticateMfa(code string) error {
+	if err := context.CtrlClt.AuthenticateMFA(code); err != nil {
+		return err
+	}
+
+	if _, err := context.CtrlClt.Refresh(); err != nil {
+		return err
+	}
+
+	if context.CtrlClt.CurrentAPISessionDetail != nil && len(context.CtrlClt.CurrentAPISessionDetail.AuthQueries) == 0 {
+		return context.onFullAuth()
+	}
+
+	return nil
+}
+
 func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetail) error {
+	context.Emit(EventAuthQuery, authQuery)
+
 	if *authQuery.Provider == rest_model.MfaProvidersZiti {
 		handler := context.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
 
+		context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(context.authenticateMfa))
+
 		if handler == nil {
-			return fmt.Errorf("no handler registered for: %v", authQuery.Provider)
+			pfxlog.Logger().Errorf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
+		} else {
+			return handler(authQuery, context.authenticateMfa)
 		}
 
-		return handler(authQuery, context.CtrlClt.AuthenticateMFA)
+		return nil
 	}
 
 	return fmt.Errorf("unsupported MFA provider: %v", authQuery.Provider)
@@ -836,6 +1157,8 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 
 	logger.Debugf("connected to %s", ingressUrl)
 
+	context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
+
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
 			if exist { // use the routerConnection already in the map, close new one
@@ -1034,16 +1357,9 @@ func (context *ContextImpl) deleteServiceSessions(svcId string) {
 func (context *ContextImpl) Close() {
 	if context.closed.CompareAndSwap(false, true) {
 		close(context.closeNotify)
-		// remove any closed connections
-		for entry := range context.routerConnections.IterBuffered() {
-			key, val := entry.Key, entry.Val
-			if !val.IsClosed() {
-				if err := val.Close(); err != nil {
-					pfxlog.Logger().WithError(err).Error("error while closing connection")
-				}
-			}
-			context.routerConnections.Remove(key)
-		}
+
+		context.CloseAllEdgeRouterConns()
+
 	}
 }
 

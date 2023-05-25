@@ -17,7 +17,14 @@ type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetai
 
 type Options struct {
 	RefreshInterval time.Duration
-	OnContextReady  func(ctx Context)
+
+	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
+	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
+	// EventAuthenticationStateFull, EventAuthenticationStatePartial, EventAuthenticationStateUnAuthenticated instead.
+	OnContextReady func(ctx Context)
+
+	// Deprecated: OnServiceUpdate is a callback that is invoked when a service changes its definition.
+	// Use `zitiContext.AddListener(<eventName>, handler)` where `eventName` may be EventServiceAdded, EventServiceChanged, EventServiceRemoved.
 	OnServiceUpdate serviceCB
 }
 

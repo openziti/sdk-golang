@@ -26,6 +26,7 @@
 package ziti
 
 import (
+	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
 	edge_apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -78,8 +79,9 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		Id:                NewId(),
 		routerConnections: cmap.New[edge.RouterConn](),
 		options:           options,
-		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, resp func(code string) error) error{},
+		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error{},
 		closeNotify:       make(chan struct{}),
+		EventEmmiter:      events.New(),
 	}
 
 	if cfg == nil {

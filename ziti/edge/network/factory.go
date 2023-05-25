@@ -18,10 +18,10 @@ package network
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/secretstream/kx"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/secretstream/kx"
 )
 
 type RouterConnOwner interface {
@@ -126,7 +126,11 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 }
 
 func (conn *routerConn) Close() error {
-	return conn.ch.Close()
+	if !conn.ch.IsClosed() {
+		return conn.ch.Close()
+	}
+
+	return nil
 }
 
 func (conn *routerConn) IsClosed() bool {
