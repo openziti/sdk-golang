@@ -24,5 +24,5 @@ import (
 )
 
 func AddAddressParsers() {
-	transport.AddAddressParser(&addrParser{p: new(tls.AddressParser)})
+	transport.AddAddressParser(tls.AddressParser{})
 }

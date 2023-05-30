@@ -29,16 +29,7 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/sequence"
-	"github.com/openziti/transport/v2"
 )
-
-type addrParser struct {
-	p transport.AddressParser
-}
-
-func (ap addrParser) Parse(addressString string) (transport.Address, error) {
-	return ap.p.Parse(strings.Replace(addressString, "/", "", -1))
-}
 
 func init() {
 	AddAddressParsers()

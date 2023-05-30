@@ -25,6 +25,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"github.com/openziti/foundation/v2/genext"
+	"github.com/openziti/transport/v2"
+	"strings"
 	"time"
 
 	"github.com/go-openapi/strfmt"
@@ -178,6 +181,7 @@ func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error)
 		return nil, rest_util.WrapErr(err)
 	}
 
+	self.sanitizeSessionUrls(resp.Payload.Data)
 	return resp.Payload.Data, nil
 }
 
@@ -338,8 +342,8 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 		return nil, rest_util.WrapErr(err)
 	}
 
+	self.sanitizeSessionUrls(resp.Payload.Data)
 	return resp.Payload.Data, nil
-
 }
 
 // EnrollMfa will attempt to start TOTP MFA enrollment for the currently authenticated identity.
@@ -383,4 +387,21 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 	_, err := self.API.CurrentIdentity.DeleteMfa(params, nil)
 
 	return rest_util.WrapErr(err)
+}
+
+// sanitizeSessionUrls will transform ER urls to transport friendly URIs and remove
+// any addresses that cannot be parsed
+func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
+	for _, edgeRouter := range session.EdgeRouters {
+		newUrls := map[string]string{}
+		for protocol, url := range edgeRouter.Urls {
+			url = strings.Replace(url, "://", ":", 1)
+			if _, err := transport.ParseAddress(url); err == nil {
+				newUrls[protocol] = url
+			} else {
+				pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(edgeRouter.Name))
+			}
+		}
+		edgeRouter.Urls = newUrls
+	}
 }
