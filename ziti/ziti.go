@@ -1122,7 +1122,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Debugf("connection to edge router using api session token %v", context.CtrlClt.GetCurrentApiSession().Token)
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", *context.CtrlClt.GetCurrentApiSession().Token)
 	id, err := context.CtrlClt.GetIdentity()
 
 	if err != nil {

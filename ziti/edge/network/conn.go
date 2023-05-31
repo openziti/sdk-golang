@@ -29,10 +29,10 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/secretstream"
-	"github.com/openziti/secretstream/kx"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/secretstream"
+	"github.com/openziti/secretstream/kx"
 	"github.com/pkg/errors"
 )
 
@@ -302,8 +302,8 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (edge.Listener, error) {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
-		WithField("serviceName", service.Name).
-		WithField("sessionId", session.ID)
+		WithField("serviceName", *service.Name).
+		WithField("sessionId", *session.ID)
 
 	listener := &edgeListener{
 		baseListener: baseListener{

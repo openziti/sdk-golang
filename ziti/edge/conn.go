@@ -133,7 +133,7 @@ func (ec *MsgChannel) NextMsgId() uint32 {
 
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
-	return ec.Channel.Underlay().SetWriteDeadline(t)
+	return nil
 }
 
 func (ec *MsgChannel) Write(data []byte) (n int, err error) {
