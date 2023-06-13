@@ -15,7 +15,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.81
-	github.com/openziti/edge-api v0.25.27
+	github.com/openziti/edge-api v0.25.28
 	github.com/openziti/foundation/v2 v2.0.26
 	github.com/openziti/identity v1.0.57
 	github.com/openziti/metrics v1.2.27
@@ -68,9 +68,10 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	go.mongodb.org/mongo-driver v1.11.4 // indirect
-	go.opentelemetry.io/otel v1.14.0 // indirect
-	go.opentelemetry.io/otel/trace v1.14.0 // indirect
+	go.mongodb.org/mongo-driver v1.11.7 // indirect
+	go.opentelemetry.io/otel v1.16.0 // indirect
+	go.opentelemetry.io/otel/metric v1.16.0 // indirect
+	go.opentelemetry.io/otel/trace v1.16.0 // indirect
 	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/term v0.9.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
