@@ -163,7 +163,7 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 	var err error
 
 	cfg := &ziti.Config{
-		ZtAPI: enFlags.Token.Issuer,
+		ZtAPI: edge_apis.ClientUrl(enFlags.Token.Issuer),
 	}
 
 	if strings.TrimSpace(enFlags.KeyFile) != "" {

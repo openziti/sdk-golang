@@ -1,3 +1,43 @@
+# Release 0.20.59
+
+- SDK context's will now use the properly prefixed Edge Client API Path for enrollment configurations. Previous versions
+  relied upon legacy path support in scenarios where Ziti Context configurations were generated from an enrollment JWT.
+- Added `edge_apis.ClientUrl(hostname string)` and `edge_apis.ManagementUrl(hostname string)` to convert hostnames
+  to fully prefixed API URls.
+
+# Release 0.20.52 - 0.20.58
+
+- minor bug fixes
+- dependency updates
+
+
+# Release 0.20.51
+
+## WHat's New
+
+* Edge Router Filter Options - now possible to filter Edge Routers based on connection URL
+
+## Edge Router Filter Options
+
+When creating Ziti SDK Context instances, the options argument can now contain an `EdgeRouterUrlFilter` function
+that takes in a string URL and returns a boolean to determine if the context will use that connection string
+to connect to the Edge Router. This is useful when operating in restricted environments, GoLang WASM, where
+some connection methods are no allowed (i.e. tcp/tls vs ws/wss).
+
+```go
+	cfg := &ziti.Config{
+		ZtAPI:       "https://localhost:1280/edge/client/v1",
+		Credentials: credentials,
+	}
+	ctx, err := ziti.NewContextWithOpts(cfg, &ziti.Options{
+		EdgeRouterUrlFilter: func(addr string) bool {
+			return strings.HasPrefix(addr,"wss")
+		},
+	})
+```
+
+
+
 # Release 0.20.50
 
 ## What's New
