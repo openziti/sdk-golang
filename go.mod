@@ -19,7 +19,7 @@ require (
 	github.com/openziti/foundation/v2 v2.0.26
 	github.com/openziti/identity v1.0.57
 	github.com/openziti/metrics v1.2.27
-	github.com/openziti/secretstream v0.1.8
+	github.com/openziti/secretstream v0.1.9
 	github.com/openziti/transport/v2 v2.0.91
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
@@ -72,7 +72,7 @@ require (
 	go.opentelemetry.io/otel v1.16.0 // indirect
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.opentelemetry.io/otel/trace v1.16.0 // indirect
-	golang.org/x/crypto v0.9.0 // indirect
+	golang.org/x/crypto v0.10.0 // indirect
 	golang.org/x/term v0.9.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
