@@ -101,6 +101,9 @@ type BaseCredentials struct {
 // AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
 // provided token should be the base64 encoded version of the token.
 func (c *BaseCredentials) AddJWT(token string) {
+	if c.Headers == nil {
+		c.Headers = &http.Header{}
+	}
 	c.Headers.Add("authorization", "Bearer "+token)
 }
 
