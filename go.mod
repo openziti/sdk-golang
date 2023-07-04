@@ -16,9 +16,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.82
 	github.com/openziti/edge-api v0.25.29
-	github.com/openziti/foundation/v2 v2.0.26
+	github.com/openziti/foundation/v2 v2.0.27
 	github.com/openziti/identity v1.0.57
-	github.com/openziti/metrics v1.2.28
+	github.com/openziti/metrics v1.2.29
 	github.com/openziti/secretstream v0.1.9
 	github.com/openziti/transport/v2 v2.0.91
 	github.com/orcaman/concurrent-map/v2 v2.0.1
@@ -29,7 +29,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
-	golang.org/x/sys v0.9.0
+	golang.org/x/sys v0.10.0
 )
 
 require (
