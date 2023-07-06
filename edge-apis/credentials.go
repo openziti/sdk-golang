@@ -98,12 +98,6 @@ type BaseCredentials struct {
 	CaPool *x509.CertPool
 }
 
-// AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
-// provided token should be the base64 encoded version of the token.
-func (c *BaseCredentials) AddJWT(token string) {
-	c.Headers.Add("authorization", "Bearer "+token)
-}
-
 // Payload will produce the object used to construct the body of an authentication requests. The base version
 // sets shared information available in BaseCredentials.
 func (c *BaseCredentials) Payload() *rest_model.Authenticate {
@@ -135,6 +129,12 @@ func (c *BaseCredentials) AddHeader(key, value string) {
 		c.Headers = &http.Header{}
 	}
 	c.Headers.Add(key, value)
+}
+
+// AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
+// provided token should be the base64 encoded version of the token. Convenience function for AddHeader.
+func (c *BaseCredentials) AddJWT(token string) {
+	c.AddHeader("Authorization", "Bearer "+token)
 }
 
 // AuthenticateRequest provides a base implementation to authenticate an outgoing request. This is provided here
