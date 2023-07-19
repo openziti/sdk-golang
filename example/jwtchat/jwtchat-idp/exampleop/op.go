@@ -28,7 +28,7 @@ func init() {
 
 type Storage interface {
 	op.Storage
-	CheckUsernamePassword(username, password, id string) error
+	CheckUsernamePassword(username, password, id string) (*interface{}, error)
 }
 
 // SetupServer creates an OIDC server with Issuer=http://localhost:<port>
