@@ -44,7 +44,7 @@ import (
 
 	"github.com/Jeffail/gabs"
 	"github.com/fullsailor/pkcs7"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/michaelquigley/pfxlog"
 	nfpem "github.com/openziti/foundation/v2/pem"
 	nfx509 "github.com/openziti/foundation/v2/x509"
@@ -84,9 +84,7 @@ func (enFlags *EnrollmentFlags) GetCertPool() (*x509.CertPool, []*x509.Certifica
 }
 
 func ParseToken(tokenStr string) (*ziti.EnrollmentClaims, *jwt.Token, error) {
-	parser := &jwt.Parser{
-		SkipClaimsValidation: false,
-	}
+	parser := jwt.NewParser()
 	enrollmentClaims := &ziti.EnrollmentClaims{}
 	tokenStr = strings.TrimSpace(tokenStr)
 	jwtToken, err := parser.ParseWithClaims(tokenStr, enrollmentClaims, ValidateToken)
@@ -114,7 +112,7 @@ func ValidateToken(token *jwt.Token) (interface{}, error) {
 	}
 
 	if claims.Issuer == "" {
-		return nil, errors.New("could not validate token, issues is empty")
+		return nil, errors.New("could not validate token, issuer is empty")
 	}
 
 	_, err := url.Parse(claims.Issuer)

@@ -138,12 +138,12 @@ func (s *Storage) ClientCredentialsTokenRequest(ctx context.Context, clientID st
 }
 
 // CheckUsernamePassword implements the `authenticate` interface of the login
-func (s *Storage) CheckUsernamePassword(username, password, id string) error {
+func (s *Storage) CheckUsernamePassword(username, password, id string) (*interface{}, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	request, ok := s.authRequests[id]
 	if !ok {
-		return fmt.Errorf("request not found")
+		return nil, fmt.Errorf("request not found")
 	}
 
 	// for demonstration purposes we'll check we'll have a simple user store and
@@ -159,9 +159,9 @@ func (s *Storage) CheckUsernamePassword(username, password, id string) error {
 		// in this example we'll simply check the username / password and set a boolean to true
 		// therefore we will also just check this boolean if the request / login has been finished
 		request.passwordChecked = true
-		return nil
+		return nil, nil
 	}
-	return fmt.Errorf("username or password wrong")
+	return nil, fmt.Errorf("username or password wrong")
 }
 
 // CreateAuthRequest implements the op.Storage interface

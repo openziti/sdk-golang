@@ -18,14 +18,9 @@ package ziti
 
 import (
 	"crypto/x509"
-	"fmt"
-	"net/url"
-	"reflect"
-
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
+	"net/url"
 )
 
 var EnrollUrl, _ = url.Parse("/edge/client/v1/enroll")
@@ -36,9 +31,9 @@ type Versions struct {
 }
 
 type EnrollmentClaims struct {
+	jwt.RegisteredClaims
 	EnrollmentMethod string            `json:"em"`
 	SignatureCert    *x509.Certificate `json:"-"`
-	jwt.StandardClaims
 }
 
 func (t *EnrollmentClaims) EnrolmentUrl() string {
@@ -52,54 +47,8 @@ func (t *EnrollmentClaims) EnrolmentUrl() string {
 
 	query := enrollmentUrl.Query()
 	query.Add("method", t.EnrollmentMethod)
-	query.Add("token", t.Id)
+	query.Add("token", t.ID)
 	enrollmentUrl.RawQuery = query.Encode()
 
 	return enrollmentUrl.String()
-}
-
-func (t *EnrollmentClaims) ToMapClaims() (jwt.MapClaims, error) {
-	mapClaims := map[string]interface{}{}
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:       nil,
-		ErrorUnused:      false,
-		ZeroFields:       false,
-		WeaklyTypedInput: false,
-		Metadata:         nil,
-		Result:           &mapClaims, //map pointer required
-		TagName:          "json",
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("could not create decoder: %s", err)
-	}
-
-	if err = decoder.Decode(t); err != nil {
-		return nil, fmt.Errorf("could not decode: %s", err)
-	}
-
-	if std, found := mapClaims["StandardClaims"]; found {
-		delete(mapClaims, "StandardClaims")
-
-		if stdMap, ok := std.(map[string]interface{}); ok {
-			for k, v := range stdMap {
-				if !isZeroValue(v) {
-					mapClaims[k] = v
-				}
-			}
-		} else {
-			return nil, errors.New("could not convert standard claims section to map")
-		}
-
-	}
-
-	return mapClaims, nil
-}
-
-func isZeroValue(x interface{}) bool {
-	return x == reflect.Zero(reflect.TypeOf(x)).Interface()
-}
-
-func (t *EnrollmentClaims) Valid() error {
-	return t.StandardClaims.Valid()
 }

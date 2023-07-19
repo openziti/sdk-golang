@@ -63,7 +63,7 @@ func (l *login) createRouter() {
 }
 
 type authenticate interface {
-	CheckUsernamePassword(username, password, id string) error
+	CheckUsernamePassword(username, password, id string) (*interface{}, error)
 }
 
 func (l *login) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +104,7 @@ func (l *login) checkLoginHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	id := r.FormValue("id")
-	err = l.authenticate.CheckUsernamePassword(username, password, id)
+	_, err = l.authenticate.CheckUsernamePassword(username, password, id)
 	if err != nil {
 		renderLogin(w, id, err)
 		return
