@@ -59,8 +59,12 @@ to be aware of.
 
 An "endpoint client" in OpenZiti's language is
 an [identity](https://openziti.io/docs/learn/core-concepts/identities/overview) that is dialing (accessing)
-a [service](https://openziti.io/docs/learn/core-concepts/services/overview)
-that some other entity on the network is hosting.
+or binding (hosting) a [service](https://openziti.io/docs/learn/core-concepts/services/overview). Dialing contacts
+either another identity hosting a service, which may be another client endpoint, or it may be handled by an Edge Router
+depending on its [termination](https://openziti.io/docs/learn/core-concepts/services/overview#service-termination)
+configuration. This SDK supports binding and dialing, which means it can host or access services depending on what it is
+[instructed to do](#dialbind-a-service) and the[policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview) 
+affecting the software's identity and service(s).
 
 To test a client endpoint you will need the following outside your normal Golang development environment:
 
