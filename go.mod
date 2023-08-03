@@ -8,13 +8,13 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.26.0
 	github.com/go-openapi/strfmt v0.21.7
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/google/uuid v1.3.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.87
+	github.com/openziti/channel/v2 v2.0.88
 	github.com/openziti/edge-api v0.25.31
 	github.com/openziti/foundation/v2 v2.0.28
 	github.com/openziti/identity v1.0.59
@@ -48,7 +48,6 @@ require (
 	github.com/go-openapi/spec v0.20.9 // indirect
 	github.com/go-openapi/swag v0.22.4 // indirect
 	github.com/go-openapi/validate v0.22.1 // indirect
-	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
