@@ -9,15 +9,15 @@ power via APIs that allow developers to imagine and develop solutions beyond wha
 
 This SDK does the following:
 
-- enable network endpoint clients allow a device to dial (access) or bind (host) OpenZiti Services
+- enable network endpoint clients allow a device to [dial (access) or bind (host)](#dialbind-a-service) OpenZiti Services
 - provides [authentication](https://openziti.io/docs/learn/core-concepts/security/authentication/auth) interfaces for
-  x509 certificates, username/password, external IdPs (JWT) flows
+  [x509 certificates, username/password, external IdPs (JWT)](#example-code-configuration) flows
 - collects and submits security posture collection/submission
   for [Posture Checks](https://openziti.io/docs/learn/core-concepts/security/authorization/posture-checks)
-- allows Golang applications to bind or dial services via `net.Listener` and`net.Dialer` interfaces
-- enables raw access to the [Ziti Edge Management API](https://openziti.io/docs/reference/developer/api) for custom
+- allows Golang applications to bind or dial services via [`net.Listener` and`net.Dialer`](#dialbind-a-service) interfaces
+- enables [raw access](#accessing-the-managementclient-api) to the [Ziti Edge Management API](https://openziti.io/docs/reference/developer/api) for custom
   management tooling of all OpenZiti network identities, policies, and more
-- enables raw access to the [Ziti Edge Client API](https://openziti.io/docs/reference/developer/api) for custom client
+- enables [raw access](#accessing-the-managementclient-api) to the [Ziti Edge Client API](https://openziti.io/docs/reference/developer/api) for custom client
   tooling
 
 ## Table of Contents
@@ -63,7 +63,7 @@ or binding (hosting) a [service](https://openziti.io/docs/learn/core-concepts/se
 either another identity hosting a service, which may be another client endpoint, or it may be handled by an Edge Router
 depending on its [termination](https://openziti.io/docs/learn/core-concepts/services/overview#service-termination)
 configuration. This SDK supports binding and dialing, which means it can host or access services depending on what it is
-[instructed to do](#dialbind-a-service) and the[policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview) 
+[instructed to do](#dialbind-a-service) and the [policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview) 
 affecting the software's identity and service(s).
 
 To test a client endpoint you will need the following outside your normal Golang development environment:
