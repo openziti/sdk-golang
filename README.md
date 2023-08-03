@@ -36,10 +36,10 @@ This SDK does the following:
 This repository has a number of different folders, however below are the most important ones for a new developer
 to be aware of.
 
-- `ziti` - the main SDK package that will be included in your project
-- `edge-apis` - provides low-level abstractions for authenticating and accessing
+- [`ziti`](ziti) - the main SDK package that will be included in your project
+- [`edge-apis`](edge-apis) - provides low-level abstractions for authenticating and accessing
   the [Ziti Edge Client and Management APIs]((https://openziti.io/docs/reference/developer/api))
-- `example` - various example applications that illustrate different uses of the SDK. Each example contains its own
+- [`example`](example) - various example applications that illustrate different uses of the SDK. Each example contains its own
   README.md.
     - [`chat`](example/chat) - a bare-bones example of a client and server for a chat program over an OpenZiti Service
     - [`chat-p2p`](example/chat-p2p) - highlights `addressable terminators` which allows clients to dial specific
@@ -49,7 +49,7 @@ to be aware of.
     - [`http-client`](example/http-client) - a HTTP client accessing a web server over HTTP
     - [`jwtchat`](example/jwtchat) - highlights
       using [external JWTs](https://openziti.io/docs/learn/core-concepts/security/authentication/external-jwt-signers) (
-      from OIDC/oAuth/etc) to authenticate with OpenZIti
+      from OIDC/oAuth/etc.) to authenticate with OpenZIti
     - [`reflect`](example/chat/reflect) - a low level network "echo" client and server example
     - [`simple-server`](example/simple-server) - a bare-bones HTTP server side only example
     - [`zcat`](example/zcat) - wrapping existing network tooling (netcat) to work over OpenZiti
@@ -103,7 +103,7 @@ the [`ziti edge enroll`](https://openziti.io/docs/learn/core-concepts/identities
 generate an identity file that provides the location of the OpenZiti controller, the configuration types the client is
 interested in, and the x509 certificate and private key to use.
 
-#### Example File Configuration
+#### Example: File Configuration
 
 ```golang
 cfg, err := ziti.NewConfigFromFile("client.json")
@@ -113,7 +113,7 @@ if err != nil {
 }
 ```
 
-#### Example Code Configuration
+#### Example: Code Configuration
 ```golang
 // Note that GetControllerWellKnownCaPool() does not verify the authenticity of the controller, it is assumed
 // this is handled in some other way.
@@ -160,14 +160,14 @@ bind to be successful, the following must be true:
 The easiest way to satisfy #2 and #3 are the make use of the `#all` role attributes when creating policies. Unless
 geographic splits are required in your network Edge Router Policies and Service Edge Router Policies 
 
-#### Example "All" Edge Router and Service Edge Router Policies
+#### Example: "All" Edge Router and Service Edge Router Policies
 
 ```
 > ziti edge create service-edge-router-policy serp-all --edge-router-roles "#all" --service-roles "#all"
 > ziti edge create edge-router-policy erp-all --edge-router-roles "#all" --identity-roles "#all"
 ```
 
-#### Example Dial and Bind Policies For a Service
+#### Example: Dial and Bind Policies For a Service
 
 ```
 > ziti edge create service-policy  testDial Dial --identity-roles "@myTestClient" --service-roles "@myChat"
@@ -177,7 +177,7 @@ geographic splits are required in your network Edge Router Policies and Service 
 _Note: While policies can be created targeting specific users, services, or routers, using `#attribute` style assignments
 allows you to grant access based on groupings. (See [Roles and Role Attributes](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#roles-and-role-attributes))_
 
-#### Example Dial
+#### Example: Dial
 
 ```golang
 conn, err := context.Dial(serviceName)
@@ -192,7 +192,7 @@ if _, err := conn.Write([]byte("hello I am myTestClient")); err != nil {
 }
 ```
 
-#### Example Bind
+#### Example: Bind
 _Note: A full implementation will have to accept connections, hand them off to another goroutine and then re-wait on 
 `listener.Accept()`_
 
@@ -267,7 +267,7 @@ The Edge Management and Client APIs are defined by an OpenAPI 2.0 specification 
 and maintained in [another GitHub repository](https://github.com/openziti/edge-api). Accessing this repository directly
 should not be necessary. This SDK provides a wrapper around the generated clients found in [`edge-apis`](edge-apis).
 
-#### Example Creating an Edge Management API Client
+#### Example: Creating an Edge Management API Client
 ```golang
 
 apiUrl, _ = url.Parse("https://localhost:1280/edge/management/v1") 
@@ -286,7 +286,7 @@ credentials.CaPool = caPool
 managementClient := edge_apis.NewManagementApiClient(apiUrl, credentials.GetCaPool()),
 ```
 
-#### Example Creating an Edge Client API Client
+#### Example: Creating an Edge Client API Client
 ```golang
 
 apiUrl, _ = url.Parse("https://localhost:1280/edge/client/v1") 
@@ -305,7 +305,7 @@ credentials.CaPool = caPool
 managementClient := edge_apis.NewManagementApiClient(apiUrl, credentials.GetCaPool()),
 ```
 
-### Example Requesting Management Services
+### Example: Requesting Management Services
 
 The following example show how to list services. Altering the names of the package types used will allow the same
 code to work for the Edge Client API.
