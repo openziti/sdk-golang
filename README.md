@@ -69,11 +69,11 @@ affecting the software's identity and service(s).
 To test a client endpoint you will need the following outside your normal Golang development environment:
 
 1. An OpenZiti Network with controller with at least one Edge Router 
-2. (See [Quick Starts](https://openziti.io/docs/learn/quickstarts/))
+   (See [Quick Starts](https://openziti.io/docs/learn/quickstarts/))
 2. A service to dial (access) and bind (host) 
-3. (See [Allowing Dial/Bind Access To A Service](#allowing-dialbind-access-to-a-service))
+   (See [Allowing Dial/Bind Access To A Service](#allowing-dialbind-access-to-a-service))
 3. An identity for your client to test with 
-4. (See [Creating & Enrolling a Dial Identity](#creating--enrolling-a-dial-identity))
+   (See [Creating & Enrolling a Dial Identity](#creating--enrolling-a-dial-identity))
 
 The steps for writing any endpoint client are:
 
