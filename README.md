@@ -306,7 +306,18 @@ panic(err)
 credentials := edge_apis.NewUpdbCredentials("Joe Admin", "20984hgn2q048ngq20-3gn")
 credentials.CaPool = caPool
 
+//Note: the CA pool can be provided here or during the Authenticate(<creds>) call. It is allowed here to enable
+//      calls to REST API endpoints that do not require authentication.
 managementClient := edge_apis.NewManagementApiClient(apiUrl, credentials.GetCaPool()),
+
+//"configTypes" are string identifiers of configuration that can be requested by clients. Developers may
+//specify their own in order to provide distributed identity and/or service specific configurations. The
+//OpenZiti tunnelers use this capability to configure interception of network connections.
+//See: https://openziti.io/docs/learn/core-concepts/config-store/overview
+//Example: configTypes = []string{"myCustomAppConfigType"}
+var configTypes []string
+
+managementClient.Authenticate(credentials, configTypes)
 ```
 
 ### Example: Requesting Management Services
