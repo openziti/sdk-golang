@@ -98,7 +98,7 @@ handling removed for brevity:
 
 ### Load/Create A Configuration
 
-Configuration can be done through a file or through code that creates a [`Config`](ziti/config.go)) instance. Loading
+Configuration can be done through a file or through code that creates a [`Config`](ziti/config.go) instance. Loading
 through a file support x509 authentication only while creating custom `Config` instances allows for all authentication
 methods (x509, Username/Password, JWT, etc.).
 
@@ -158,11 +158,15 @@ The main activity performed with a [`Context`](ziti/contexts.go) is to dial or b
 bind to be successful, the following must be true:
 
 1. The identity must have the proper dial or bind service policy to the service via [Service Policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#service-policies)
-2. The identity must have the proper dial or b ind services over at least one Edge Router via [Edge Router Policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#edge-router-policies)
+2. The identity must have the proper dial or bind services over at least one Edge Router via [Edge Router Policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#edge-router-policies)
 3. The service must be allowed to be dialed or bound on at least one Edge Router via [Service Edge Router Policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#service-policies))
 
-The easiest way to satisfy #2 and #3 are the make use of the `#all` role attributes when creating policies. Unless
-geographic splits are required in your network Edge Router Policies and Service Edge Router Policies 
+The easiest way to satisfy #2 and #3 are the make use of the `#all` 
+[role attributes](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#roles-and-role-attributes) 
+when creating policies. Edge Router policies and Service Edge Router Policies are useful for geographic connection 
+management. For smaller networks, test networks, and networks without geographic network entry are not concerns they may
+add complexity without inherent benefit. Using the `#all` role attributes makes all service accessible and valid 
+dial/bind targets on all Edge Routers.
 
 #### Example: "All" Edge Router and Service Edge Router Policies
 
