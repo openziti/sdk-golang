@@ -162,9 +162,9 @@ bind to be successful, the following must be true:
 3. The service must be allowed to be dialed or bound on at least one Edge Router via [Service Edge Router Policies](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#service-policies))
 
 The easiest way to satisfy #2 and #3 are the make use of the `#all` 
-[role attributes](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#roles-and-role-attributes) 
-when creating policies. Edge Router policies and Service Edge Router Policies are useful for geographic connection 
-management. For smaller networks, test networks, and networks without geographic network entry are not concerns they may
+[role attribute](https://openziti.io/docs/learn/core-concepts/security/authorization/policies/overview#roles-and-role-attributes) 
+when creating the policies. Edge Router policies and Service Edge Router Policies are useful for geographic connection 
+management. For smaller networks, test networks, and networks without geographic network entry are not concerns they
 add complexity without inherent benefit. Using the `#all` role attributes makes all service accessible and valid 
 dial/bind targets on all Edge Routers.
 
