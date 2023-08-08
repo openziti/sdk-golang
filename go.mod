@@ -16,9 +16,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.89
 	github.com/openziti/edge-api v0.25.31
-	github.com/openziti/foundation/v2 v2.0.28
+	github.com/openziti/foundation/v2 v2.0.29
 	github.com/openziti/identity v1.0.59
-	github.com/openziti/metrics v1.2.30
+	github.com/openziti/metrics v1.2.31
 	github.com/openziti/secretstream v0.1.10
 	github.com/openziti/transport/v2 v2.0.97
 	github.com/orcaman/concurrent-map/v2 v2.0.1
@@ -29,7 +29,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
-	golang.org/x/sys v0.10.0
+	golang.org/x/sys v0.11.0
 )
 
 require (
@@ -73,7 +73,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.opentelemetry.io/otel/trace v1.16.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/term v0.10.0 // indirect
+	golang.org/x/term v0.11.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
