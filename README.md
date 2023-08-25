@@ -1,4 +1,4 @@
-![Golang Gopher working on OpenZiti](assets/Go%20SDK.png)
+![GoLang OpenZiti Image Header](assets/Go.jpg)
 
 # Ziti SDK for Golang
 
