@@ -1,4 +1,4 @@
-![Golang Gopher working on OpenZiti](assets/Go%20SDK.png)
+![Ziggy using the sdk-golang](https://raw.githubusercontent.com/openziti/branding/main/images/banners/Go.jpg)
 
 # Ziti SDK for Golang
 
