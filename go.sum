@@ -378,12 +378,12 @@ github.com/openziti/channel/v2 v2.0.97 h1:8BS0DdZyZViVBR2i5A/DwvObW7H0e6MRsGK5e1
 github.com/openziti/channel/v2 v2.0.97/go.mod h1:WPr11tBKk+BxB5lsbHn8pBfAWMQ3L1qY3JJxGdu7MOw=
 github.com/openziti/edge-api v0.25.33 h1:5XaQvUKeG8ZZ3WLhr/8xqZn56p53ZxWmFooR6I/xrvQ=
 github.com/openziti/edge-api v0.25.33/go.mod h1:T+g7OHoj2KQi3SrSdgbbFoQdknLrehEIlZRGxpTYObI=
-github.com/openziti/foundation/v2 v2.0.30 h1:k6mZ9pkmJgrrM5ogHvmyaRecyASHDhAv9ifZAIzuJ2s=
-github.com/openziti/foundation/v2 v2.0.30/go.mod h1:MpXSCSn4MABvtIXzfTBFqhK5pNsNXHWnR8xxVrfxn0g=
+github.com/openziti/foundation/v2 v2.0.31 h1:Hu8z3AIkQUSY/ADG8NkUxORwUBMeH0H7h60MuHkXtYI=
+github.com/openziti/foundation/v2 v2.0.31/go.mod h1:KCQatGmkVDIZnfSLrohKwmQi7kg7vnECpNTkpuLNguc=
 github.com/openziti/identity v1.0.61 h1:qrYT5wBSht6CbwSfw7fnT/cVDVVsOGaaJ/IfmWT+zDc=
 github.com/openziti/identity v1.0.61/go.mod h1:JcCEiaBe5zu0eOH+J0/Q1xH5Bl9VOaxHwTApYX2JjBU=
-github.com/openziti/metrics v1.2.33 h1:H8YNswYARY4HipPs9mPwrbt0XQJH+n2/SZ8WUPY4z2Q=
-github.com/openziti/metrics v1.2.33/go.mod h1:Xr+fvHK9yFPW4op/fsp8OJFHRPSOZdlqjoF1KRpTRNQ=
+github.com/openziti/metrics v1.2.34 h1:O3Tl7KSoLeK5KXB+XU0pGK37a1lRbpQWrgqOkIfbIo0=
+github.com/openziti/metrics v1.2.34/go.mod h1:IssFCy3FLrGB2LPxE/nJCXB2iLDI9WN6yhLLfoTSi2Y=
 github.com/openziti/secretstream v0.1.11 h1:Q73qSV84AW0EA4wqJ7dAKv8uZuvy3L6mPl3k9cYNRPA=
 github.com/openziti/secretstream v0.1.11/go.mod h1:hjHVY/1d7n2TcIaXtHZOuBYz0k7cXKI3v2+VBGtCqpI=
 github.com/openziti/transport/v2 v2.0.105 h1:YfSjdZmvl139n3+wsB623EKHXsaVnWb/6g/Kj9dxwkU=
