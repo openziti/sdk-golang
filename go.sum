@@ -374,8 +374,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
-github.com/openziti/channel/v2 v2.0.95 h1:MQfIr8tAEoDIlPByRMeWYlYAhULML0yyxDeuXxLS6xc=
-github.com/openziti/channel/v2 v2.0.95/go.mod h1:m/PXLXgNvwOJAtjXRXjWF8vqCa/aExYBZcRr/Q5/cq8=
+github.com/openziti/channel/v2 v2.0.96 h1:RuJVv7dwWChQ1tMn1NDHCN8+zOUOwCiz6TcempMgo/I=
+github.com/openziti/channel/v2 v2.0.96/go.mod h1:Ulljp5JukdUOElCKhxITb5U/Dl7CSmsSf6d7ziQLy5A=
 github.com/openziti/edge-api v0.25.33 h1:5XaQvUKeG8ZZ3WLhr/8xqZn56p53ZxWmFooR6I/xrvQ=
 github.com/openziti/edge-api v0.25.33/go.mod h1:T+g7OHoj2KQi3SrSdgbbFoQdknLrehEIlZRGxpTYObI=
 github.com/openziti/foundation/v2 v2.0.30 h1:k6mZ9pkmJgrrM5ogHvmyaRecyASHDhAv9ifZAIzuJ2s=
@@ -386,8 +386,8 @@ github.com/openziti/metrics v1.2.33 h1:H8YNswYARY4HipPs9mPwrbt0XQJH+n2/SZ8WUPY4z
 github.com/openziti/metrics v1.2.33/go.mod h1:Xr+fvHK9yFPW4op/fsp8OJFHRPSOZdlqjoF1KRpTRNQ=
 github.com/openziti/secretstream v0.1.11 h1:Q73qSV84AW0EA4wqJ7dAKv8uZuvy3L6mPl3k9cYNRPA=
 github.com/openziti/secretstream v0.1.11/go.mod h1:hjHVY/1d7n2TcIaXtHZOuBYz0k7cXKI3v2+VBGtCqpI=
-github.com/openziti/transport/v2 v2.0.103 h1:zs3h9liTxUG9+IhpZFMA79HxNaiudkP5V5zA6yKz578=
-github.com/openziti/transport/v2 v2.0.103/go.mod h1:IWwjBMIs/xdozHCfXK2Gg27IDhr4fKyHm+7PuT+k6TM=
+github.com/openziti/transport/v2 v2.0.104 h1:cO2GyBq7XyB4NZHNEgGs/Wp2xRSk9hwxLm2alfaKIYI=
+github.com/openziti/transport/v2 v2.0.104/go.mod h1:IWwjBMIs/xdozHCfXK2Gg27IDhr4fKyHm+7PuT+k6TM=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
