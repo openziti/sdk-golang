@@ -593,7 +593,8 @@ func (context *ContextImpl) refreshServices(forceCheck bool) error {
 	log.Debug("checking if service updates available")
 	if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 		log.WithError(err).Error("failed to check if service list update is available")
-		if _, ok := err.(*current_api_session.ListServiceUpdatesUnauthorized); !ok {
+		target := &current_api_session.ListServiceUpdatesUnauthorized{}
+		if errors.As(err, &target) {
 			checkService = true
 		} else {
 			if err = context.Authenticate(); err != nil {
@@ -611,7 +612,8 @@ func (context *ContextImpl) refreshServices(forceCheck bool) error {
 
 		services, err := context.CtrlClt.GetServices()
 		if err != nil {
-			if _, ok := err.(*service.ListServicesUnauthorized); ok {
+			target := &service.ListServicesUnauthorized{}
+			if errors.As(err, &target) {
 				log.Info("attempting to re-authenticate")
 				if authErr := context.Authenticate(); authErr != nil {
 					log.WithError(authErr).Error("unable to re-authenticate during session refresh")
@@ -1031,7 +1033,8 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
 	if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
-		if _, isNotFound := err.(*rest_session.DetailSessionNotFound); isNotFound {
+		target := &rest_session.DetailSessionNotFound{}
+		if errors.As(err, &target) {
 			sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
 			context.sessions.Remove(sessionKey)
 		}
@@ -1307,10 +1310,12 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 	logger.Debugf("establishing %s session to service %s", sessionType, *service.Name)
 	session, err := context.getOrCreateSession(*service.ID, sessionType)
 	if err != nil {
-		logger.WithError(err).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
-		if _, ok := err.(*rest_session.CreateSessionUnauthorized); ok {
+		logger.WithError(err).WithField("errorType", fmt.Sprintf("%T", err)).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
+		var target error = &rest_session.CreateSessionUnauthorized{}
+		if errors.As(err, &target) {
 			if err := context.Authenticate(); err != nil {
-				if _, ok := err.(*authentication.AuthenticateUnauthorized); ok {
+				target = &authentication.AuthenticateUnauthorized{}
+				if errors.As(err, &target) {
 					return nil, backoff.Permanent(err)
 				}
 				return nil, err
@@ -1561,13 +1566,16 @@ func (mgr *listenerManager) refreshSession() {
 
 	session, err := mgr.context.refreshSession(*mgr.session.ID)
 	if err != nil {
-		switch err.(type) {
-		case *rest_session.DetailSessionNotFound:
+		var target error = &rest_session.DetailSessionNotFound{}
+		if errors.As(err, &target) {
 			// try to create new session
 			mgr.createSessionWithBackoff()
 			return
-		case *rest_session.DetailSessionUnauthorized:
-			pfxlog.Logger().Debugf("failure refreshing bind session for service %v (%v)", mgr.listener.GetServiceName(), err)
+		}
+
+		target = &rest_session.DetailSessionUnauthorized{}
+		if errors.As(err, &target) {
+			pfxlog.Logger().WithError(err).Debugf("failure refreshing bind session for service %v", mgr.listener.GetServiceName())
 			if err := mgr.context.EnsureAuthenticated(mgr.options); err != nil {
 				err := fmt.Errorf("unable to establish API session (%w)", err)
 				if len(mgr.routerConnections) == 0 {
@@ -1579,18 +1587,18 @@ func (mgr *listenerManager) refreshSession() {
 
 		session, err = mgr.context.refreshSession(*mgr.session.ID)
 		if err != nil {
-			switch err.(type) {
-			case *rest_session.DetailSessionUnauthorized:
-				pfxlog.Logger().Errorf(
-					"failure refreshing bind session even after re-authenticating api session. service %v (%v)",
-					mgr.listener.GetServiceName(), err)
+			target = &rest_session.DetailSessionUnauthorized{}
+			if errors.As(err, &target) {
+				pfxlog.Logger().WithError(err).Errorf(
+					"failure refreshing bind session even after re-authenticating api session. service %v",
+					mgr.listener.GetServiceName())
 				if len(mgr.routerConnections) == 0 {
 					mgr.listener.CloseWithError(err)
 				}
 				return
 			}
 
-			pfxlog.Logger().Errorf("failed to to refresh session %v: (%v)", *mgr.session.ID, err)
+			pfxlog.Logger().WithError(err).Errorf("failed to to refresh session %v", *mgr.session.ID)
 
 			// try to create new session
 			mgr.createSessionWithBackoff()
