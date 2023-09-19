@@ -25,7 +25,7 @@ func NewComponents(api *url.URL, schemes []string) *Components {
 	tlsClientConfig, _ := rest_util.NewTlsConfig()
 
 	httpTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       tlsClientConfig,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,
