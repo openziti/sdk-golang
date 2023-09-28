@@ -25,6 +25,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/pkg/errors"
 	"net/url"
+	"sync/atomic"
 )
 
 // ApiType is an interface constraint for generics. The underlying go-swagger types only have fields, which are
@@ -40,13 +41,13 @@ type BaseClient[A ApiType] struct {
 	API *A
 	Components
 	AuthInfoWriter          runtime.ClientAuthInfoWriter
-	CurrentAPISessionDetail *rest_model.CurrentAPISessionDetail
+	CurrentAPISessionDetail atomic.Pointer[rest_model.CurrentAPISessionDetail]
 	Credentials             Credentials
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
 func (self *BaseClient[A]) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
-	return self.CurrentAPISessionDetail
+	return self.CurrentAPISessionDetail.Load()
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
@@ -58,7 +59,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 	myAny := any(self.API)
 	if a, ok := myAny.(AuthEnabledApi); ok {
 		self.Credentials = nil
-		self.CurrentAPISessionDetail = nil
+		self.CurrentAPISessionDetail.Store(nil)
 
 		if credCaPool := credentials.GetCaPool(); credCaPool != nil {
 			self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
@@ -73,11 +74,11 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		}
 
 		self.Credentials = credentials
-		self.CurrentAPISessionDetail = apiSession
+		self.CurrentAPISessionDetail.Store(apiSession)
 
 		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			if self.CurrentAPISessionDetail != nil && self.CurrentAPISessionDetail.Token != nil && *self.CurrentAPISessionDetail.Token != "" {
-				if err := request.SetHeaderParam("zt-session", *self.CurrentAPISessionDetail.Token); err != nil {
+			if currentSession := self.CurrentAPISessionDetail.Load(); currentSession != nil && currentSession.Token != nil && *currentSession.Token != "" {
+				if err := request.SetHeaderParam("zt-session", *currentSession.Token); err != nil {
 					return err
 				}
 			}

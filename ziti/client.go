@@ -78,7 +78,7 @@ func (self *CtrlClient) Refresh() (*time.Time, error) {
 		return nil, rest_util.WrapErr(err)
 	}
 
-	self.CurrentAPISessionDetail = resp.Payload.Data
+	self.CurrentAPISessionDetail.Store(resp.Payload.Data)
 
 	expiresAt := time.Time(*resp.Payload.Data.ExpiresAt)
 	return &expiresAt, nil

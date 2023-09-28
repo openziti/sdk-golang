@@ -639,24 +639,25 @@ func (context *ContextImpl) runSessionRefresh() {
 	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
 	defer svcUpdateTick.Stop()
 
-	expireTime := time.Time(*context.CtrlClt.GetCurrentApiSession().ExpiresAt)
-	sleepDuration := time.Until(expireTime) - (10 * time.Second)
+	refreshAt := time.Now().Add(30 * time.Second)
+	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.ExpiresAt != nil {
+		refreshAt = time.Time(*currentApiSession.ExpiresAt).Add(-10 * time.Second)
+	}
 
 	for {
 		select {
 		case <-context.closeNotify:
 			return
 
-		case <-time.After(sleepDuration):
+		case <-time.After(time.Until(refreshAt)):
 			exp, err := context.CtrlClt.Refresh()
 			if err != nil {
 				log.Errorf("could not refresh apiSession: %v", err)
 
-				sleepDuration = 5 * time.Second
+				refreshAt = time.Now().Add(5 * time.Second)
 			} else {
-				expireTime = *exp
-				sleepDuration = time.Until(expireTime) - (10 * time.Second)
-				log.Debugf("apiSession refreshed, new expiration[%s]", expireTime)
+				refreshAt = exp.Add(-10 * time.Second)
+				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
 			}
 
 		case <-svcUpdateTick.C:
@@ -696,10 +697,9 @@ func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, er
 }
 
 func (context *ContextImpl) setUnauthenticated() {
-	willEmit := context.CtrlClt.CurrentAPISessionDetail != nil
-	prevApiSession := context.CtrlClt.CurrentAPISessionDetail
+	prevApiSession := context.CtrlClt.CurrentAPISessionDetail.Swap(nil)
+	willEmit := prevApiSession != nil
 
-	context.CtrlClt.CurrentAPISessionDetail = nil
 	context.CtrlClt.ApiSessionCertificate = nil
 
 	context.CloseAllEdgeRouterConns()
@@ -734,11 +734,11 @@ func (context *ContextImpl) authenticate() error {
 		return nil
 	}
 
-	return context.onFullAuth()
+	return context.onFullAuth(apiSession)
 }
 
 func (context *ContextImpl) Reauthenticate() error {
-	context.CtrlClt.CurrentAPISessionDetail = nil
+	context.CtrlClt.CurrentAPISessionDetail.Store(nil)
 	context.CtrlClt.ApiSessionCertificate = nil
 
 	return context.authenticate()
@@ -771,7 +771,7 @@ func (context *ContextImpl) CloseAllEdgeRouterConns() {
 	}
 }
 
-func (context *ContextImpl) onFullAuth() error {
+func (context *ContextImpl) onFullAuth(apiSession *rest_model.CurrentAPISessionDetail) error {
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -780,13 +780,13 @@ func (context *ContextImpl) onFullAuth() error {
 		go context.runSessionRefresh()
 
 		metricsTags := map[string]string{
-			"srcId": context.CtrlClt.GetCurrentApiSession().Identity.ID,
+			"srcId": apiSession.Identity.ID,
 		}
 
-		context.metrics = metrics.NewRegistry(context.CtrlClt.GetCurrentApiSession().Identity.Name, metricsTags)
+		context.metrics = metrics.NewRegistry(apiSession.Identity.Name, metricsTags)
 	})
 
-	context.Emit(EventAuthenticationStateFull, context.CtrlClt.GetCurrentApiSession())
+	context.Emit(EventAuthenticationStateFull, apiSession)
 
 	// get services
 	if err := context.RefreshServices(); err != nil {
@@ -809,8 +809,8 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 		return err
 	}
 
-	if context.CtrlClt.CurrentAPISessionDetail != nil && len(context.CtrlClt.CurrentAPISessionDetail.AuthQueries) == 0 {
-		return context.onFullAuth()
+	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && len(currentApiSession.AuthQueries) == 0 {
+		return context.onFullAuth(currentApiSession)
 	}
 
 	return nil
@@ -1125,7 +1125,13 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Debugf("connection to edge router using api session token %v", *context.CtrlClt.GetCurrentApiSession().Token)
+	currentApiSession := context.CtrlClt.GetCurrentApiSession()
+	if currentApiSession == nil {
+		retF(&edgeRouterConnResult{routerUrl: ingressUrl, err: errors.New("not authenticated to controller")})
+		return
+	}
+
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", *currentApiSession.Token)
 	id, err := context.CtrlClt.GetIdentity()
 
 	if err != nil {
@@ -1133,7 +1139,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	}
 
 	dialer := channel.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(*context.CtrlClt.GetCurrentApiSession().Token),
+		edge.SessionTokenHeader: []byte(*currentApiSession.Token),
 	})
 
 	start := time.Now().UnixNano()
@@ -1288,6 +1294,16 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 
 	var session *rest_model.SessionDetail
 	operation := func() error {
+		latestSvc, _ := context.services.Get(*service.Name)
+		if latestSvc != nil && *latestSvc.ID != *service.ID {
+			pfxlog.Logger().
+				WithField("serviceName", *service.Name).
+				WithField("oldServiceId", *service.ID).
+				WithField("newServiceId", *latestSvc.ID).
+				Info("service id changed, service was recreated")
+			service = latestSvc
+		}
+
 		s, err := context.createSession(service, sessionType)
 		if err != nil {
 			return err
@@ -1321,6 +1337,14 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 				return nil, err
 			}
 		}
+
+		target = &rest_session.CreateSessionNotFound{}
+		if errors.As(err, &target) {
+			if refreshErr := context.refreshServices(false); refreshErr != nil {
+				logger.WithError(refreshErr).Info("failed to refresh services after create session returned 404 (likely for service)")
+			}
+		}
+
 		return nil, err
 	}
 	elapsed := time.Since(start)
@@ -1614,6 +1638,16 @@ func (mgr *listenerManager) refreshSession() {
 }
 
 func (mgr *listenerManager) createSessionWithBackoff() {
+	latestSvc, _ := mgr.context.services.Get(*mgr.service.Name)
+	if latestSvc != nil && *latestSvc.ID != *mgr.service.ID {
+		pfxlog.Logger().
+			WithField("serviceName", *mgr.service.Name).
+			WithField("oldServiceId", *mgr.service.ID).
+			WithField("newServiceId", *latestSvc.ID).
+			Info("service id changed, service was recreated")
+		mgr.service = latestSvc
+	}
+
 	session, err := mgr.context.createSessionWithBackoff(mgr.service, SessionType(SessionBind), mgr.options)
 	if session != nil {
 		mgr.session = session
