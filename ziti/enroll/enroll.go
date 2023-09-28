@@ -319,18 +319,13 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 }
 
 func enrollOTT(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertPool) error {
-
 	pk, err := identity.LoadKey(cfg.ID.Key)
 	if err != nil {
 		return errors.Errorf("failed to load private key '%s': %s", cfg.ID.Key, err.Error())
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	}
 	request, err := certtools.NewCertRequest(map[string]string{
-		"C": "US", "O": "NetFoundry", "CN": hostname,
+		"C": "US", "O": "NetFoundry", "CN": token.Subject,
 	}, nil)
 	if err != nil {
 		return err
