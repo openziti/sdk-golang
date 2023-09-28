@@ -2,16 +2,14 @@ module github.com/openziti/sdk-golang/examples
 
 go 1.19
 
-replace github.com/openziti/sdk-golang => ../
-
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/google/uuid v1.3.1
 	github.com/gorilla/mux v1.8.0
 	github.com/michaelquigley/pfxlog v0.6.10
-	github.com/openziti/foundation/v2 v2.0.31
+	github.com/openziti/foundation/v2 v2.0.32
 	github.com/openziti/runzmd v1.0.13
-	github.com/openziti/sdk-golang v0.20.0
+	github.com/openziti/sdk-golang v0.20.112
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.7.0
@@ -75,12 +73,12 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v2 v2.0.98 // indirect
-	github.com/openziti/edge-api v0.25.33 // indirect
-	github.com/openziti/identity v1.0.62 // indirect
-	github.com/openziti/metrics v1.2.34 // indirect
-	github.com/openziti/secretstream v0.1.11 // indirect
-	github.com/openziti/transport/v2 v2.0.106 // indirect
+	github.com/openziti/channel/v2 v2.0.99 // indirect
+	github.com/openziti/edge-api v0.25.36 // indirect
+	github.com/openziti/identity v1.0.63 // indirect
+	github.com/openziti/metrics v1.2.35 // indirect
+	github.com/openziti/secretstream v0.1.12 // indirect
+	github.com/openziti/transport/v2 v2.0.107 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
@@ -88,7 +86,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rs/cors v1.8.3 // indirect
-	github.com/shirou/gopsutil/v3 v3.23.7 // indirect
+	github.com/shirou/gopsutil/v3 v3.23.8 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/speps/go-hashids v2.0.0+incompatible // indirect
 	github.com/spf13/afero v1.6.0 // indirect
@@ -96,17 +94,17 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.11 // indirect
-	github.com/tklauser/numcpus v0.6.0 // indirect
+	github.com/tklauser/go-sysconf v0.3.12 // indirect
+	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	github.com/zitadel/logging v0.3.4 // indirect
 	go.mongodb.org/mongo-driver v1.12.1 // indirect
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352 // indirect
-	go.opentelemetry.io/otel v1.16.0 // indirect
-	go.opentelemetry.io/otel/metric v1.16.0 // indirect
-	go.opentelemetry.io/otel/trace v1.16.0 // indirect
+	go.opentelemetry.io/otel v1.18.0 // indirect
+	go.opentelemetry.io/otel/metric v1.18.0 // indirect
+	go.opentelemetry.io/otel/trace v1.18.0 // indirect
 	golang.org/x/crypto v0.13.0 // indirect
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
 	golang.org/x/image v0.5.0 // indirect
