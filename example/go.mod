@@ -1,4 +1,4 @@
-module github.com/openziti/sdk-golang/examples
+module github.com/openziti/sdk-golang/example
 
 go 1.19
 
