@@ -38,6 +38,10 @@ func init() {
 type RouterClient interface {
 	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions) (Conn, error)
 	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions) (Listener, error)
+
+	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
+	//within the timeout period.
+	UpdateToken(token string, timeout time.Duration) error
 }
 
 type RouterConn interface {

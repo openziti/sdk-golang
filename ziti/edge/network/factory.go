@@ -17,11 +17,14 @@
 package network
 
 import (
+	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
+	"github.com/pkg/errors"
+	"time"
 )
 
 type RouterConnOwner interface {
@@ -101,6 +104,27 @@ func (conn *routerConn) NewConn(service *rest_model.ServiceDetail, connType Conn
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
 	return edgeCh
+}
+
+func (conn *routerConn) UpdateToken(token string, timeout time.Duration) error {
+	msg := edge.NewUpdateTokenMsg([]byte(token))
+	resp, err := msg.WithTimeout(timeout).SendForReply(conn.ch)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.ContentType == edge.ContentTypeUpdateTokenSuccess {
+		return nil
+	}
+
+	if resp.ContentType == edge.ContentTypeUpdateTokenFailure {
+		err = errors.New(string(resp.Body))
+		return fmt.Errorf("could not update token for router [%s]: %w", conn.Key(), err)
+	}
+
+	err = fmt.Errorf("invalid content type response %d, expected one of [%d, %d]", resp.ContentType, edge.ContentTypeUpdateTokenSuccess, edge.ContentTypeUpdateTokenFailure)
+	return fmt.Errorf("could not update token for router [%s]: %w", conn.Key(), err)
 }
 
 func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {

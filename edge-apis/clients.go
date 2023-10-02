@@ -22,7 +22,6 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_management_api_client"
-	"github.com/openziti/edge-api/rest_model"
 	"github.com/pkg/errors"
 	"net/url"
 )
@@ -39,26 +38,26 @@ type ApiType interface {
 type BaseClient[A ApiType] struct {
 	API *A
 	Components
-	AuthInfoWriter          runtime.ClientAuthInfoWriter
-	CurrentAPISessionDetail *rest_model.CurrentAPISessionDetail
-	Credentials             Credentials
+	AuthInfoWriter runtime.ClientAuthInfoWriter
+	ApiSession     *ApiSession
+	Credentials    Credentials
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
-func (self *BaseClient[A]) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
-	return self.CurrentAPISessionDetail
+func (self *BaseClient[A]) GetCurrentApiSession() *ApiSession {
+	return self.ApiSession
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
 // the API Session details will be returned and the current client will make authenticated requests on future
 // calls. On an error the API Session in use will be cleared and subsequent requests will become/continue to be
 // made in an unauthenticated fashion.
-func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (*rest_model.CurrentAPISessionDetail, error) {
+func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (*ApiSession, error) {
 	//casting to `any` works around golang error that happens when type asserting a generic typed field
 	myAny := any(self.API)
 	if a, ok := myAny.(AuthEnabledApi); ok {
 		self.Credentials = nil
-		self.CurrentAPISessionDetail = nil
+		self.ApiSession = nil
 
 		if credCaPool := credentials.GetCaPool(); credCaPool != nil {
 			self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
@@ -73,11 +72,11 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		}
 
 		self.Credentials = credentials
-		self.CurrentAPISessionDetail = apiSession
+		self.ApiSession = apiSession
 
 		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			if self.CurrentAPISessionDetail != nil && self.CurrentAPISessionDetail.Token != nil && *self.CurrentAPISessionDetail.Token != "" {
-				if err := request.SetHeaderParam("zt-session", *self.CurrentAPISessionDetail.Token); err != nil {
+			if self.ApiSession != nil {
+				if err := self.ApiSession.AuthenticateRequest(request, registry); err != nil {
 					return err
 				}
 			}
@@ -130,13 +129,18 @@ type ManagementApiClient struct {
 // For OpenZiti instances not using publicly signed certificates, `ziti.GetControllerWellKnownCaPool()` can be used
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
-func NewManagementApiClient(apiUrl *url.URL, caPool *x509.CertPool) *ManagementApiClient {
+func NewManagementApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ManagementApiClient {
 	ret := &ManagementApiClient{}
 
 	ret.initializeComponents(apiUrl, rest_management_api_client.DefaultSchemes, ret, caPool)
 
 	newApi := rest_management_api_client.New(ret.Components.Runtime, nil)
-	api := ZitiEdgeManagement(*newApi)
+	api := ZitiEdgeManagement{
+		ZitiEdgeManagement: newApi,
+		apiUrl:             apiUrl,
+		TotpCallback:       totpCallback,
+	}
+
 	ret.API = &api
 
 	return ret
@@ -157,13 +161,17 @@ type ClientApiClient struct {
 // For OpenZiti instances not using publicly signed certificates, `ziti.GetControllerWellKnownCaPool()` can be used
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
-func NewClientApiClient(apiUrl *url.URL, caPool *x509.CertPool) *ClientApiClient {
+func NewClientApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
 	ret := &ClientApiClient{}
 
 	ret.initializeComponents(apiUrl, rest_client_api_client.DefaultSchemes, ret, caPool)
 
 	newApi := rest_client_api_client.New(ret.Components.Runtime, nil)
-	api := ZitiEdgeClient(*newApi)
+	api := ZitiEdgeClient{
+		ZitiEdgeClient: newApi,
+		apiUrl:         apiUrl,
+		TotpCallback:   totpCallback,
+	}
 	ret.API = &api
 
 	return ret

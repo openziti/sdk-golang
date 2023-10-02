@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"github.com/openziti/foundation/v2/genext"
 	"github.com/openziti/transport/v2"
+	"github.com/pkg/errors"
 	"strings"
 	"time"
 
@@ -65,30 +66,32 @@ type CtrlClient struct {
 }
 
 // GetCurrentApiSession returns the current cached ApiSession or nil
-func (self *CtrlClient) GetCurrentApiSession() *rest_model.CurrentAPISessionDetail {
+func (self *CtrlClient) GetCurrentApiSession() *apis.ApiSession {
 	return self.ClientApiClient.GetCurrentApiSession()
 }
 
-// Refresh will contact the controller extending the current ApiSession
+// Refresh will contact the controller extending the current ApiSession for legacy API Sessions
 func (self *CtrlClient) Refresh() (*time.Time, error) {
-	params := current_api_session.NewGetCurrentAPISessionParams()
-	resp, err := self.API.CurrentAPISession.GetCurrentAPISession(params, nil)
+	if self.ApiSession != nil {
+		apiSession, err := self.API.RefreshApiSession(self.ApiSession)
 
-	if err != nil {
-		return nil, rest_util.WrapErr(err)
+		if err != nil {
+			return nil, err
+		}
+
+		self.ApiSession = apiSession
+
+		return self.ApiSession.GetExpiresAt(), nil
 	}
 
-	self.CurrentAPISessionDetail = resp.Payload.Data
-
-	expiresAt := time.Time(*resp.Payload.Data.ExpiresAt)
-	return &expiresAt, nil
+	return nil, errors.New("no api session")
 }
 
 // IsServiceListUpdateAvailable will contact the controller to determine if a new set of services are available. Service
 // updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
 // checks.
 func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, error) {
-	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), nil)
+	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), self.ApiSession)
 
 	if err != nil {
 		return true, nil, err
@@ -98,7 +101,7 @@ func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, 
 }
 
 // Authenticate attempts to use authenticate, overwriting any existing ApiSession.
-func (self *CtrlClient) Authenticate() (*rest_model.CurrentAPISessionDetail, error) {
+func (self *CtrlClient) Authenticate() (*apis.ApiSession, error) {
 	var err error
 
 	self.ApiSessionCertificate = nil
@@ -124,7 +127,7 @@ func (self *CtrlClient) AuthenticateMFA(code string) error {
 	params.MfaAuth = &rest_model.MfaCode{
 		Code: &code,
 	}
-	_, err := self.API.Authentication.AuthenticateMfa(params, nil)
+	_, err := self.API.Authentication.AuthenticateMfa(params, self.ApiSession)
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -138,7 +141,7 @@ func (self *CtrlClient) AuthenticateMFA(code string) error {
 func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseParams()
 	params.PostureResponse = response
-	_, err := self.API.PostureChecks.CreatePostureResponse(params, nil)
+	_, err := self.API.PostureChecks.CreatePostureResponse(params, self.ApiSession)
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -151,7 +154,7 @@ func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseC
 func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
-	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, nil)
+	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, self.ApiSession)
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -162,7 +165,7 @@ func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureRe
 // GetCurrentIdentity returns the rest_model.IdentityDetail for the currently authenticated ApiSession.
 func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
 	params := current_identity.NewGetCurrentIdentityParams()
-	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, nil)
+	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, self.ApiSession)
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -175,7 +178,7 @@ func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error)
 func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
 	params := session.NewDetailSessionParams()
 	params.ID = id
-	resp, err := self.API.Session.DetailSession(params, nil)
+	resp, err := self.API.Session.DetailSession(params, self.ApiSession)
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -253,7 +256,7 @@ func (self *CtrlClient) NewApiSessionCertificate() error {
 		Csr: &csrPemString,
 	}
 
-	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, nil)
+	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, self.ApiSession)
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -286,7 +289,7 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 		params.Limit = &pageLimit
 		params.Offset = &pageOffset
 
-		resp, err := self.API.Service.ListServices(params, nil)
+		resp, err := self.API.Service.ListServices(params, self.ApiSession)
 
 		if err != nil {
 			return nil, rest_util.WrapErr(err)
@@ -319,7 +322,7 @@ func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, off
 
 	params.ID = *svc.ID
 
-	resp, err := self.API.Service.ListServiceTerminators(params, nil)
+	resp, err := self.API.Service.ListServiceTerminators(params, self.ApiSession)
 
 	if err != nil {
 		return nil, 0, rest_util.WrapErr(err)
@@ -336,7 +339,7 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 		Type:      rest_model.DialBind(sessionType),
 	}
 
-	resp, err := self.API.Session.CreateSession(params, nil)
+	resp, err := self.API.Session.CreateSession(params, self.ApiSession)
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -350,14 +353,14 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 func (self *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	enrollMfaParams := current_identity.NewEnrollMfaParams()
 
-	_, enrollMfaErr := self.API.CurrentIdentity.EnrollMfa(enrollMfaParams, nil)
+	_, enrollMfaErr := self.API.CurrentIdentity.EnrollMfa(enrollMfaParams, self.ApiSession)
 
 	if enrollMfaErr != nil {
 		return nil, enrollMfaErr
 	}
 
 	detailMfaParams := current_identity.NewDetailMfaParams()
-	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, nil)
+	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, self.ApiSession)
 
 	if detailMfaErr != nil {
 		return nil, rest_util.WrapErr(detailMfaErr)
@@ -374,7 +377,7 @@ func (self *CtrlClient) VerifyMfa(code string) error {
 		Code: &code,
 	}
 
-	_, err := self.API.CurrentIdentity.VerifyMfa(params, nil)
+	_, err := self.API.CurrentIdentity.VerifyMfa(params, self.ApiSession)
 
 	return rest_util.WrapErr(err)
 }
@@ -384,7 +387,7 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 	params := current_identity.NewDeleteMfaParams()
 	params.MfaValidationCode = &code
 
-	_, err := self.API.CurrentIdentity.DeleteMfa(params, nil)
+	_, err := self.API.CurrentIdentity.DeleteMfa(params, self.ApiSession)
 
 	return rest_util.WrapErr(err)
 }
