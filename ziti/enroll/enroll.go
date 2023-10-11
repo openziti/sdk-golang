@@ -288,6 +288,7 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 			TLSClientConfig: &tls.Config{
 				RootCAs: caPool,
 			},
+			Proxy: http.ProxyFromEnvironment,
 		},
 	}
 
@@ -345,6 +346,7 @@ func enrollOTT(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.Cert
 			TLSClientConfig: &tls.Config{
 				RootCAs: caPool,
 			},
+			Proxy: http.ProxyFromEnvironment,
 		},
 	}
 	resp, err := client.Post(token.EnrolmentUrl(), "application/x-pem-file", bytes.NewReader(csrPem))
@@ -426,6 +428,7 @@ func enrollCA(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertP
 					RootCAs:      caPool,
 					Certificates: []tls.Certificate{*clientCert},
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 		resp, err := client.Post(token.EnrolmentUrl(), "text/plain", bytes.NewReader([]byte{}))
@@ -461,6 +464,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *ziti.Config, caPool *x509.CertPo
 					RootCAs:      caPool,
 					Certificates: []tls.Certificate{*clientCert},
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 
@@ -507,6 +511,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *ziti.Config, caPool *x509.CertPo
 func FetchServerCert(urlRoot string) (*x509.Certificate, error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		Proxy:           http.ProxyFromEnvironment,
 	}
 	client := &http.Client{Transport: tr}
 
@@ -542,6 +547,7 @@ func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certif
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: rootCaPool},
+			Proxy:           http.ProxyFromEnvironment,
 		},
 	}
 
