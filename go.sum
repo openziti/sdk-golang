@@ -374,8 +374,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
-github.com/openziti/channel/v2 v2.0.100 h1:mtz2wXZsLY1RcUwCJ8TrNuejHtwDOQadhxThYeYgZxo=
-github.com/openziti/channel/v2 v2.0.100/go.mod h1:lfVAzEXQgeaCinwor71Ex6Al64Iy9mM7yX6VWf2EFcs=
+github.com/openziti/channel/v2 v2.0.101 h1:UaveW/ogYKVtCQZfwRoMhsZhj/tvs1bD7SvH0aLaYNw=
+github.com/openziti/channel/v2 v2.0.101/go.mod h1:b9CBWpH6tnLqCHInDKL6AzMGqXdbEjsul3yVQUGENVU=
 github.com/openziti/edge-api v0.25.38 h1:aijFEC4pMCi2gR6zL6FYQRkm59SQAwrF0tZS4LZsxi4=
 github.com/openziti/edge-api v0.25.38/go.mod h1:5mmcMgqK1MsBb0K8V1CBfGbtRUji5KYdmhJJJkJBMqY=
 github.com/openziti/foundation/v2 v2.0.33 h1:8CP+fi4KsmzA4jDi54jibwFWWxKpd0rSiplzN9Z0Isw=
@@ -386,8 +386,8 @@ github.com/openziti/metrics v1.2.36 h1:oW5YM9H8IqtFuxIyo0rMC3mTpl3rdSnDKcHp+ZTn+
 github.com/openziti/metrics v1.2.36/go.mod h1:fjYG6sUC/n6VXe0nZbYGEBaopbRThBo/3xt7o9VatRQ=
 github.com/openziti/secretstream v0.1.12 h1:N78CHxtqWzSyNFOsYtYRWNNTfX1ZDAPkFgzHobpodZU=
 github.com/openziti/secretstream v0.1.12/go.mod h1:gHMH1REH0r4VlmCtuWx8biU7j5ZfOivFjz9mLgwq7mk=
-github.com/openziti/transport/v2 v2.0.108 h1:PBOuwEDJaGzAs8EiignBpu8YjOqOMgYl1UQenFOgutg=
-github.com/openziti/transport/v2 v2.0.108/go.mod h1:r1jay/cSzkw15SJLtbk/I9YZtMIYjhueqAqfWtO5ioE=
+github.com/openziti/transport/v2 v2.0.109 h1:12ZdM9R7lETKP7cT2xsGlTX/4w2qBtC8nThxw8RG77Q=
+github.com/openziti/transport/v2 v2.0.109/go.mod h1:r1jay/cSzkw15SJLtbk/I9YZtMIYjhueqAqfWtO5ioE=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
