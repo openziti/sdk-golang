@@ -63,6 +63,7 @@ const (
 	TraceHopIdHeader               = 1018
 	TraceSourceRequestIdHeader     = 1019
 	TraceError                     = 1020
+	SdkProvidedTerminatorId        = 1021
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -120,54 +121,11 @@ var ContentTypeNames = map[int32]string{
 	ContentTypeProbe:          "EdgeProbeType",
 }
 
-type Sequenced interface {
-	GetSequence() uint32
-}
-
 type MsgEvent struct {
 	ConnId  uint32
 	Seq     uint32
 	MsgUUID []byte
 	Msg     *channel.Message
-}
-
-func (event *MsgEvent) GetSequence() uint32 {
-	return event.Seq
-}
-
-func UnmarshalMsgEvent(msg *channel.Message) (*MsgEvent, error) {
-	connId, found := msg.GetUint32Header(ConnIdHeader)
-	if !found {
-		return nil, errors.Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
-	}
-	seq, _ := msg.GetUint32Header(SeqHeader)
-
-	event := &MsgEvent{
-		ConnId:  connId,
-		Seq:     seq,
-		MsgUUID: msg.Headers[UUIDHeader],
-		Msg:     msg,
-	}
-
-	return event, nil
-}
-
-func (event *MsgEvent) GetLoggerFields() logrus.Fields {
-	msgUUID := uuidz.ToString(event.MsgUUID)
-	connId, _ := event.Msg.GetUint32Header(ConnIdHeader)
-	seq, _ := event.Msg.GetUint32Header(SeqHeader)
-
-	fields := logrus.Fields{
-		"connId":  connId,
-		"type":    ContentTypeNames[event.Msg.ContentType],
-		"chSeq":   event.Msg.Sequence(),
-		"edgeSeq": seq,
-	}
-
-	if msgUUID != "" {
-		fields["uuid"] = msgUUID
-	}
-	return fields
 }
 
 func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel.Message {
