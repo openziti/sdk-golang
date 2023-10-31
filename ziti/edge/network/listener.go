@@ -131,6 +131,10 @@ func (listener *edgeListener) SendHealthEvent(pass bool) error {
 }
 
 func (listener *edgeListener) Close() error {
+	return listener.close(true)
+}
+
+func (listener *edgeListener) close(closedByRemote bool) error {
 	if !listener.closed.CompareAndSwap(false, true) {
 		// already closed
 		return nil
@@ -146,10 +150,7 @@ func (listener *edgeListener) Close() error {
 	edgeChan.hosting.Delete(listener.token)
 
 	defer func() {
-		if err := edgeChan.Close(); err != nil {
-			logger.WithError(err).Error("unable to close conn")
-		}
-
+		edgeChan.close(closedByRemote)
 		listener.acceptC <- nil // signal listeners that listener is closed
 	}()
 

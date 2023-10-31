@@ -443,8 +443,8 @@ func (conn *edgeConn) Close() error {
 }
 
 func (conn *edgeConn) close(closedByRemote bool) {
-	// everything in here should be safe to execute concurrently from outside the muxer loop, with
-	// the exception of the remove from mux call
+	// everything in here should be safe to execute concurrently from outside the muxer loop,
+	// except the remove from mux call
 	if !conn.closed.CompareAndSwap(false, true) {
 		return
 	}
@@ -467,7 +467,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
-		if err := listener.Close(); err != nil {
+		if err := listener.close(closedByRemote); err != nil {
 			log.WithError(err).WithField("serviceName", listener.service.Name).Error("failed to close listener")
 		}
 		return true
