@@ -246,8 +246,8 @@ github.com/google/pprof v0.0.0-20210226084205-cbba55b83ad5/go.mod h1:kpwsk12EmLe
 github.com/google/renameio v0.1.0/go.mod h1:KWCgfxg9yswjAJkECMjeO8J8rahYeXnNhOm40UhjYkI=
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/google/uuid v1.3.1 h1:KjJaJ9iWZ3jOFZIf1Lqf4laDRCasjl0BCmnEGxkdLb4=
-github.com/google/uuid v1.3.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/google/uuid v1.4.0 h1:MtMxsa51/r9yyhkyLsVeVt0B+BGQZzpQiTQ4eHZ8bc4=
+github.com/google/uuid v1.4.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
@@ -382,8 +382,8 @@ github.com/openziti/foundation/v2 v2.0.33 h1:8CP+fi4KsmzA4jDi54jibwFWWxKpd0rSipl
 github.com/openziti/foundation/v2 v2.0.33/go.mod h1:dWR0g3NOka3uKz9MgUHq6dmuRLmSvunkyeuOXEW/5qU=
 github.com/openziti/identity v1.0.65 h1:lVgn0xAh4hTZBAjk4cBdmeNv8ZzgAx1bQYfPJfBbBlc=
 github.com/openziti/identity v1.0.65/go.mod h1:t/mW5mCpCbcRrssj4EpzfrmebI7+UKXGH2twll7IQIo=
-github.com/openziti/metrics v1.2.36 h1:oW5YM9H8IqtFuxIyo0rMC3mTpl3rdSnDKcHp+ZTn+JM=
-github.com/openziti/metrics v1.2.36/go.mod h1:fjYG6sUC/n6VXe0nZbYGEBaopbRThBo/3xt7o9VatRQ=
+github.com/openziti/metrics v1.2.37 h1:5yWvMwQT6X43LDlNVcUtqAPJQXfKtbWSYoCIiOfXztg=
+github.com/openziti/metrics v1.2.37/go.mod h1:jIL9iilxby8tR98C18uZaSe6bRG15ItR8XF2hmMt8vs=
 github.com/openziti/secretstream v0.1.12 h1:N78CHxtqWzSyNFOsYtYRWNNTfX1ZDAPkFgzHobpodZU=
 github.com/openziti/secretstream v0.1.12/go.mod h1:gHMH1REH0r4VlmCtuWx8biU7j5ZfOivFjz9mLgwq7mk=
 github.com/openziti/transport/v2 v2.0.110 h1:MP578JIQdHzigBozRtpwXkmHZbJTLhgFGWr0iuQyeJs=

@@ -9,7 +9,7 @@ require (
 	github.com/go-openapi/runtime v0.26.0
 	github.com/go-openapi/strfmt v0.21.7
 	github.com/golang-jwt/jwt/v5 v5.0.0
-	github.com/google/uuid v1.3.1
+	github.com/google/uuid v1.4.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
@@ -18,7 +18,7 @@ require (
 	github.com/openziti/edge-api v0.26.0
 	github.com/openziti/foundation/v2 v2.0.33
 	github.com/openziti/identity v1.0.65
-	github.com/openziti/metrics v1.2.36
+	github.com/openziti/metrics v1.2.37
 	github.com/openziti/secretstream v0.1.12
 	github.com/openziti/transport/v2 v2.0.110
 	github.com/orcaman/concurrent-map/v2 v2.0.1
