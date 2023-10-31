@@ -14,13 +14,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.102
+	github.com/openziti/channel/v2 v2.0.103
 	github.com/openziti/edge-api v0.26.0
 	github.com/openziti/foundation/v2 v2.0.33
-	github.com/openziti/identity v1.0.65
+	github.com/openziti/identity v1.0.66
 	github.com/openziti/metrics v1.2.37
 	github.com/openziti/secretstream v0.1.12
-	github.com/openziti/transport/v2 v2.0.110
+	github.com/openziti/transport/v2 v2.0.111
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -36,7 +36,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
