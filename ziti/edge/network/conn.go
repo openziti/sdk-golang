@@ -19,6 +19,7 @@ package network
 import (
 	"fmt"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/stringz"
 	"io"
 	"net"
 	"sync"
@@ -468,7 +469,8 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
 		if err := listener.Close(); err != nil {
-			log.WithError(err).WithField("serviceName", listener.service.Name).Error("failed to close listener")
+			serviceName := stringz.OrEmpty(listener.service.Name)
+			log.WithError(err).WithField("serviceName", serviceName).Error("failed to close listener")
 		}
 		return true
 	})

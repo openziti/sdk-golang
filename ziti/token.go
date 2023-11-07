@@ -33,6 +33,7 @@ type Versions struct {
 type EnrollmentClaims struct {
 	jwt.RegisteredClaims
 	EnrollmentMethod string            `json:"em"`
+	Controllers      []string          `json:"ctrls"`
 	SignatureCert    *x509.Certificate `json:"-"`
 }
 
