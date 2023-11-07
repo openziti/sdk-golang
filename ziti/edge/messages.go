@@ -63,7 +63,7 @@ const (
 	TraceHopIdHeader               = 1018
 	TraceSourceRequestIdHeader     = 1019
 	TraceError                     = 1020
-	SdkProvidedTerminatorId        = 1021
+	ListenerId                     = 1021
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -218,6 +218,11 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 			msg.Headers[TerminatorIdentitySecretHeader] = []byte(options.IdentitySecret)
 		}
 	}
+
+	if options.ListenerId != "" {
+		msg.Headers[ListenerId] = []byte(options.ListenerId)
+	}
+
 	msg.PutBoolHeader(RouterProvidedConnId, true)
 	return msg
 }

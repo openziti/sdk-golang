@@ -20,11 +20,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-openapi/strfmt"
+	"github.com/google/uuid"
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/secretstream/kx"
 	"math"
 	"net"
 	"reflect"
@@ -1001,12 +1003,12 @@ func (context *ContextImpl) ListenWithOptions(serviceName string, options *Liste
 	}
 
 	if s, ok := context.GetService(serviceName); ok {
-		return context.listenSession(s, options), nil
+		return context.listenSession(s, options)
 	}
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) edge.Listener {
+func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) (edge.Listener, error) {
 	edgeListenOptions := &edge.ListenOptions{
 		Cost:                  options.Cost,
 		Precedence:            edge.Precedence(options.Precedence),
@@ -1025,8 +1027,11 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.MaxConnections = 1
 	}
 
-	listenerMgr := newListenerManager(service, context, edgeListenOptions)
-	return listenerMgr.listener
+	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions); err != nil {
+		return nil, err
+	} else {
+		return listenerMgr.listener, nil
+	}
 }
 
 func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
@@ -1411,8 +1416,20 @@ func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.CtrlClt.RemoveMfa(code)
 }
 
-func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) *listenerManager {
+func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) (*listenerManager, error) {
 	now := time.Now()
+
+	var keyPair *kx.KeyPair
+	if service.EncryptionRequired != nil && *service.EncryptionRequired {
+		var err error
+		keyPair, err = kx.NewKeyPair()
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to create end-to-end encrytpion key-pair while hosting service '%s'", *service.Name)
+		}
+	}
+
+	options.KeyPair = keyPair
+	options.ListenerId = uuid.NewString()
 
 	listenerMgr := &listenerManager{
 		service:           service,
@@ -1429,7 +1446,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 
 	go listenerMgr.run()
 
-	return listenerMgr
+	return listenerMgr, nil
 }
 
 type listenerManager struct {
