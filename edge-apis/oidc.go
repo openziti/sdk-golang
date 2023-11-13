@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/zitadel/oidc/v2/pkg/client/rp"
@@ -15,6 +16,16 @@ import (
 	"net/http/cookiejar"
 	"time"
 )
+
+const JwtTokenPrefix = "ey"
+
+type ServiceAccessClaims struct {
+	jwt.RegisteredClaims
+	ApiSessionId string `json:"z_asid"`
+	IdentityId   string `json:"z_iid"`
+	TokenType    string `json:"z_t"`
+	Type         string `json:"z_st"`
+}
 
 type localRpServer struct {
 	Server       *http.Server

@@ -25,6 +25,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/openziti/foundation/v2/genext"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
@@ -174,7 +175,7 @@ func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error)
 	return resp.Payload.Data, nil
 }
 
-// GetSession returns the full rest_model.SessionDetail for a specific id
+// GetSession returns the full rest_model.SessionDetail for a specific id. Does not function with JWT backed sessions.
 func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
 	params := session.NewDetailSessionParams()
 	params.ID = id
@@ -186,6 +187,50 @@ func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error)
 
 	self.sanitizeSessionUrls(resp.Payload.Data)
 	return resp.Payload.Data, nil
+}
+
+func (self *CtrlClient) GetSessionFromJwt(sessionToken string) (*rest_model.SessionDetail, error) {
+	parser := jwt.NewParser()
+	serviceAccessClaims := &apis.ServiceAccessClaims{}
+
+	_, _, err := parser.ParseUnverified(sessionToken, serviceAccessClaims)
+
+	if err != nil {
+		return nil, err
+	}
+
+	params := service.NewListServiceEdgeRoutersParams()
+	params.SessionToken = &sessionToken
+	params.ID = serviceAccessClaims.Subject //service id
+
+	resp, err := self.API.Service.ListServiceEdgeRouters(params, self.ApiSession)
+
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+	createdAt := strfmt.DateTime(serviceAccessClaims.IssuedAt.Time)
+	sessionType := rest_model.DialBind(serviceAccessClaims.Type)
+
+	sessionDetail := &rest_model.SessionDetail{
+		BaseEntity: rest_model.BaseEntity{
+			Links:     nil,
+			CreatedAt: &createdAt,
+			ID:        &serviceAccessClaims.ID,
+		},
+		APISessionID: &serviceAccessClaims.ApiSessionId,
+		IdentityID:   &serviceAccessClaims.IdentityId,
+		ServiceID:    &serviceAccessClaims.Subject,
+		Token:        &sessionToken,
+		Type:         &sessionType,
+	}
+
+	for _, er := range resp.Payload.Data.EdgeRouters {
+		sessionDetail.EdgeRouters = append(sessionDetail.EdgeRouters, &rest_model.SessionEdgeRouter{
+			CommonEdgeRouterProperties: *er,
+		})
+	}
+
+	return sessionDetail, nil
 }
 
 // GetIdentity returns the identity.Identity used to facilitate authentication. Each identity.Identity instance
