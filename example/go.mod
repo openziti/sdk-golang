@@ -17,7 +17,7 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.8.1
 	github.com/zitadel/oidc v1.13.2
-	golang.org/x/text v0.13.0
+	golang.org/x/text v0.14.0
 	google.golang.org/grpc v1.53.0
 	google.golang.org/grpc/examples v0.0.0-20230228013124-7437662fd5b8
 	gopkg.in/resty.v1 v1.12.0
@@ -37,7 +37,7 @@ require (
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa // indirect
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-openapi/analysis v0.21.4 // indirect
@@ -78,7 +78,7 @@ require (
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/openziti/channel/v2 v2.0.99 // indirect
-	github.com/openziti/edge-api v0.25.37 // indirect
+	github.com/openziti/edge-api v0.26.1 // indirect
 	github.com/openziti/identity v1.0.63 // indirect
 	github.com/openziti/metrics v1.2.35 // indirect
 	github.com/openziti/secretstream v0.1.12 // indirect
@@ -105,18 +105,18 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	github.com/zitadel/logging v0.3.4 // indirect
 	github.com/zitadel/oidc/v2 v2.11.0 // indirect
-	go.mongodb.org/mongo-driver v1.12.1 // indirect
+	go.mongodb.org/mongo-driver v1.13.0 // indirect
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352 // indirect
-	go.opentelemetry.io/otel v1.18.0 // indirect
-	go.opentelemetry.io/otel/metric v1.18.0 // indirect
-	go.opentelemetry.io/otel/trace v1.18.0 // indirect
-	golang.org/x/crypto v0.14.0 // indirect
+	go.opentelemetry.io/otel v1.20.0 // indirect
+	go.opentelemetry.io/otel/metric v1.20.0 // indirect
+	go.opentelemetry.io/otel/trace v1.20.0 // indirect
+	golang.org/x/crypto v0.15.0 // indirect
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
 	golang.org/x/image v0.5.0 // indirect
-	golang.org/x/net v0.17.0 // indirect
+	golang.org/x/net v0.18.0 // indirect
 	golang.org/x/oauth2 v0.12.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/term v0.13.0 // indirect
+	golang.org/x/sys v0.14.0 // indirect
+	golang.org/x/term v0.14.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
