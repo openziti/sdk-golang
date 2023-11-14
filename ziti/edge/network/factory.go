@@ -139,7 +139,9 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 	listener, err := ec.Listen(session, service, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
-			pfxlog.Logger().Errorf("failed to cleanup listenet for service '%v' (%v)", service.Name, err2)
+			pfxlog.Logger().WithError(err2).
+				WithField("serviceName", *service.Name).
+				Error("failed to cleanup listener for service after failed bind")
 		}
 	}
 	return listener, err
