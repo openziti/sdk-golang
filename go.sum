@@ -356,8 +356,8 @@ github.com/openziti/identity v1.0.66 h1:wCIVNCoiHmeicC9yM15FC0xe6jSic879ztN63fSD
 github.com/openziti/identity v1.0.66/go.mod h1:grReHVqBwhECrnrAZCxNw4ZpA2I1ox66tYfPkfGuKJY=
 github.com/openziti/metrics v1.2.39 h1:dRzPo4mrUo+brP62BXiPAsSC0WDJUK33ItwQmy87nVc=
 github.com/openziti/metrics v1.2.39/go.mod h1:7jhAXmtvMy51C15QqZHVXio4haLoWZr+D98k+VnfLZk=
-github.com/openziti/secretstream v0.1.12 h1:N78CHxtqWzSyNFOsYtYRWNNTfX1ZDAPkFgzHobpodZU=
-github.com/openziti/secretstream v0.1.12/go.mod h1:gHMH1REH0r4VlmCtuWx8biU7j5ZfOivFjz9mLgwq7mk=
+github.com/openziti/secretstream v0.1.13 h1:grp53Q5gCFPXv6okwWHDVvqBBk2BhD0ikHwfV3Adhnc=
+github.com/openziti/secretstream v0.1.13/go.mod h1:M4DYavDc3TVF/eemNqp5Fa+zGuYTNa0HTGSz/GkgUzA=
 github.com/openziti/transport/v2 v2.0.113 h1:xFPd1W00KqkFb62rRsRXmLqfgr9d9uk0CAVZegvtGhA=
 github.com/openziti/transport/v2 v2.0.113/go.mod h1:TSDHV7RTGg/FinzfOP8cg86O53BCabXedANh3eUNics=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
