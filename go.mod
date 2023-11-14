@@ -17,10 +17,10 @@ require (
 	github.com/openziti/channel/v2 v2.0.105
 	github.com/openziti/edge-api v0.26.1
 	github.com/openziti/foundation/v2 v2.0.34
-	github.com/openziti/identity v1.0.66
+	github.com/openziti/identity v1.0.67
 	github.com/openziti/metrics v1.2.39
 	github.com/openziti/secretstream v0.1.12
-	github.com/openziti/transport/v2 v2.0.113
+	github.com/openziti/transport/v2 v2.0.115
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
