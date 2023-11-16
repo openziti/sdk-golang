@@ -76,7 +76,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail, connType ConnType) *edgeConn {
+func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
@@ -84,7 +84,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail, connType 
 		readQ:      NewNoopSequencer[*channel.Message](4),
 		msgMux:     conn.msgMux,
 		serviceId:  *service.Name,
-		connType:   connType,
+		connType:   ConnTypeDial,
 	}
 
 	var err error
@@ -103,7 +103,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail, connType 
 	return edgeCh
 }
 
-func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, connType ConnType, keyPair *kx.KeyPair) *edgeConn {
+func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
@@ -111,7 +111,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, connTyp
 		readQ:      NewNoopSequencer[*channel.Message](4),
 		msgMux:     conn.msgMux,
 		serviceId:  *service.Name,
-		connType:   connType,
+		connType:   ConnTypeBind,
 		keyPair:    keyPair,
 		crypto:     keyPair != nil,
 	}
@@ -124,7 +124,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, connTyp
 }
 
 func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	ec := conn.NewDialConn(service, ConnTypeDial)
+	ec := conn.NewDialConn(service)
 	dialConn, err := ec.Connect(session, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
@@ -135,7 +135,7 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 }
 
 func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
-	ec := conn.NewListenConn(service, ConnTypeBind, options.KeyPair)
+	ec := conn.NewListenConn(service, options.KeyPair)
 	listener, err := ec.Listen(session, service, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {

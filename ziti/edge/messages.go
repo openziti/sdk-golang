@@ -41,6 +41,8 @@ const (
 	ContentTypeHealthEvent        = 60795
 	ContentTypeTraceRoute         = 60796
 	ContentTypeTraceRouteResponse = 60797
+	ContentTypeHostingCheck       = 60798
+	ContentTypeHostingStatus      = 60799
 
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
