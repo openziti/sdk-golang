@@ -323,6 +323,13 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 		if !success {
 			logger.Debug("removing listener for session")
 			conn.hosting.Delete(*session.Token)
+
+			unbindRequest := edge.NewUnbindMsg(conn.Id(), listener.token)
+			listener.edgeChan.TraceMsg("close", unbindRequest)
+			if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+				logger.WithError(err).Error("unable to unbind session for conn")
+			}
+
 		}
 	}()
 
@@ -468,7 +475,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.hosting.Range(func(key, value interface{}) bool {
 		listener := value.(*edgeListener)
 		if err := listener.close(closedByRemote); err != nil {
-			log.WithError(err).WithField("serviceName", listener.service.Name).Error("failed to close listener")
+			log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
 		}
 		return true
 	})

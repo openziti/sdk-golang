@@ -19,12 +19,12 @@ require (
 	github.com/openziti/foundation/v2 v2.0.34
 	github.com/openziti/identity v1.0.66
 	github.com/openziti/metrics v1.2.39
-	github.com/openziti/secretstream v0.1.12
+	github.com/openziti/secretstream v0.1.13
 	github.com/openziti/transport/v2 v2.0.113
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
-	github.com/shirou/gopsutil/v3 v3.23.9
+	github.com/shirou/gopsutil/v3 v3.23.10
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1

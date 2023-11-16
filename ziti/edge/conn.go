@@ -19,6 +19,7 @@ package edge
 import (
 	"fmt"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/secretstream/kx"
 	"io"
 	"net"
 	"os"
@@ -219,6 +220,8 @@ type ListenOptions struct {
 	IdentitySecret        string
 	BindUsingEdgeIdentity bool
 	ManualStart           bool
+	ListenerId            string
+	KeyPair               *kx.KeyPair
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {

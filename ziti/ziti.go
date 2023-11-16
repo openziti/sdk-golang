@@ -20,11 +20,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-openapi/strfmt"
+	"github.com/google/uuid"
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/secretstream/kx"
 	"math"
 	"net"
 	"reflect"
@@ -1001,12 +1003,12 @@ func (context *ContextImpl) ListenWithOptions(serviceName string, options *Liste
 	}
 
 	if s, ok := context.GetService(serviceName); ok {
-		return context.listenSession(s, options), nil
+		return context.listenSession(s, options)
 	}
 	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
 }
 
-func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) edge.Listener {
+func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) (edge.Listener, error) {
 	edgeListenOptions := &edge.ListenOptions{
 		Cost:                  options.Cost,
 		Precedence:            edge.Precedence(options.Precedence),
@@ -1025,8 +1027,11 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.MaxConnections = 1
 	}
 
-	listenerMgr := newListenerManager(service, context, edgeListenOptions)
-	return listenerMgr.listener
+	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions); err != nil {
+		return nil, err
+	} else {
+		return listenerMgr.listener, nil
+	}
 }
 
 func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
@@ -1175,6 +1180,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
 			if exist { // use the routerConnection already in the map, close new one
+				pfxlog.Logger().Infof("connection to %s already established, closing duplicate connection", ingressUrl)
 				go func() {
 					if err := newV.Close(); err != nil {
 						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
@@ -1288,7 +1294,13 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 
 func (context *ContextImpl) createSessionWithBackoff(service *rest_model.ServiceDetail, sessionType SessionType, options edge.ConnOptions) (*rest_model.SessionDetail, error) {
 	expBackoff := backoff.NewExponentialBackOff()
-	expBackoff.InitialInterval = 50 * time.Millisecond
+
+	if sessionType == SessionType(rest_model.DialBindDial) {
+		expBackoff.InitialInterval = 50 * time.Millisecond
+	} else {
+		expBackoff.InitialInterval = time.Second
+	}
+
 	expBackoff.MaxInterval = 10 * time.Second
 	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
 
@@ -1411,8 +1423,20 @@ func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.CtrlClt.RemoveMfa(code)
 }
 
-func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) *listenerManager {
+func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) (*listenerManager, error) {
 	now := time.Now()
+
+	var keyPair *kx.KeyPair
+	if service.EncryptionRequired != nil && *service.EncryptionRequired {
+		var err error
+		keyPair, err = kx.NewKeyPair()
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to create end-to-end encrytpion key-pair while hosting service '%s'", *service.Name)
+		}
+	}
+
+	options.KeyPair = keyPair
+	options.ListenerId = uuid.NewString()
 
 	listenerMgr := &listenerManager{
 		service:           service,
@@ -1429,7 +1453,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 
 	go listenerMgr.run()
 
-	return listenerMgr
+	return listenerMgr, nil
 }
 
 type listenerManager struct {
@@ -1447,7 +1471,11 @@ type listenerManager struct {
 }
 
 func (mgr *listenerManager) run() {
-	mgr.createSessionWithBackoff()
+	// need to either establish a session, or fail if we can't create one
+	for mgr.session == nil {
+		mgr.createSessionWithBackoff()
+	}
+
 	mgr.makeMoreListeners()
 
 	if mgr.options.BindUsingEdgeIdentity {
@@ -1470,23 +1498,52 @@ func (mgr *listenerManager) run() {
 	}
 
 	ticker := time.NewTicker(250 * time.Millisecond)
-	refreshTicker := time.NewTicker(30 * time.Second)
 
 	defer ticker.Stop()
-	defer refreshTicker.Stop()
+
+	refreshSessionTimerInterval := 10 * time.Second
 
 	for !mgr.listener.IsClosed() {
+		var refreshSessionTimer *time.Timer
+		if len(mgr.session.EdgeRouters) == 0 {
+			refreshSessionTimer = time.NewTimer(refreshSessionTimerInterval)
+		} else if len(mgr.session.EdgeRouters) < mgr.options.MaxConnections {
+			if refreshSessionTimerInterval < 5*time.Minute {
+				refreshSessionTimerInterval = 5 * time.Minute
+			}
+			refreshSessionTimer = time.NewTimer(refreshSessionTimerInterval)
+		}
+
+		if refreshSessionTimer != nil {
+			refreshSessionTimerInterval *= 2
+			if refreshSessionTimerInterval > 30*time.Minute {
+				refreshSessionTimerInterval = 30 * time.Minute
+			}
+		} else {
+			refreshSessionTimerInterval = 10 * time.Second
+		}
+
+		var refreshSessionTimerC <-chan time.Time
+		if refreshSessionTimer != nil {
+			refreshSessionTimerC = refreshSessionTimer.C
+		}
+
+		//goland:noinspection GoNilness
 		select {
 		case routerConnectionResult := <-mgr.connectChan:
 			mgr.handleRouterConnectResult(routerConnectionResult)
 		case event := <-mgr.eventChan:
 			event.handle(mgr)
-		case <-refreshTicker.C:
+		case <-refreshSessionTimerC:
 			mgr.refreshSession()
 		case <-ticker.C:
 			mgr.makeMoreListeners()
 		case <-mgr.context.closeNotify:
 			mgr.listener.CloseWithError(errors.New("context closed"))
+		}
+
+		if refreshSessionTimer != nil {
+			refreshSessionTimer.Stop()
 		}
 	}
 }
@@ -1501,6 +1558,10 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 	if len(mgr.routerConnections) < mgr.options.MaxConnections {
 		if _, ok := mgr.routerConnections[routerConnection.GetRouterName()]; !ok {
 			mgr.routerConnections[routerConnection.GetRouterName()] = routerConnection
+			pfxlog.Logger().
+				WithField("serviceName", *mgr.service.Name).
+				WithField("listenerCount", len(mgr.routerConnections)).
+				Debugf("establishing listener to %s", routerConnection.Key())
 			go mgr.createListener(routerConnection, mgr.session)
 		}
 	} else {
@@ -1510,7 +1571,7 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 
 func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, session *rest_model.SessionDetail) {
 	start := time.Now()
-	logger := pfxlog.Logger()
+	logger := pfxlog.Logger().WithField("serviceName", *mgr.service.Name)
 	svc := mgr.listener.GetService()
 	listener, err := routerConnection.Listen(svc, session, mgr.options)
 	elapsed := time.Since(start)
@@ -1536,27 +1597,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 }
 
 func (mgr *listenerManager) makeMoreListeners() {
-	if mgr.listener.IsClosed() {
-		return
-	}
-
-	// If we don't have any connections and there are no available edge routers, refresh the session more often
-	if mgr.session == nil || len(mgr.session.EdgeRouters) == 0 && len(mgr.routerConnections) == 0 {
-		now := time.Now()
-		if mgr.disconnectedTime.Add(mgr.options.ConnectTimeout).Before(now) {
-			pfxlog.Logger().Warn("disconnected for longer than configured connect timeout. closing")
-			err := errors.New("disconnected for longer than connect timeout. closing")
-			mgr.listener.CloseWithError(err)
-			return
-		}
-
-		if mgr.sessionRefreshTime.Add(time.Second).Before(now) {
-			pfxlog.Logger().Warnf("no edge routers available, polling more frequently")
-			mgr.refreshSession()
-		}
-	}
-
-	if mgr.session == nil || mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
+	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
 		return
 	}
 
@@ -1583,11 +1624,6 @@ func (mgr *listenerManager) makeMoreListeners() {
 }
 
 func (mgr *listenerManager) refreshSession() {
-	if mgr.session == nil {
-		mgr.createSessionWithBackoff()
-		return
-	}
-
 	session, err := mgr.context.refreshSession(*mgr.session.ID)
 	if err != nil {
 		var target error = &rest_session.DetailSessionNotFound{}
@@ -1690,13 +1726,14 @@ type routerConnectionListenFailedEvent struct {
 }
 
 func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
-	pfxlog.Logger().Debugf("child listener connection closed. parent listener closed: %v", mgr.listener.IsClosed())
 	delete(mgr.routerConnections, event.router)
+	pfxlog.Logger().WithField("serviceName", *mgr.service.Name).
+		WithField("listenerCount", len(mgr.routerConnections)).
+		Debugf("child listener connection closed. parent listener closed: %v", mgr.listener.IsClosed())
 	now := time.Now()
 	if len(mgr.routerConnections) == 0 {
 		mgr.disconnectedTime = &now
 	}
-	mgr.refreshSession()
 	mgr.makeMoreListeners()
 }
 
