@@ -17,10 +17,10 @@ require (
 	github.com/openziti/channel/v2 v2.0.106
 	github.com/openziti/edge-api v0.26.1
 	github.com/openziti/foundation/v2 v2.0.34
-	github.com/openziti/identity v1.0.66
+	github.com/openziti/identity v1.0.67
 	github.com/openziti/metrics v1.2.39
 	github.com/openziti/secretstream v0.1.13
-	github.com/openziti/transport/v2 v2.0.114
+	github.com/openziti/transport/v2 v2.0.116
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -48,7 +48,7 @@ require (
 	github.com/go-openapi/spec v0.20.9 // indirect
 	github.com/go-openapi/swag v0.22.4 // indirect
 	github.com/go-openapi/validate v0.22.1 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
