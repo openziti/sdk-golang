@@ -17,7 +17,7 @@ require (
 	github.com/openziti/channel/v2 v2.0.106
 	github.com/openziti/edge-api v0.26.1
 	github.com/openziti/foundation/v2 v2.0.34
-	github.com/openziti/identity v1.0.66
+	github.com/openziti/identity v1.0.67
 	github.com/openziti/metrics v1.2.39
 	github.com/openziti/secretstream v0.1.13
 	github.com/openziti/transport/v2 v2.0.114
