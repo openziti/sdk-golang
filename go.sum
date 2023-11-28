@@ -236,8 +236,8 @@ github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5m
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/gorilla/mux v1.8.0 h1:i40aqfkR1h2SlN9hojwV5ZA91wcXFOvkdNIeFDP5koI=
 github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
-github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
-github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/gorilla/websocket v1.5.1 h1:gmztn0JnHVt9JZquRuzLw3g4wouNVzKL15iLr/zn/QY=
+github.com/gorilla/websocket v1.5.1/go.mod h1:x3kM2JMyaluk02fnUJpQuwD2dCS5NDG2ZHL0uE0tcaY=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=
@@ -305,8 +305,8 @@ github.com/mattn/go-isatty v0.0.3/go.mod h1:M+lRXTBqGeGNdLjl/ufCoiOlB5xdOkqRJdNx
 github.com/mattn/go-isatty v0.0.5/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
 github.com/mattn/go-isatty v0.0.7/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
-github.com/mattn/go-isatty v0.0.19 h1:JITubQf0MOLdlGRuRq+jtsDlekdYPia9ZFsB8h/APPA=
-github.com/mattn/go-isatty v0.0.19/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
+github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
 github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d h1:5PJl274Y63IEHC+7izoQE9x6ikvDFZS2mDVS3drnohI=
 github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
@@ -347,8 +347,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
-github.com/openziti/channel/v2 v2.0.105 h1:WT2zFF7krZkYUfuXA+4tQxhYiiVWlldD3mKX3qJU9Ww=
-github.com/openziti/channel/v2 v2.0.105/go.mod h1:++bV6FFgGUNxaBu7iOkkCa6rSiueU34Kd6f2LSCrEtU=
+github.com/openziti/channel/v2 v2.0.106 h1:n7W6136ad8MGTa5g49PruKyZadzgjwujLTpaO+euHzY=
+github.com/openziti/channel/v2 v2.0.106/go.mod h1:njh6hr0Rbzx0eraOA+tdW95qBV7tQtjt8Us58C3WmiQ=
 github.com/openziti/edge-api v0.26.1 h1:osj2irTMMvoP5jLQwJOIKFEellK6AFyT6wB0NzDdalY=
 github.com/openziti/edge-api v0.26.1/go.mod h1:bHEkOF9UTjGgjHhmsjnxxNybdijJ91jpdG1WFc9morU=
 github.com/openziti/foundation/v2 v2.0.34 h1:rJm1+zPRCCn8jk8r8LQimhOs9ONBeoAeemI9/tQ3oGs=
@@ -359,8 +359,8 @@ github.com/openziti/metrics v1.2.39 h1:dRzPo4mrUo+brP62BXiPAsSC0WDJUK33ItwQmy87n
 github.com/openziti/metrics v1.2.39/go.mod h1:7jhAXmtvMy51C15QqZHVXio4haLoWZr+D98k+VnfLZk=
 github.com/openziti/secretstream v0.1.13 h1:grp53Q5gCFPXv6okwWHDVvqBBk2BhD0ikHwfV3Adhnc=
 github.com/openziti/secretstream v0.1.13/go.mod h1:M4DYavDc3TVF/eemNqp5Fa+zGuYTNa0HTGSz/GkgUzA=
-github.com/openziti/transport/v2 v2.0.113 h1:xFPd1W00KqkFb62rRsRXmLqfgr9d9uk0CAVZegvtGhA=
-github.com/openziti/transport/v2 v2.0.113/go.mod h1:TSDHV7RTGg/FinzfOP8cg86O53BCabXedANh3eUNics=
+github.com/openziti/transport/v2 v2.0.114 h1:avL4MJq7gJIjjvC1yeiKbAUrPIjVaKJQnLkDLb5uXe8=
+github.com/openziti/transport/v2 v2.0.114/go.mod h1:Zu+uApKkPWvObqNs69V+G77RLjiWja9z5MfW8IhqKCU=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
