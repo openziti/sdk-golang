@@ -22,6 +22,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 type RouterConnOwner interface {
@@ -81,11 +82,11 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:      NewNoopSequencer[*channel.Message](4),
-		msgMux:     conn.msgMux,
-		serviceId:  *service.Name,
-		connType:   ConnTypeDial,
+		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
+		readQ:       NewNoopSequencer[*channel.Message](4),
+		msgMux:      conn.msgMux,
+		serviceName: *service.Name,
+		connType:    ConnTypeDial,
 	}
 
 	var err error
@@ -108,13 +109,14 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:      NewNoopSequencer[*channel.Message](4),
-		msgMux:     conn.msgMux,
-		serviceId:  *service.Name,
-		connType:   ConnTypeBind,
-		keyPair:    keyPair,
-		crypto:     keyPair != nil,
+		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
+		readQ:       NewNoopSequencer[*channel.Message](4),
+		msgMux:      conn.msgMux,
+		serviceName: *service.Name,
+		connType:    ConnTypeBind,
+		keyPair:     keyPair,
+		crypto:      keyPair != nil,
+		hosting:     cmap.New[*edgeListener](),
 	}
 
 	// duplicate errors only happen on the server side, since client controls ids
