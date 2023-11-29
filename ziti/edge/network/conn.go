@@ -133,6 +133,16 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 			return
 		}
 
+		if msg.ContentType == edge.ContentTypeConnInspectRequest {
+			detail := fmt.Sprintf("serviceId=[%s]", conn.serviceId)
+			resp := edge.NewConnInspectResponse(0, ConnTypeDial, detail)
+			if err := resp.ReplyTo(msg).Send(conn.Channel); err != nil {
+				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+					Error("failed to send inspect response")
+			}
+			return
+		}
+
 		if err := conn.readQ.PutSequenced(msg); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("error pushing edge message to sequencer")
@@ -144,10 +154,16 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		if msg.ContentType == edge.ContentTypeDial {
 			logrus.WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
 			go conn.newChildConnection(msg)
-		}
-
-		if msg.ContentType == edge.ContentTypeStateClosed {
+		} else if msg.ContentType == edge.ContentTypeStateClosed {
 			conn.close(true)
+		} else if msg.ContentType == edge.ContentTypeConnInspectRequest {
+			resp := edge.NewConnInspectResponse(0, ConnTypeBind,
+				fmt.Sprintf("serviceId=[%s]", conn.serviceId))
+			if err := resp.ReplyTo(msg).Send(conn.Channel); err != nil {
+				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+					Error("failed to send inspect response")
+			}
+			return
 		}
 	default:
 		logrus.WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
@@ -300,7 +316,7 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 }
 
 func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (edge.Listener, error) {
-	logger := pfxlog.Logger().
+	logger := pfxlog.ContextLogger(conn.Channel.Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
 		WithField("sessionId", *session.ID)
@@ -322,14 +338,7 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 	defer func() {
 		if !success {
 			logger.Debug("removing listener for session")
-			conn.hosting.Delete(*session.Token)
-
-			unbindRequest := edge.NewUnbindMsg(conn.Id(), listener.token)
-			listener.edgeChan.TraceMsg("close", unbindRequest)
-			if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
-				logger.WithError(err).Error("unable to unbind session for conn")
-			}
-
+			conn.unbind(logger, listener.token)
 		}
 	}()
 
@@ -361,6 +370,19 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 	logger.Debug("connected")
 
 	return listener, nil
+}
+
+func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
+	logger.Debug("starting unbind")
+
+	conn.hosting.Delete(token)
+
+	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
+	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+		logger.WithError(err).Error("unable to send unbind msg for conn")
+	} else {
+		logger.Debug("unbind message sent successfully")
+	}
 }
 
 func (conn *edgeConn) Read(p []byte) (int, error) {

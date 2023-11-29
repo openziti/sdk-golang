@@ -18,7 +18,6 @@ package edge
 
 import (
 	"encoding/binary"
-
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"
@@ -26,23 +25,23 @@ import (
 )
 
 const (
-	ContentTypeConnect            = 60783
-	ContentTypeStateConnected     = 60784
-	ContentTypeStateClosed        = 60785
-	ContentTypeData               = 60786
-	ContentTypeDial               = 60787
-	ContentTypeDialSuccess        = 60788
-	ContentTypeDialFailed         = 60789
-	ContentTypeBind               = 60790
-	ContentTypeUnbind             = 60791
-	ContentTypeStateSessionEnded  = 60792
-	ContentTypeProbe              = 60793
-	ContentTypeUpdateBind         = 60794
-	ContentTypeHealthEvent        = 60795
-	ContentTypeTraceRoute         = 60796
-	ContentTypeTraceRouteResponse = 60797
-	ContentTypeHostingCheck       = 60798
-	ContentTypeHostingStatus      = 60799
+	ContentTypeConnect             = 60783
+	ContentTypeStateConnected      = 60784
+	ContentTypeStateClosed         = 60785
+	ContentTypeData                = 60786
+	ContentTypeDial                = 60787
+	ContentTypeDialSuccess         = 60788
+	ContentTypeDialFailed          = 60789
+	ContentTypeBind                = 60790
+	ContentTypeUnbind              = 60791
+	ContentTypeStateSessionEnded   = 60792
+	ContentTypeProbe               = 60793
+	ContentTypeUpdateBind          = 60794
+	ContentTypeHealthEvent         = 60795
+	ContentTypeTraceRoute          = 60796
+	ContentTypeTraceRouteResponse  = 60797
+	ContentTypeConnInspectRequest  = 60798
+	ContentTypeConnInspectResponse = 60799
 
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
@@ -66,6 +65,8 @@ const (
 	TraceSourceRequestIdHeader     = 1019
 	TraceError                     = 1020
 	ListenerId                     = 1021
+	ConnTypeHeader                 = 1022
+	SupportsInspectHeader          = 1023
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -164,6 +165,13 @@ func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopT
 	return msg
 }
 
+func NewConnInspectResponse(connId uint32, connType ConnType, state string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeConnInspectResponse, []byte(state))
+	msg.PutUint32Header(ConnIdHeader, connId)
+	msg.PutByteHeader(ConnTypeHeader, byte(connType))
+	return msg
+}
+
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel.Message {
 	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
 	if pubKey != nil {
@@ -199,6 +207,8 @@ func NewDialMsg(connId uint32, token string, callerId string) *channel.Message {
 
 func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
+	msg.PutBoolHeader(SupportsInspectHeader, true)
+
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
 		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
@@ -322,4 +332,36 @@ func GetLoggerFields(msg *channel.Message) logrus.Fields {
 	}
 
 	return fields
+}
+
+type ConnType byte
+
+const (
+	ConnTypeInvalid ConnType = 0
+	ConnTypeDial    ConnType = 1
+	ConnTypeBind    ConnType = 2
+	ConnTypeUnknown ConnType = 3
+)
+
+type InspectResult struct {
+	ConnId uint32
+	Type   ConnType
+	Detail string
+}
+
+func UnmarshalInspectResult(msg *channel.Message) (*InspectResult, error) {
+	if msg.ContentType == ContentTypeConnInspectResponse {
+		connId, _ := msg.GetUint32Header(ConnIdHeader)
+		connType, found := msg.GetByteHeader(ConnTypeHeader)
+		if !found {
+			connType = byte(ConnTypeUnknown)
+		}
+		return &InspectResult{
+			ConnId: connId,
+			Type:   ConnType(connType),
+			Detail: string(msg.Body),
+		}, nil
+	}
+
+	return nil, errors.Errorf("unexpected response. received %v instead of inspect result message", msg.ContentType)
 }

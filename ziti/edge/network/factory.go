@@ -67,6 +67,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.msgMux)
@@ -120,6 +121,11 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair
 	if err := conn.msgMux.AddMsgSink(edgeCh); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
+	pfxlog.Logger().WithField("connId", id).
+		WithField("routerName", conn.routerName).
+		WithField("serviceId", *service.ID).
+		WithField("serviceName", *service.Name).
+		Debug("created new listener connection")
 	return edgeCh
 }
 
@@ -136,13 +142,23 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 
 func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
 	ec := conn.NewListenConn(service, options.KeyPair)
+
+	log := pfxlog.Logger().
+		WithField("connId", ec.Id()).
+		WithField("router", conn.routerName).
+		WithField("serviceId", *service.ID).
+		WithField("serviceName", *service.Name)
+
 	listener, err := ec.Listen(session, service, options)
 	if err != nil {
+		log.WithError(err).Error("failed to establish listener")
+
 		if err2 := ec.Close(); err2 != nil {
-			pfxlog.Logger().WithError(err2).
-				WithField("serviceName", *service.Name).
+			log.WithError(err2).
 				Error("failed to cleanup listener for service after failed bind")
 		}
+	} else {
+		log.Debug("established listener")
 	}
 	return listener, err
 }
