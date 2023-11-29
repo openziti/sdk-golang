@@ -347,8 +347,8 @@ github.com/onsi/gomega v1.10.5/go.mod h1:gza4q3jKQJijlu05nKWRCW/GavJumGt8aNRxWg7
 github.com/onsi/gomega v1.13.0 h1:7lLHu94wT9Ij0o6EWWclhu0aOh32VxhkwEJvzuWPeak=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
-github.com/openziti/channel/v2 v2.0.108 h1:JUi+NvhTWv+/37n2IWY9bB7EQ2NmwiRhsBRebvyyhL4=
-github.com/openziti/channel/v2 v2.0.108/go.mod h1:u8UAbQVnw4NbamsppoCCg6NKW6nGA5+jo/JStG3Z+q4=
+github.com/openziti/channel/v2 v2.0.109 h1:CxZewrLKOoF1wmlQ1bnpNwybLdXD1hGwHib5zFxjwW4=
+github.com/openziti/channel/v2 v2.0.109/go.mod h1:8QwDSdlBgxVgXWPRHJYBJONYfggAiOcgI+GzeqJQAYk=
 github.com/openziti/edge-api v0.26.1 h1:osj2irTMMvoP5jLQwJOIKFEellK6AFyT6wB0NzDdalY=
 github.com/openziti/edge-api v0.26.1/go.mod h1:bHEkOF9UTjGgjHhmsjnxxNybdijJ91jpdG1WFc9morU=
 github.com/openziti/foundation/v2 v2.0.35 h1:4VaMwZ2kAy6jwBYeQIBN2m8rcGroTDX4A2Jp7NAKb6M=
@@ -359,8 +359,8 @@ github.com/openziti/metrics v1.2.40 h1:gySRgR8prCPqaEjmUtX0eXFs7NkI9uPAzp+z6A8+J
 github.com/openziti/metrics v1.2.40/go.mod h1:HXdVryf3xpZfnY4VcaOjMxiBv+qw0wJlEJNLbooB9hY=
 github.com/openziti/secretstream v0.1.14 h1:Ta+nB5Prcct+L5LIKUA1nE56QhWS6lMPQYTlpxUltU0=
 github.com/openziti/secretstream v0.1.14/go.mod h1:/hhuLfu+GIv0+cnapfsu/VOnXEvmTt3GKtCu+lQ0RIw=
-github.com/openziti/transport/v2 v2.0.117 h1:U9BPWqCyaVn7/V/Wwg/fFa0fOt33v6hV6BEZFR4kh6Q=
-github.com/openziti/transport/v2 v2.0.117/go.mod h1:JAY1eNfzGFetROhAYHKpw7nxmzVWrOpTRu4BwqmvjtM=
+github.com/openziti/transport/v2 v2.0.118 h1:8b+uhGm/7qisbpv2tVyl1BT9ujAEyX252COLbkAMj1E=
+github.com/openziti/transport/v2 v2.0.118/go.mod h1:MKkPZouPXmXOT4tJ0MYaJosJYchKgF4iTfjperu9K0w=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
 github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q0Jv47PLaNK++uCdOM=
 github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 h1:mOvehYivJ4Aqu2CPe3D3lv8jhqOI9/1o0THxJHBE0qw=
@@ -574,8 +574,8 @@ golang.org/x/net v0.0.0-20210421230115-4e50805a0758/go.mod h1:72T/g9IO56b78aLF+1
 golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
 golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
 golang.org/x/net v0.1.0/go.mod h1:Cx3nUiGt4eDBEyega/BKRp+/AlGL8hYe7U9odMt2Cco=
-golang.org/x/net v0.18.0 h1:mIYleuAkSbHh0tCv7RvjL3F6ZVbLjq4+R7zbOn3Kokg=
-golang.org/x/net v0.18.0/go.mod h1:/czyP5RqHAH4odGYxBJ1qz0+CE5WZ+2j1YgoEo8F2jQ=
+golang.org/x/net v0.19.0 h1:zTwKpTd2XuCqf8huc7Fo2iSy+4RHPd10s4KzeTnVr1c=
+golang.org/x/net v0.19.0/go.mod h1:CfAk/cbD4CthTvqiEl8NpboMuiuOYsAr/7NOjZJtv1U=
 golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
 golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
