@@ -30,10 +30,10 @@ func BenchmarkConnWrite(b *testing.B) {
 	mux := edge.NewCowMapMsgMux()
 	testChannel := &NoopTestChannel{}
 	conn := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:      NewNoopSequencer[*channel.Message](4),
-		msgMux:     mux,
-		serviceId:  "test",
+		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
+		readQ:       NewNoopSequencer[*channel.Message](4),
+		msgMux:      mux,
+		serviceName: "test",
 	}
 
 	req := require.New(b)
@@ -55,10 +55,10 @@ func BenchmarkConnRead(b *testing.B) {
 
 	readQ := NewNoopSequencer[*channel.Message](4)
 	conn := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:      readQ,
-		msgMux:     mux,
-		serviceId:  "test",
+		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
+		readQ:       readQ,
+		msgMux:      mux,
+		serviceName: "test",
 	}
 
 	var stop atomic.Bool

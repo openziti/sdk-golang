@@ -17,11 +17,12 @@
 package network
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/openziti/edge-api/rest_model"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"io"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,8 +42,8 @@ var unsupportedCrypto = errors.New("unsupported crypto")
 type ConnType byte
 
 const (
-	ConnTypeDial = 1
-	ConnTypeBind = 2
+	ConnTypeDial ConnType = 1
+	ConnTypeBind ConnType = 2
 )
 
 var _ edge.Conn = &edgeConn{}
@@ -52,11 +53,11 @@ type edgeConn struct {
 	readQ                 *noopSeq[*channel.Message]
 	leftover              []byte
 	msgMux                edge.MsgMux
-	hosting               sync.Map
+	hosting               cmap.ConcurrentMap[string, *edgeListener]
 	closed                atomic.Bool
 	readFIN               atomic.Bool
 	sentFIN               atomic.Bool
-	serviceId             string
+	serviceName           string
 	sourceIdentity        string
 	acceptCompleteHandler *newConnHandler
 	connType              ConnType
@@ -100,8 +101,51 @@ func (conn *edgeConn) CloseWrite() error {
 	return nil
 }
 
+func (conn *edgeConn) Inspect() string {
+	result := map[string]interface{}{}
+	result["id"] = conn.Id()
+	result["serviceName"] = conn.serviceName
+	result["closed"] = conn.closed.Load()
+	result["encryptionRequired"] = conn.crypto
+
+	if conn.connType == ConnTypeDial {
+		result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
+		result["readFIN"] = conn.readFIN.Load()
+		result["sentFIN"] = conn.sentFIN.Load()
+	}
+
+	if conn.connType == ConnTypeBind {
+		hosting := map[string]interface{}{}
+		for entry := range conn.hosting.IterBuffered() {
+			hosting[entry.Key] = map[string]interface{}{
+				"closed":      entry.Val.closed.Load(),
+				"manualStart": entry.Val.manualStart,
+				"serviceId":   *entry.Val.service.ID,
+				"serviceName": *entry.Val.service.Name,
+			}
+		}
+		result["hosting"] = hosting
+	}
+
+	jsonOutput, err := json.Marshal(result)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
+	}
+	return string(jsonOutput)
+}
+
 func (conn *edgeConn) Accept(msg *channel.Message) {
 	conn.TraceMsg("Accept", msg)
+
+	if msg.ContentType == edge.ContentTypeConnInspectRequest {
+		resp := edge.NewConnInspectResponse(0, edge.ConnType(conn.connType), conn.Inspect())
+		if err := resp.ReplyTo(msg).Send(conn.Channel); err != nil {
+			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+				Error("failed to send inspect response")
+		}
+		return
+	}
+
 	switch conn.connType {
 	case ConnTypeDial:
 		if msg.ContentType == edge.ContentTypeStateClosed {
@@ -144,9 +188,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		if msg.ContentType == edge.ContentTypeDial {
 			logrus.WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
 			go conn.newChildConnection(msg)
-		}
-
-		if msg.ContentType == edge.ContentTypeStateClosed {
+		} else if msg.ContentType == edge.ContentTypeStateClosed {
 			conn.close(true)
 		}
 	default:
@@ -159,11 +201,11 @@ func (conn *edgeConn) IsClosed() bool {
 }
 
 func (conn *edgeConn) Network() string {
-	return conn.serviceId
+	return conn.serviceName
 }
 
 func (conn *edgeConn) String() string {
-	return fmt.Sprintf("zitiConn connId=%v svcId=%v sourceIdentity=%v", conn.Id(), conn.serviceId, conn.sourceIdentity)
+	return fmt.Sprintf("zitiConn connId=%v svcId=%v sourceIdentity=%v", conn.Id(), conn.serviceName, conn.sourceIdentity)
 }
 
 func (conn *edgeConn) LocalAddr() net.Addr {
@@ -300,7 +342,7 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 }
 
 func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (edge.Listener, error) {
-	logger := pfxlog.Logger().
+	logger := pfxlog.ContextLogger(conn.Channel.Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
 		WithField("sessionId", *session.ID)
@@ -316,20 +358,13 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 		manualStart: options.ManualStart,
 	}
 	logger.Debug("adding listener for session")
-	conn.hosting.Store(*session.Token, listener)
+	conn.hosting.Set(*session.Token, listener)
 
 	success := false
 	defer func() {
 		if !success {
 			logger.Debug("removing listener for session")
-			conn.hosting.Delete(*session.Token)
-
-			unbindRequest := edge.NewUnbindMsg(conn.Id(), listener.token)
-			listener.edgeChan.TraceMsg("close", unbindRequest)
-			if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
-				logger.WithError(err).Error("unable to unbind session for conn")
-			}
-
+			conn.unbind(logger, listener.token)
 		}
 	}()
 
@@ -361,6 +396,19 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 	logger.Debug("connected")
 
 	return listener, nil
+}
+
+func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
+	logger.Debug("starting unbind")
+
+	conn.hosting.Remove(token)
+
+	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
+	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+		logger.WithError(err).Error("unable to send unbind msg for conn")
+	} else {
+		logger.Debug("unbind message sent successfully")
+	}
 }
 
 func (conn *edgeConn) Read(p []byte) (int, error) {
@@ -472,21 +520,18 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.readQ.Close()
 	conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 
-	conn.hosting.Range(func(key, value interface{}) bool {
-		listener := value.(*edgeListener)
-		if err := listener.close(closedByRemote); err != nil {
-			log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
+	if conn.connType == ConnTypeBind {
+		for entry := range conn.hosting.IterBuffered() {
+			listener := entry.Val
+			if err := listener.close(closedByRemote); err != nil {
+				log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
+			}
 		}
-		return true
-	})
+	}
 }
 
 func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
-	if val, found := conn.hosting.Load(token); found {
-		listener, ok := val.(*edgeListener)
-		return listener, ok
-	}
-	return nil, false
+	return conn.hosting.Get(token)
 }
 
 func (conn *edgeConn) newChildConnection(message *channel.Message) {

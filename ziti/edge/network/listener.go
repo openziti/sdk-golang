@@ -108,7 +108,7 @@ func (listener *edgeListener) UpdateCostAndPrecedence(cost uint16, precedence ed
 func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
 	logger := pfxlog.Logger().
 		WithField("connId", listener.edgeChan.Id()).
-		WithField("service", listener.edgeChan.serviceId).
+		WithField("serviceName", listener.edgeChan.serviceName).
 		WithField("session", listener.token)
 
 	logger.Debug("sending update bind request to edge router")
@@ -120,7 +120,7 @@ func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *
 func (listener *edgeListener) SendHealthEvent(pass bool) error {
 	logger := pfxlog.Logger().
 		WithField("connId", listener.edgeChan.Id()).
-		WithField("service", listener.edgeChan.serviceId).
+		WithField("serviceName", listener.edgeChan.serviceName).
 		WithField("session", listener.token).
 		WithField("health.status", pass)
 
@@ -147,7 +147,7 @@ func (listener *edgeListener) close(closedByRemote bool) error {
 		WithField("sessionId", listener.token)
 
 	logger.Debug("removing listener for session")
-	edgeChan.hosting.Delete(listener.token)
+	edgeChan.hosting.Remove(listener.token)
 
 	defer func() {
 		edgeChan.close(closedByRemote)
