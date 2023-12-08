@@ -15,7 +15,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.111
-	github.com/openziti/edge-api v0.26.3
+	github.com/openziti/edge-api v0.26.4
 	github.com/openziti/foundation/v2 v2.0.35
 	github.com/openziti/identity v1.0.68
 	github.com/openziti/metrics v1.2.40

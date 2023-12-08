@@ -307,8 +307,8 @@ github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
 github.com/openziti/channel/v2 v2.0.111 h1:ZZDyUUFcyshitXjUqAMjdAKbaDMpgV7oX1Jp1I35Rc4=
 github.com/openziti/channel/v2 v2.0.111/go.mod h1:abw0qwT0MzWvh1eI2P6D6CD17PRHL8EEo1d3DHCyCdM=
-github.com/openziti/edge-api v0.26.3 h1:w4bgh18RC16OTHJCInrOlaAavbhEFMbBjwLDhYqeK9U=
-github.com/openziti/edge-api v0.26.3/go.mod h1:/2XsednlJl8hDTfIgbRkn11wZTF71Us/s0BHmdDq5JU=
+github.com/openziti/edge-api v0.26.4 h1:CPQts1L6hUbPxA3ohzOMSwTpVBPd6QPiVkXh16mC0mo=
+github.com/openziti/edge-api v0.26.4/go.mod h1:/2XsednlJl8hDTfIgbRkn11wZTF71Us/s0BHmdDq5JU=
 github.com/openziti/foundation/v2 v2.0.35 h1:4VaMwZ2kAy6jwBYeQIBN2m8rcGroTDX4A2Jp7NAKb6M=
 github.com/openziti/foundation/v2 v2.0.35/go.mod h1:Xnb3IxP1e1UcgLggqSunEpCjH3iHozkPi9Bd9GESbwo=
 github.com/openziti/identity v1.0.68 h1:SaFr7BeFQBoWQDiT28vUb8D9w7v6lIAK6/9RkwmV0OU=
