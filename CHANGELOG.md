@@ -1,3 +1,7 @@
+# Release 0.20.145
+
+- New `Context` API method: `RefreshService`, which allows refreshing a single service, when that's all that's needed.
+
 # Release 0.20.59
 
 - SDK context's will now use the properly prefixed Edge Client API Path for enrollment configurations. Previous versions
