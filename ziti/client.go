@@ -307,6 +307,27 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	return services, nil
 }
 
+// GetService will fetch the specific service requested. If the service doesn't exist,
+// nil will be returned
+func (self *CtrlClient) GetService(name string) (*rest_model.ServiceDetail, error) {
+	params := service.NewListServicesParams()
+
+	filter := fmt.Sprintf(`name="%s"`, name)
+	params.Filter = &filter
+
+	resp, err := self.API.Service.ListServices(params, nil)
+
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	if len(resp.Payload.Data) > 0 {
+		return resp.Payload.Data[0], nil
+	}
+
+	return nil, nil
+}
+
 // GetServiceTerminators returns the client terminator details for a specific service.
 func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
 	params := service.NewListServiceTerminatorsParams()

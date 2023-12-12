@@ -122,6 +122,10 @@ type Context interface {
 	// to.
 	RefreshServices() error
 
+	// RefreshService forces the context to refresh just the service with the given name. If the given service isn't
+	// found, a nil will be returned
+	RefreshService(serviceName string) (*rest_model.ServiceDetail, error)
+
 	// GetServiceTerminators will return a slice of rest_model.TerminatorClientDetail for a specific service name.
 	// The offset and limit options can be used to page through excessive lists of items. A max of 500 is imposed on
 	// limit.
@@ -480,53 +484,88 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 
 	// Adds and Updates
 	for _, s := range services {
-		isChange := false
-		valuesDiffer := false
+		context.processServiceAddOrUpdated(s)
+	}
 
-		_ = context.services.Upsert(*s.Name, s, func(exist bool, valueInMap *rest_model.ServiceDetail, newValue *rest_model.ServiceDetail) *rest_model.ServiceDetail {
-			isChange = exist
-			if isChange {
-				valuesDiffer = !reflect.DeepEqual(newValue, valueInMap)
+	context.refreshServiceQueryMap()
+}
+
+func (context *ContextImpl) processSingleServiceUpdate(name string, s *rest_model.ServiceDetail) {
+	// process Deletes
+	if s == nil {
+		var deletes []string
+		context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
+			if *svc.Name == name {
+				deletes = append(deletes, key)
+				if context.options.OnServiceUpdate != nil {
+					context.options.OnServiceUpdate(ServiceRemoved, svc)
+				}
+				context.Emit(EventServiceRemoved, svc)
+				context.deleteServiceSessions(*svc.ID)
 			}
-
-			return newValue
 		})
 
+		for _, deletedKey := range deletes {
+			context.services.Remove(deletedKey)
+			context.intercepts.Remove(deletedKey)
+		}
+	} else {
+		// Adds and Updates
+		context.processServiceAddOrUpdated(s)
+	}
+
+	context.refreshServiceQueryMap()
+}
+
+func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDetail) {
+	isChange := false
+	valuesDiffer := false
+
+	_ = context.services.Upsert(*s.Name, s, func(exist bool, valueInMap *rest_model.ServiceDetail, newValue *rest_model.ServiceDetail) *rest_model.ServiceDetail {
+		isChange = exist
 		if isChange {
-			context.Emit(EventServiceChanged, s)
-		} else {
-			context.Emit(EventServiceAdded, s)
+			valuesDiffer = !reflect.DeepEqual(newValue, valueInMap)
 		}
 
-		if context.options.OnServiceUpdate != nil {
-			if isChange {
-				if valuesDiffer {
-					context.options.OnServiceUpdate(ServiceChanged, s)
-				}
-			} else {
-				context.services.Set(*s.Name, s)
-				context.options.OnServiceUpdate(ServiceAdded, s)
-			}
-		}
+		return newValue
+	})
 
-		intercept := &edge.InterceptV1Config{}
-		ok, err := edge.ParseServiceConfig(s, InterceptV1, intercept)
-		if err != nil {
-			pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", InterceptV1, *s.Name)
-		} else if ok {
-			intercept.Service = s
-			context.intercepts.Set(*s.Name, intercept)
-		} else {
-			cltCfg := &edge.ClientConfig{}
-			ok, err := edge.ParseServiceConfig(s, ClientConfigV1, cltCfg)
-			if err == nil && ok {
-				intercept = cltCfg.ToInterceptV1Config()
-				intercept.Service = s
-				context.intercepts.Set(*s.Name, intercept)
+	if isChange {
+		context.Emit(EventServiceChanged, s)
+	} else {
+		context.Emit(EventServiceAdded, s)
+	}
+
+	if context.options.OnServiceUpdate != nil {
+		if isChange {
+			if valuesDiffer {
+				context.options.OnServiceUpdate(ServiceChanged, s)
 			}
+		} else {
+			context.services.Set(*s.Name, s)
+			context.options.OnServiceUpdate(ServiceAdded, s)
 		}
 	}
 
+	intercept := &edge.InterceptV1Config{}
+	ok, err := edge.ParseServiceConfig(s, InterceptV1, intercept)
+	if err != nil {
+		pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", InterceptV1, *s.Name)
+	} else if ok {
+		intercept.Service = s
+		context.intercepts.Set(*s.Name, intercept)
+	} else {
+		cltCfg := &edge.ClientConfig{}
+		ok, err := edge.ParseServiceConfig(s, ClientConfigV1, cltCfg)
+		if err == nil && ok {
+			intercept = cltCfg.ToInterceptV1Config()
+			intercept.Service = s
+			context.intercepts.Set(*s.Name, intercept)
+		}
+	}
+}
+
+func (context *ContextImpl) refreshServiceQueryMap() {
 	serviceQueryMap := map[string]map[string]rest_model.PostureQuery{} //serviceId -> queryId -> query
 
 	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
@@ -618,7 +657,7 @@ func (context *ContextImpl) refreshServices(forceCheck bool) error {
 			if errors.As(err, &target) {
 				log.Info("attempting to re-authenticate")
 				if authErr := context.Authenticate(); authErr != nil {
-					log.WithError(authErr).Error("unable to re-authenticate during session refresh")
+					log.WithError(authErr).Error("unable to re-authenticate during services refresh")
 					return err
 				}
 				if services, err = context.CtrlClt.GetServices(); err != nil {
@@ -634,6 +673,39 @@ func (context *ContextImpl) refreshServices(forceCheck bool) error {
 	}
 
 	return nil
+}
+
+func (context *ContextImpl) RefreshService(serviceName string) (*rest_model.ServiceDetail, error) {
+	if err := context.ensureApiSession(); err != nil {
+		return nil, fmt.Errorf("failed to refresh service: %v", err)
+	}
+
+	var err error
+
+	log := pfxlog.Logger().WithField("serviceName", serviceName)
+
+	log.Debug("refreshing service")
+
+	serviceDetail, err := context.CtrlClt.GetService(serviceName)
+	if err != nil {
+		target := &service.ListServicesUnauthorized{}
+		if errors.As(err, &target) {
+			log.Info("attempting to re-authenticate")
+			if authErr := context.Authenticate(); authErr != nil {
+				log.WithError(authErr).Error("unable to re-authenticate during service refresh")
+				return nil, err
+			}
+			if serviceDetail, err = context.CtrlClt.GetService(serviceName); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	context.processSingleServiceUpdate(serviceName, serviceDetail)
+
+	return serviceDetail, nil
 }
 
 func (context *ContextImpl) runSessionRefresh() {
