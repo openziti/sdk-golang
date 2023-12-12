@@ -25,6 +25,8 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/errorz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/secretstream/kx"
 	"math"
@@ -1077,19 +1079,18 @@ func (context *ContextImpl) ListenWithOptions(serviceName string, options *Liste
 	if s, ok := context.GetService(serviceName); ok {
 		return context.listenSession(s, options)
 	}
-	return nil, errors.Errorf("service '%s' not found in ZT", serviceName)
+	return nil, errors.Errorf("service '%s' not found in ziti network", serviceName)
 }
 
 func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) (edge.Listener, error) {
-	edgeListenOptions := &edge.ListenOptions{
-		Cost:                  options.Cost,
-		Precedence:            edge.Precedence(options.Precedence),
-		ConnectTimeout:        options.ConnectTimeout,
-		MaxConnections:        options.MaxConnections,
-		Identity:              options.Identity,
-		BindUsingEdgeIdentity: options.BindUsingEdgeIdentity,
-		ManualStart:           options.ManualStart,
-	}
+	edgeListenOptions := edge.NewListenOptions()
+	edgeListenOptions.Cost = options.Cost
+	edgeListenOptions.Precedence = edge.Precedence(options.Precedence)
+	edgeListenOptions.ConnectTimeout = options.ConnectTimeout
+	edgeListenOptions.MaxConnections = options.MaxConnections
+	edgeListenOptions.Identity = options.Identity
+	edgeListenOptions.BindUsingEdgeIdentity = options.BindUsingEdgeIdentity
+	edgeListenOptions.ManualStart = options.ManualStart
 
 	if edgeListenOptions.ConnectTimeout == 0 {
 		edgeListenOptions.ConnectTimeout = time.Minute
@@ -1099,7 +1100,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.MaxConnections = 1
 	}
 
-	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions); err != nil {
+	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
 		return nil, err
 	} else {
 		return listenerMgr.listener, nil
@@ -1495,7 +1496,32 @@ func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.CtrlClt.RemoveMfa(code)
 }
 
-func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions) (*listenerManager, error) {
+type waitForNHelper struct {
+	count  uint
+	mgr    *listenerManager
+	notify chan struct{}
+	closed atomic.Bool
+}
+
+func (self *waitForNHelper) Notify(eventType ListenEventType) {
+	if eventType == ListenerEstablished && self.mgr.listener.GetEstablishedCount() >= self.count {
+		if self.closed.CompareAndSwap(false, true) {
+			close(self.notify)
+		}
+	}
+}
+
+func (self *waitForNHelper) WaitForN(timeout time.Duration) error {
+	select {
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out waiting for %v listeners to be established, only had %v", self.count, self.mgr.listener.GetEstablishedCount())
+	case <-self.notify:
+
+	}
+	return nil
+}
+
+func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions, waitForN uint) (*listenerManager, error) {
 	now := time.Now()
 
 	var keyPair *kx.KeyPair
@@ -1523,7 +1549,29 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 
 	listenerMgr.listener = network.NewMultiListener(service, listenerMgr.GetCurrentSession)
 
+	var helper *waitForNHelper
+	if waitForN > 0 {
+		helper = &waitForNHelper{
+			count:  waitForN,
+			mgr:    listenerMgr,
+			notify: make(chan struct{}),
+		}
+		listenerMgr.AddObserver(helper)
+		defer listenerMgr.RemoveObserver(helper)
+	}
+
 	go listenerMgr.run()
+
+	if helper != nil {
+		if err := helper.WaitForN(options.ConnectTimeout); err != nil {
+			result := errorz.MultipleErrors{}
+			result = append(result, err)
+			if closeErr := listenerMgr.listener.Close(); closeErr != nil {
+				result = append(result, closeErr)
+			}
+			return nil, result.ToError()
+		}
+	}
 
 	return listenerMgr, nil
 }
@@ -1540,6 +1588,21 @@ type listenerManager struct {
 	eventChan          chan listenerEvent
 	sessionRefreshTime time.Time
 	disconnectedTime   *time.Time
+	observers          concurrenz.CopyOnWriteSlice[ListenEventObserver]
+}
+
+func (mgr *listenerManager) AddObserver(observer ListenEventObserver) {
+	mgr.observers.Append(observer)
+}
+
+func (mgr *listenerManager) RemoveObserver(observer ListenEventObserver) {
+	mgr.observers.Delete(observer)
+}
+
+func (mgr *listenerManager) notify(eventType ListenEventType) {
+	for _, observer := range mgr.observers.Value() {
+		go observer.Notify(eventType)
+	}
 }
 
 func (mgr *listenerManager) run() {
@@ -1610,6 +1673,8 @@ func (mgr *listenerManager) run() {
 			mgr.refreshSession()
 		case <-ticker.C:
 			mgr.makeMoreListeners()
+		case <-mgr.options.GetEventChannel():
+			mgr.notify(ListenerEstablished)
 		case <-mgr.context.closeNotify:
 			mgr.listener.CloseWithError(errors.New("context closed"))
 		}
@@ -1657,6 +1722,12 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 			}
 		})
 		mgr.eventChan <- listenSuccessEvent{}
+		if !routerConnection.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+			select {
+			case mgr.options.GetEventChannel() <- &edge.ListenerEvent{EventType: edge.ListenerEstablished}:
+			default:
+			}
+		}
 	} else {
 		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
 		mgr.listener.NotifyOfChildError(err)
@@ -1806,6 +1877,7 @@ func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
 	if len(mgr.routerConnections) == 0 {
 		mgr.disconnectedTime = &now
 	}
+	mgr.notify(ListenerRemoved)
 	mgr.makeMoreListeners()
 }
 
@@ -1819,6 +1891,7 @@ type listenSuccessEvent struct{}
 
 func (event listenSuccessEvent) handle(mgr *listenerManager) {
 	mgr.disconnectedTime = nil
+	mgr.notify(ListenerAdded)
 }
 
 type getSessionEvent struct {
@@ -1829,4 +1902,16 @@ type getSessionEvent struct {
 func (event *getSessionEvent) handle(mgr *listenerManager) {
 	defer close(event.doneC)
 	event.session = mgr.session
+}
+
+type ListenEventType int
+
+const (
+	ListenerAdded       ListenEventType = 1
+	ListenerEstablished ListenEventType = 2
+	ListenerRemoved     ListenEventType = 3
+)
+
+type ListenEventObserver interface {
+	Notify(eventType ListenEventType)
 }

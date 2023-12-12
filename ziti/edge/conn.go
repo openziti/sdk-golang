@@ -48,6 +48,7 @@ type RouterConn interface {
 	IsClosed() bool
 	Key() string
 	GetRouterName() string
+	GetBoolHeader(key int32) bool
 }
 
 type Identifiable interface {
@@ -211,6 +212,12 @@ func (d DialOptions) GetConnectTimeout() time.Duration {
 	return d.ConnectTimeout
 }
 
+func NewListenOptions() *ListenOptions {
+	return &ListenOptions{
+		eventC: make(chan *ListenerEvent, 3),
+	}
+}
+
 type ListenOptions struct {
 	Cost                  uint16
 	Precedence            Precedence
@@ -222,6 +229,11 @@ type ListenOptions struct {
 	ManualStart           bool
 	ListenerId            string
 	KeyPair               *kx.KeyPair
+	eventC                chan *ListenerEvent
+}
+
+func (options *ListenOptions) GetEventChannel() chan *ListenerEvent {
+	return options.eventC
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {
@@ -230,4 +242,14 @@ func (options *ListenOptions) GetConnectTimeout() time.Duration {
 
 func (options *ListenOptions) String() string {
 	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxConnections)
+}
+
+type ListenerEventType int
+
+const (
+	ListenerEstablished ListenerEventType = 1
+)
+
+type ListenerEvent struct {
+	EventType ListenerEventType
 }

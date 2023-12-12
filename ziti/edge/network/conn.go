@@ -190,6 +190,18 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 			go conn.newChildConnection(msg)
 		} else if msg.ContentType == edge.ContentTypeStateClosed {
 			conn.close(true)
+		} else if msg.ContentType == edge.ContentTypeBindSuccess {
+			for entry := range conn.hosting.IterBuffered() {
+				entry.Val.established.Store(true)
+				event := &edge.ListenerEvent{
+					EventType: edge.ListenerEstablished,
+				}
+				select {
+				case entry.Val.eventC <- event:
+				default:
+					logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
+				}
+			}
 		}
 	default:
 		logrus.WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
@@ -341,7 +353,7 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
-func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (*edgeListener, error) {
 	logger := pfxlog.ContextLogger(conn.Channel.Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
@@ -356,6 +368,7 @@ func (conn *edgeConn) Listen(session *rest_model.SessionDetail, service *rest_mo
 		token:       *session.Token,
 		edgeChan:    conn,
 		manualStart: options.ManualStart,
+		eventC:      options.GetEventChannel(),
 	}
 	logger.Debug("adding listener for session")
 	conn.hosting.Set(*session.Token, listener)
