@@ -49,13 +49,14 @@ func (d DialOptions) GetConnectTimeout() time.Duration {
 }
 
 type ListenOptions struct {
-	Cost                  uint16
-	Precedence            Precedence
-	ConnectTimeout        time.Duration
-	MaxConnections        int
-	Identity              string
-	BindUsingEdgeIdentity bool
-	ManualStart           bool
+	Cost                         uint16
+	Precedence                   Precedence
+	ConnectTimeout               time.Duration
+	MaxConnections               int
+	Identity                     string
+	BindUsingEdgeIdentity        bool
+	ManualStart                  bool
+	WaitForNEstablishedListeners uint
 }
 
 func DefaultListenOptions() *ListenOptions {

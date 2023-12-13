@@ -42,6 +42,7 @@ const (
 	ContentTypeTraceRouteResponse  = 60797
 	ContentTypeConnInspectRequest  = 60798
 	ContentTypeConnInspectResponse = 60799
+	ContentTypeBindSuccess         = 60800
 
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
@@ -67,6 +68,7 @@ const (
 	ListenerId                     = 1021
 	ConnTypeHeader                 = 1022
 	SupportsInspectHeader          = 1023
+	SupportsBindSuccessHeader      = 1024
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -208,6 +210,7 @@ func NewDialMsg(connId uint32, token string, callerId string) *channel.Message {
 func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
 	msg.PutBoolHeader(SupportsInspectHeader, true)
+	msg.PutBoolHeader(SupportsBindSuccessHeader, true)
 
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey

@@ -1,3 +1,7 @@
+# Release 0.21.0
+
+- New `ListenOptions` field: `WaitForNEstablishedListeners`. Allows specifying that you want at least N listeners to be established before the `Listen` method returns. Defaults to 0.
+
 # Release 0.20.145
 
 - New `Context` API method: `RefreshService`, which allows refreshing a single service, when that's all that's needed.

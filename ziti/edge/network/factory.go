@@ -37,6 +37,11 @@ type routerConn struct {
 	owner      RouterConnOwner
 }
 
+func (conn *routerConn) GetBoolHeader(key int32) bool {
+	val := conn.ch.Underlay().Headers()[key]
+	return len(val) == 1 && val[0] == 1
+}
+
 func (conn *routerConn) Key() string {
 	return conn.key
 }
@@ -69,6 +74,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeBindSuccess, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.msgMux)
@@ -151,7 +157,7 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 		WithField("serviceId", *service.ID).
 		WithField("serviceName", *service.Name)
 
-	listener, err := ec.Listen(session, service, options)
+	listener, err := ec.listen(session, service, options)
 	if err != nil {
 		log.WithError(err).Error("failed to establish listener")
 
@@ -160,6 +166,9 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 				Error("failed to cleanup listener for service after failed bind")
 		}
 	} else {
+		if !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+			listener.established.Store(true)
+		}
 		log.Debug("established listener")
 	}
 	return listener, err
