@@ -11,12 +11,23 @@ const (
 	ServiceAdded   ServiceEventType = "Added"
 	ServiceRemoved ServiceEventType = "Removed"
 	ServiceChanged ServiceEventType = "Changed"
+
+	DefaultServiceRefreshInterval = 5 * time.Minute
+	DefaultSessionRefreshInterval = time.Hour
+	MinRefreshInterval            = time.Second
 )
 
 type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetail)
 
 type Options struct {
+	// Service refresh interval. May not be less than 1 second
 	RefreshInterval time.Duration
+
+	// Edge session refresh interval. Edge session only need to be refreshed if the list of available
+	// edge routers has changed. This should be a relatively rare occurrence. If a dial fails, the
+	// edge session will be refreshed regardless.
+	// May not be less than 1 second
+	SessionRefreshInterval time.Duration
 
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
@@ -34,8 +45,9 @@ func (self *Options) isEdgeRouterUrlAccepted(url string) bool {
 }
 
 var DefaultOptions = &Options{
-	RefreshInterval: 5 * time.Minute,
-	OnServiceUpdate: nil,
+	RefreshInterval:        DefaultServiceRefreshInterval,
+	SessionRefreshInterval: DefaultSessionRefreshInterval,
+	OnServiceUpdate:        nil,
 }
 
 type DialOptions struct {
