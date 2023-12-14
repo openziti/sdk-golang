@@ -710,10 +710,29 @@ func (context *ContextImpl) RefreshService(serviceName string) (*rest_model.Serv
 	return serviceDetail, nil
 }
 
-func (context *ContextImpl) runSessionRefresh() {
+func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
-	svcUpdateTick := time.NewTicker(context.options.RefreshInterval)
-	defer svcUpdateTick.Stop()
+	svcRefreshInterval := context.options.RefreshInterval
+
+	if svcRefreshInterval == 0 {
+		svcRefreshInterval = DefaultServiceRefreshInterval
+	}
+	if svcRefreshInterval < time.Second {
+		svcRefreshInterval = time.Second
+	}
+	svcRefreshTick := time.NewTicker(svcRefreshInterval)
+	defer svcRefreshTick.Stop()
+
+	sessionRefreshInterval := context.options.SessionRefreshInterval
+	if sessionRefreshInterval == 0 {
+		sessionRefreshInterval = DefaultSessionRefreshInterval
+	}
+	if sessionRefreshInterval < time.Second {
+		sessionRefreshInterval = time.Second
+	}
+
+	sessionRefreshTick := time.NewTicker(sessionRefreshInterval)
+	defer sessionRefreshTick.Stop()
 
 	refreshAt := time.Now().Add(30 * time.Second)
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.ExpiresAt != nil {
@@ -736,13 +755,15 @@ func (context *ContextImpl) runSessionRefresh() {
 				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
 			}
 
-		case <-svcUpdateTick.C:
+		case <-svcRefreshTick.C:
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false); err != nil {
 				log.WithError(err).Error("failed to load service updates")
-			} else {
-				context.refreshSessions()
 			}
+
+		case <-sessionRefreshTick.C:
+			log.Debug("refreshing sessions")
+			context.refreshSessions()
 		}
 	}
 }
@@ -853,7 +874,7 @@ func (context *ContextImpl) onFullAuth(apiSession *rest_model.CurrentAPISessionD
 		if context.options.OnContextReady != nil {
 			context.options.OnContextReady(context)
 		}
-		go context.runSessionRefresh()
+		go context.runRefreshes()
 
 		metricsTags := map[string]string{
 			"srcId": apiSession.Identity.ID,
@@ -1110,20 +1131,22 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
 	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
-	if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
-		target := &rest_session.DetailSessionNotFound{}
-		if errors.As(err, &target) {
-			sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
-			context.sessions.Remove(sessionKey)
-		}
+	if len(session.EdgeRouters) == 0 {
+		if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
+			target := &rest_session.DetailSessionNotFound{}
+			if errors.As(err, &target) {
+				sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
+				context.sessions.Remove(sessionKey)
+			}
 
-		return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
-	} else {
-		if len(refreshedSession.EdgeRouters) == 0 {
-			return nil, errors.New("no edge routers available, refresh yielded no new edge routers")
-		}
+			return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
+		} else {
+			if len(refreshedSession.EdgeRouters) == 0 {
+				return nil, errors.New("no edge routers available, refresh yielded no new edge routers")
+			}
 
-		session = refreshedSession
+			session = refreshedSession
+		}
 	}
 
 	// go through connected routers first

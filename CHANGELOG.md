@@ -1,3 +1,7 @@
+# Release 0.22.0
+
+- Add SessionRefreshInterval to DialOptions, with a default of 1 hour.
+
 # Release 0.21.0
 
 - New `ListenOptions` field: `WaitForNEstablishedListeners`. Allows specifying that you want at least N listeners to be established before the `Listen` method returns. Defaults to 0.
