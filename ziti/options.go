@@ -14,6 +14,7 @@ const (
 
 	DefaultServiceRefreshInterval = 5 * time.Minute
 	DefaultSessionRefreshInterval = time.Hour
+	MinRefreshInterval            = time.Second
 )
 
 type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetail)

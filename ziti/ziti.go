@@ -717,8 +717,8 @@ func (context *ContextImpl) runRefreshes() {
 	if svcRefreshInterval == 0 {
 		svcRefreshInterval = DefaultServiceRefreshInterval
 	}
-	if svcRefreshInterval < time.Second {
-		svcRefreshInterval = time.Second
+	if svcRefreshInterval < MinRefreshInterval {
+		svcRefreshInterval = MinRefreshInterval
 	}
 	svcRefreshTick := time.NewTicker(svcRefreshInterval)
 	defer svcRefreshTick.Stop()
@@ -727,8 +727,8 @@ func (context *ContextImpl) runRefreshes() {
 	if sessionRefreshInterval == 0 {
 		sessionRefreshInterval = DefaultSessionRefreshInterval
 	}
-	if sessionRefreshInterval < time.Second {
-		sessionRefreshInterval = time.Second
+	if sessionRefreshInterval < MinRefreshInterval {
+		sessionRefreshInterval = MinRefreshInterval
 	}
 
 	sessionRefreshTick := time.NewTicker(sessionRefreshInterval)
