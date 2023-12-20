@@ -93,6 +93,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 		msgMux:      conn.msgMux,
 		serviceName: *service.Name,
 		connType:    ConnTypeDial,
+		marker:      newMarker(),
 	}
 
 	var err error
