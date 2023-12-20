@@ -253,7 +253,7 @@ func (conn *edgeConn) HandleMuxClose() error {
 }
 
 func (conn *edgeConn) HandleClose(channel.Channel) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id())
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
 	conn.readQ.Close()
 	conn.closed.Store(true)
@@ -262,7 +262,10 @@ func (conn *edgeConn) HandleClose(channel.Channel) {
 }
 
 func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.ID)
+	logger := pfxlog.Logger().
+		WithField("marker", conn.marker).
+		WithField("connId", conn.Id()).
+		WithField("sessionId", session.ID)
 
 	var pub []byte
 	if conn.crypto {
@@ -332,7 +335,10 @@ func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte,
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
-	pfxlog.Logger().WithField("connId", conn.Id()).Debug("crypto established")
+	pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("marker", conn.marker).
+		Debug("crypto established")
 	return nil
 }
 
@@ -429,7 +435,7 @@ func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
 }
 
 func (conn *edgeConn) Read(p []byte) (int, error) {
-	log := pfxlog.Logger().WithField("connId", conn.Id())
+	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	if conn.closed.Load() {
 		return 0, io.EOF
 	}
@@ -523,7 +529,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
 
-	log := pfxlog.Logger().WithField("connId", conn.Id())
+	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
@@ -729,6 +735,7 @@ func (self *newConnHandler) dialSucceeded() error {
 
 	newConnLogger := pfxlog.Logger().
 		WithField("connId", self.edgeCh.Id()).
+		WithField("marker", self.edgeCh.marker).
 		WithField("parentConnId", self.conn.Id()).
 		WithField("token", token)
 
