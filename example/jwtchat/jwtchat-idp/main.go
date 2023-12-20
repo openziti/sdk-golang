@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"github.com/openziti/sdk-golang/examples/jwtchat/jwtchat-idp/exampleop"
-	"github.com/openziti/sdk-golang/examples/jwtchat/jwtchat-idp/storage"
+	"github.com/openziti/sdk-golang/example/jwtchat/jwtchat-idp/exampleop"
+	"github.com/openziti/sdk-golang/example/jwtchat/jwtchat-idp/storage"
 	"log"
 	"net/http"
 )

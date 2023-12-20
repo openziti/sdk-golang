@@ -18,13 +18,15 @@ package network
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
-	"time"
 )
 
 type RouterConnOwner interface {
@@ -37,6 +39,11 @@ type routerConn struct {
 	ch         channel.Channel
 	msgMux     edge.MsgMux
 	owner      RouterConnOwner
+}
+
+func (conn *routerConn) GetBoolHeader(key int32) bool {
+	val := conn.ch.Underlay().Headers()[key]
+	return len(val) == 1 && val[0] == 1
 }
 
 func (conn *routerConn) Key() string {
@@ -70,6 +77,8 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeBindSuccess, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.msgMux)
@@ -79,15 +88,15 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-func (conn *routerConn) NewConn(service *rest_model.ServiceDetail, connType ConnType) *edgeConn {
+func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
 	edgeCh := &edgeConn{
-		MsgChannel: *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:      NewNoopSequencer[*channel.Message](4),
-		msgMux:     conn.msgMux,
-		serviceId:  *service.Name,
-		connType:   connType,
+		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
+		readQ:       NewNoopSequencer[*channel.Message](4),
+		msgMux:      conn.msgMux,
+		serviceName: *service.Name,
+		connType:    ConnTypeDial,
 	}
 
 	var err error
@@ -127,8 +136,34 @@ func (conn *routerConn) UpdateToken(token string, timeout time.Duration) error {
 	return fmt.Errorf("could not update token for router [%s]: %w", conn.Key(), err)
 }
 
+func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeConn {
+	id := conn.msgMux.GetNextId()
+
+	edgeCh := &edgeConn{
+		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
+		readQ:       NewNoopSequencer[*channel.Message](4),
+		msgMux:      conn.msgMux,
+		serviceName: *service.Name,
+		connType:    ConnTypeBind,
+		keyPair:     keyPair,
+		crypto:      keyPair != nil,
+		hosting:     cmap.New[*edgeListener](),
+	}
+
+	// duplicate errors only happen on the server side, since client controls ids
+	if err := conn.msgMux.AddMsgSink(edgeCh); err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
+	}
+	pfxlog.Logger().WithField("connId", id).
+		WithField("routerName", conn.routerName).
+		WithField("serviceId", *service.ID).
+		WithField("serviceName", *service.Name).
+		Debug("created new listener connection")
+	return edgeCh
+}
+
 func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	ec := conn.NewConn(service, ConnTypeDial)
+	ec := conn.NewDialConn(service)
 	dialConn, err := ec.Connect(session, options)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
@@ -139,12 +174,27 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 }
 
 func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
-	ec := conn.NewConn(service, ConnTypeBind)
-	listener, err := ec.Listen(session, service, options)
+	ec := conn.NewListenConn(service, options.KeyPair)
+
+	log := pfxlog.Logger().
+		WithField("connId", ec.Id()).
+		WithField("router", conn.routerName).
+		WithField("serviceId", *service.ID).
+		WithField("serviceName", *service.Name)
+
+	listener, err := ec.listen(session, service, options)
 	if err != nil {
+		log.WithError(err).Error("failed to establish listener")
+
 		if err2 := ec.Close(); err2 != nil {
-			pfxlog.Logger().Errorf("failed to cleanup listenet for service '%v' (%v)", service.Name, err2)
+			log.WithError(err2).
+				Error("failed to cleanup listener for service after failed bind")
 		}
+	} else {
+		if !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+			listener.established.Store(true)
+		}
+		log.Debug("established listener")
 	}
 	return listener, err
 }

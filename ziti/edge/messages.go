@@ -18,10 +18,9 @@ package edge
 
 import (
 	"encoding/binary"
-	"github.com/openziti/sdk-golang/pb/edge_client_pb"
-
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/uuidz"
+	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -49,6 +48,10 @@ const (
 
 	ContentTypePostureResponse = int32(edge_client_pb.ContentType_PostureResponseType)
 
+	ContentTypeConnInspectRequest  = 60798
+	ContentTypeConnInspectResponse = 60799
+	ContentTypeBindSuccess         = 60800
+
 	ConnIdHeader                   = 1000
 	SeqHeader                      = 1001
 	SessionTokenHeader             = 1002
@@ -70,6 +73,10 @@ const (
 	TraceHopIdHeader               = 1018
 	TraceSourceRequestIdHeader     = 1019
 	TraceError                     = 1020
+	ListenerId                     = 1021
+	ConnTypeHeader                 = 1022
+	SupportsInspectHeader          = 1023
+	SupportsBindSuccessHeader      = 1024
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -134,54 +141,11 @@ var ContentTypeNames = map[int32]string{
 	ContentTypeUpdateTokenFailure: "EdgeUpdateTokenFailureType",
 }
 
-type Sequenced interface {
-	GetSequence() uint32
-}
-
 type MsgEvent struct {
 	ConnId  uint32
 	Seq     uint32
 	MsgUUID []byte
 	Msg     *channel.Message
-}
-
-func (event *MsgEvent) GetSequence() uint32 {
-	return event.Seq
-}
-
-func UnmarshalMsgEvent(msg *channel.Message) (*MsgEvent, error) {
-	connId, found := msg.GetUint32Header(ConnIdHeader)
-	if !found {
-		return nil, errors.Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
-	}
-	seq, _ := msg.GetUint32Header(SeqHeader)
-
-	event := &MsgEvent{
-		ConnId:  connId,
-		Seq:     seq,
-		MsgUUID: msg.Headers[UUIDHeader],
-		Msg:     msg,
-	}
-
-	return event, nil
-}
-
-func (event *MsgEvent) GetLoggerFields() logrus.Fields {
-	msgUUID := uuidz.ToString(event.MsgUUID)
-	connId, _ := event.Msg.GetUint32Header(ConnIdHeader)
-	seq, _ := event.Msg.GetUint32Header(SeqHeader)
-
-	fields := logrus.Fields{
-		"connId":  connId,
-		"type":    ContentTypeNames[event.Msg.ContentType],
-		"chSeq":   event.Msg.Sequence(),
-		"edgeSeq": seq,
-	}
-
-	if msgUUID != "" {
-		fields["uuid"] = msgUUID
-	}
-	return fields
 }
 
 func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel.Message {
@@ -215,6 +179,13 @@ func NewTraceRouteResponseMsg(connId uint32, hops uint32, timestamp uint64, hopT
 	msg.Headers[TraceHopTypeHeader] = []byte(hopType)
 	msg.Headers[TraceHopIdHeader] = []byte(hopId)
 
+	return msg
+}
+
+func NewConnInspectResponse(connId uint32, connType ConnType, state string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeConnInspectResponse, []byte(state))
+	msg.PutUint32Header(ConnIdHeader, connId)
+	msg.PutByteHeader(ConnTypeHeader, byte(connType))
 	return msg
 }
 
@@ -253,6 +224,9 @@ func NewDialMsg(connId uint32, token string, callerId string) *channel.Message {
 
 func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel.Message {
 	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
+	msg.PutBoolHeader(SupportsInspectHeader, true)
+	msg.PutBoolHeader(SupportsBindSuccessHeader, true)
+
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
 		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
@@ -274,6 +248,11 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 			msg.Headers[TerminatorIdentitySecretHeader] = []byte(options.IdentitySecret)
 		}
 	}
+
+	if options.ListenerId != "" {
+		msg.Headers[ListenerId] = []byte(options.ListenerId)
+	}
+
 	msg.PutBoolHeader(RouterProvidedConnId, true)
 	return msg
 }
@@ -393,4 +372,36 @@ func GetLoggerFields(msg *channel.Message) logrus.Fields {
 	}
 
 	return fields
+}
+
+type ConnType byte
+
+const (
+	ConnTypeInvalid ConnType = 0
+	ConnTypeDial    ConnType = 1
+	ConnTypeBind    ConnType = 2
+	ConnTypeUnknown ConnType = 3
+)
+
+type InspectResult struct {
+	ConnId uint32
+	Type   ConnType
+	Detail string
+}
+
+func UnmarshalInspectResult(msg *channel.Message) (*InspectResult, error) {
+	if msg.ContentType == ContentTypeConnInspectResponse {
+		connId, _ := msg.GetUint32Header(ConnIdHeader)
+		connType, found := msg.GetByteHeader(ConnTypeHeader)
+		if !found {
+			connType = byte(ConnTypeUnknown)
+		}
+		return &InspectResult{
+			ConnId: connId,
+			Type:   ConnType(connType),
+			Detail: string(msg.Body),
+		}, nil
+	}
+
+	return nil, errors.Errorf("unexpected response. received %v instead of inspect result message", msg.ContentType)
 }

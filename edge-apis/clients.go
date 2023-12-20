@@ -24,6 +24,7 @@ import (
 	"github.com/openziti/edge-api/rest_management_api_client"
 	"github.com/pkg/errors"
 	"net/url"
+	"sync/atomic"
 )
 
 // ApiType is an interface constraint for generics. The underlying go-swagger types only have fields, which are
@@ -39,13 +40,13 @@ type BaseClient[A ApiType] struct {
 	API *A
 	Components
 	AuthInfoWriter runtime.ClientAuthInfoWriter
-	ApiSession     *ApiSession
+	ApiSession     atomic.Pointer[ApiSession]
 	Credentials    Credentials
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
 func (self *BaseClient[A]) GetCurrentApiSession() *ApiSession {
-	return self.ApiSession
+	return self.ApiSession.Load()
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
@@ -57,7 +58,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 	myAny := any(self.API)
 	if a, ok := myAny.(AuthEnabledApi); ok {
 		self.Credentials = nil
-		self.ApiSession = nil
+		self.ApiSession.Store(nil)
 
 		if credCaPool := credentials.GetCaPool(); credCaPool != nil {
 			self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
@@ -72,11 +73,11 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		}
 
 		self.Credentials = credentials
-		self.ApiSession = apiSession
+		self.ApiSession.Store(apiSession)
 
 		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			if self.ApiSession != nil {
-				if err := self.ApiSession.AuthenticateRequest(request, registry); err != nil {
+			if currentSession := self.ApiSession.Load(); currentSession != nil && currentSession.Token != nil {
+				if err := currentSession.AuthenticateRequest(request, registry); err != nil {
 					return err
 				}
 			}

@@ -73,16 +73,16 @@ func (self *CtrlClient) GetCurrentApiSession() *apis.ApiSession {
 
 // Refresh will contact the controller extending the current ApiSession for legacy API Sessions
 func (self *CtrlClient) Refresh() (*time.Time, error) {
-	if self.ApiSession != nil {
-		apiSession, err := self.API.RefreshApiSession(self.ApiSession)
+	if apiSession := self.ApiSession.Load(); apiSession != nil {
+		apiSession, err := self.API.RefreshApiSession(apiSession)
 
 		if err != nil {
 			return nil, err
 		}
 
-		self.ApiSession = apiSession
+		self.ApiSession.Store(apiSession)
 
-		return self.ApiSession.GetExpiresAt(), nil
+		return apiSession.GetExpiresAt(), nil
 	}
 
 	return nil, errors.New("no api session")
@@ -92,7 +92,7 @@ func (self *CtrlClient) Refresh() (*time.Time, error) {
 // updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
 // checks.
 func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, error) {
-	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), self.ApiSession)
+	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), self.ApiSession.Load())
 
 	if err != nil {
 		return true, nil, err
@@ -128,7 +128,7 @@ func (self *CtrlClient) AuthenticateMFA(code string) error {
 	params.MfaAuth = &rest_model.MfaCode{
 		Code: &code,
 	}
-	_, err := self.API.Authentication.AuthenticateMfa(params, self.ApiSession)
+	_, err := self.API.Authentication.AuthenticateMfa(params, self.ApiSession.Load())
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -142,7 +142,7 @@ func (self *CtrlClient) AuthenticateMFA(code string) error {
 func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseParams()
 	params.PostureResponse = response
-	_, err := self.API.PostureChecks.CreatePostureResponse(params, self.ApiSession)
+	_, err := self.API.PostureChecks.CreatePostureResponse(params, self.ApiSession.Load())
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -155,7 +155,7 @@ func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseC
 func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
-	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, self.ApiSession)
+	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, self.ApiSession.Load())
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -166,7 +166,7 @@ func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureRe
 // GetCurrentIdentity returns the rest_model.IdentityDetail for the currently authenticated ApiSession.
 func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error) {
 	params := current_identity.NewGetCurrentIdentityParams()
-	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, self.ApiSession)
+	resp, err := self.API.CurrentIdentity.GetCurrentIdentity(params, self.ApiSession.Load())
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -179,7 +179,7 @@ func (self *CtrlClient) GetCurrentIdentity() (*rest_model.IdentityDetail, error)
 func (self *CtrlClient) GetSession(id string) (*rest_model.SessionDetail, error) {
 	params := session.NewDetailSessionParams()
 	params.ID = id
-	resp, err := self.API.Session.DetailSession(params, self.ApiSession)
+	resp, err := self.API.Session.DetailSession(params, self.ApiSession.Load())
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -203,7 +203,7 @@ func (self *CtrlClient) GetSessionFromJwt(sessionToken string) (*rest_model.Sess
 	params.SessionToken = &sessionToken
 	params.ID = serviceAccessClaims.Subject //service id
 
-	resp, err := self.API.Service.ListServiceEdgeRouters(params, self.ApiSession)
+	resp, err := self.API.Service.ListServiceEdgeRouters(params, self.ApiSession.Load())
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -301,7 +301,7 @@ func (self *CtrlClient) NewApiSessionCertificate() error {
 		Csr: &csrPemString,
 	}
 
-	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, self.ApiSession)
+	resp, err := self.API.CurrentAPISession.CreateCurrentAPISessionCertificate(params, self.ApiSession.Load())
 
 	if err != nil {
 		return rest_util.WrapErr(err)
@@ -334,7 +334,7 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 		params.Limit = &pageLimit
 		params.Offset = &pageOffset
 
-		resp, err := self.API.Service.ListServices(params, self.ApiSession)
+		resp, err := self.API.Service.ListServices(params, self.ApiSession.Load())
 
 		if err != nil {
 			return nil, rest_util.WrapErr(err)
@@ -355,6 +355,27 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	return services, nil
 }
 
+// GetService will fetch the specific service requested. If the service doesn't exist,
+// nil will be returned
+func (self *CtrlClient) GetService(name string) (*rest_model.ServiceDetail, error) {
+	params := service.NewListServicesParams()
+
+	filter := fmt.Sprintf(`name="%s"`, name)
+	params.Filter = &filter
+
+	resp, err := self.API.Service.ListServices(params, nil)
+
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	if len(resp.Payload.Data) > 0 {
+		return resp.Payload.Data[0], nil
+	}
+
+	return nil, nil
+}
+
 // GetServiceTerminators returns the client terminator details for a specific service.
 func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, offset int, limit int) ([]*rest_model.TerminatorClientDetail, int, error) {
 	params := service.NewListServiceTerminatorsParams()
@@ -367,7 +388,7 @@ func (self *CtrlClient) GetServiceTerminators(svc *rest_model.ServiceDetail, off
 
 	params.ID = *svc.ID
 
-	resp, err := self.API.Service.ListServiceTerminators(params, self.ApiSession)
+	resp, err := self.API.Service.ListServiceTerminators(params, self.ApiSession.Load())
 
 	if err != nil {
 		return nil, 0, rest_util.WrapErr(err)
@@ -384,7 +405,7 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 		Type:      rest_model.DialBind(sessionType),
 	}
 
-	resp, err := self.API.Session.CreateSession(params, self.ApiSession)
+	resp, err := self.API.Session.CreateSession(params, self.ApiSession.Load())
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
@@ -398,14 +419,16 @@ func (self *CtrlClient) CreateSession(id string, sessionType SessionType) (*rest
 func (self *CtrlClient) EnrollMfa() (*rest_model.DetailMfa, error) {
 	enrollMfaParams := current_identity.NewEnrollMfaParams()
 
-	_, enrollMfaErr := self.API.CurrentIdentity.EnrollMfa(enrollMfaParams, self.ApiSession)
+	apiSession := self.ApiSession.Load()
+
+	_, enrollMfaErr := self.API.CurrentIdentity.EnrollMfa(enrollMfaParams, apiSession)
 
 	if enrollMfaErr != nil {
 		return nil, enrollMfaErr
 	}
 
 	detailMfaParams := current_identity.NewDetailMfaParams()
-	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, self.ApiSession)
+	detailMfaResp, detailMfaErr := self.API.CurrentIdentity.DetailMfa(detailMfaParams, apiSession)
 
 	if detailMfaErr != nil {
 		return nil, rest_util.WrapErr(detailMfaErr)
@@ -422,7 +445,7 @@ func (self *CtrlClient) VerifyMfa(code string) error {
 		Code: &code,
 	}
 
-	_, err := self.API.CurrentIdentity.VerifyMfa(params, self.ApiSession)
+	_, err := self.API.CurrentIdentity.VerifyMfa(params, self.ApiSession.Load())
 
 	return rest_util.WrapErr(err)
 }
@@ -432,7 +455,7 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 	params := current_identity.NewDeleteMfaParams()
 	params.MfaValidationCode = &code
 
-	_, err := self.API.CurrentIdentity.DeleteMfa(params, self.ApiSession)
+	_, err := self.API.CurrentIdentity.DeleteMfa(params, self.ApiSession.Load())
 
 	return rest_util.WrapErr(err)
 }

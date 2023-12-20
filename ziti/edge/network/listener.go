@@ -91,6 +91,8 @@ type edgeListener struct {
 	token       string
 	edgeChan    *edgeConn
 	manualStart bool
+	established atomic.Bool
+	eventC      chan *edge.ListenerEvent
 }
 
 func (listener *edgeListener) UpdateCost(cost uint16) error {
@@ -108,7 +110,7 @@ func (listener *edgeListener) UpdateCostAndPrecedence(cost uint16, precedence ed
 func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
 	logger := pfxlog.Logger().
 		WithField("connId", listener.edgeChan.Id()).
-		WithField("service", listener.edgeChan.serviceId).
+		WithField("serviceName", listener.edgeChan.serviceName).
 		WithField("session", listener.token)
 
 	logger.Debug("sending update bind request to edge router")
@@ -120,7 +122,7 @@ func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *
 func (listener *edgeListener) SendHealthEvent(pass bool) error {
 	logger := pfxlog.Logger().
 		WithField("connId", listener.edgeChan.Id()).
-		WithField("service", listener.edgeChan.serviceId).
+		WithField("serviceName", listener.edgeChan.serviceName).
 		WithField("session", listener.token).
 		WithField("health.status", pass)
 
@@ -131,6 +133,10 @@ func (listener *edgeListener) SendHealthEvent(pass bool) error {
 }
 
 func (listener *edgeListener) Close() error {
+	return listener.close(true)
+}
+
+func (listener *edgeListener) close(closedByRemote bool) error {
 	if !listener.closed.CompareAndSwap(false, true) {
 		// already closed
 		return nil
@@ -143,13 +149,10 @@ func (listener *edgeListener) Close() error {
 		WithField("sessionId", listener.token)
 
 	logger.Debug("removing listener for session")
-	edgeChan.hosting.Delete(listener.token)
+	edgeChan.hosting.Remove(listener.token)
 
 	defer func() {
-		if err := edgeChan.Close(); err != nil {
-			logger.WithError(err).Error("unable to close conn")
-		}
-
+		edgeChan.close(closedByRemote)
 		listener.acceptC <- nil // signal listeners that listener is closed
 	}()
 
@@ -170,6 +173,7 @@ type MultiListener interface {
 	GetServiceName() string
 	GetService() *rest_model.ServiceDetail
 	CloseWithError(err error)
+	GetEstablishedCount() uint
 }
 
 func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
@@ -179,120 +183,134 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 			acceptC: make(chan edge.Conn),
 			errorC:  make(chan error),
 		},
-		listeners:   map[edge.Listener]struct{}{},
-		getSessionF: getSessionF,
+		listeners:      map[*edgeListener]struct{}{},
+		getSessionF:    getSessionF,
+		listenerEventC: make(chan *edge.ListenerEvent, 3),
 	}
 }
 
 type multiListener struct {
 	baseListener
-	listeners            map[edge.Listener]struct{}
+	listeners            map[*edgeListener]struct{}
 	listenerLock         sync.Mutex
 	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
+	listenerEventC       chan *edge.ListenerEvent
 }
 
-func (listener *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
-	listener.listenerEventHandler.Store(handler)
-
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
-	listener.notifyOfConnectionChange()
+func (self *multiListener) GetEstablishedCount() uint {
+	var count uint
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+	for v := range self.listeners {
+		if v.established.Load() {
+			count++
+		}
+	}
+	return count
 }
 
-func (listener *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
-	val := listener.listenerEventHandler.Load()
+func (self *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
+	self.listenerEventHandler.Store(handler)
+
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+	self.notifyOfConnectionChange()
+}
+
+func (self *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
+	val := self.listenerEventHandler.Load()
 	if val == nil {
 		return nil
 	}
 	return val.(func([]edge.Listener))
 }
 
-func (listener *multiListener) SetErrorEventHandler(handler func(error)) {
-	listener.errorEventHandler.Store(handler)
+func (self *multiListener) SetErrorEventHandler(handler func(error)) {
+	self.errorEventHandler.Store(handler)
 }
 
-func (listener *multiListener) GetErrorEventHandler() func(error) {
-	val := listener.errorEventHandler.Load()
+func (self *multiListener) GetErrorEventHandler() func(error) {
+	val := self.errorEventHandler.Load()
 	if val == nil {
 		return nil
 	}
 	return val.(func(error))
 }
 
-func (listener *multiListener) NotifyOfChildError(err error) {
+func (self *multiListener) NotifyOfChildError(err error) {
 	pfxlog.Logger().Infof("notify error handler of error: %v", err)
-	if handler := listener.GetErrorEventHandler(); handler != nil {
+	if handler := self.GetErrorEventHandler(); handler != nil {
 		handler(err)
 	}
 }
 
-func (listener *multiListener) notifyOfConnectionChange() {
-	if handler := listener.GetConnectionChangeHandler(); handler != nil {
+func (self *multiListener) notifyOfConnectionChange() {
+	if handler := self.GetConnectionChangeHandler(); handler != nil {
 		var list []edge.Listener
-		for k := range listener.listeners {
+		for k := range self.listeners {
 			list = append(list, k)
 		}
 		go handler(list)
 	}
 }
 
-func (listener *multiListener) GetCurrentSession() *rest_model.SessionDetail {
-	return listener.getSessionF()
+func (self *multiListener) GetCurrentSession() *rest_model.SessionDetail {
+	return self.getSessionF()
 }
 
-func (listener *multiListener) UpdateCost(cost uint16) error {
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
+func (self *multiListener) UpdateCost(cost uint16) error {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
 
 	var resultErrors []error
-	for child := range listener.listeners {
+	for child := range self.listeners {
 		if err := child.UpdateCost(cost); err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(resultErrors)
+	return self.condenseErrors(resultErrors)
 }
 
-func (listener *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
+func (self *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
 
 	var resultErrors []error
-	for child := range listener.listeners {
+	for child := range self.listeners {
 		if err := child.UpdatePrecedence(precedence); err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(resultErrors)
+	return self.condenseErrors(resultErrors)
 }
 
-func (listener *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
+func (self *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
 
 	var resultErrors []error
-	for child := range listener.listeners {
+	for child := range self.listeners {
 		if err := child.UpdateCostAndPrecedence(cost, precedence); err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}
-	return listener.condenseErrors(resultErrors)
+	return self.condenseErrors(resultErrors)
 }
 
-func (listener *multiListener) SendHealthEvent(pass bool) error {
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
+func (self *multiListener) SendHealthEvent(pass bool) error {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
 
 	// only send to first child, otherwise we get duplicate event reporting
-	for child := range listener.listeners {
+	for child := range self.listeners {
 		return child.SendHealthEvent(pass)
 	}
 	return nil
 }
 
-func (listener *multiListener) condenseErrors(errors []error) error {
+func (self *multiListener) condenseErrors(errors []error) error {
 	if len(errors) == 0 {
 		return nil
 	}
@@ -302,44 +320,44 @@ func (listener *multiListener) condenseErrors(errors []error) error {
 	return MultipleErrors(errors)
 }
 
-func (listener *multiListener) GetServiceName() string {
-	return *listener.service.Name
+func (self *multiListener) GetServiceName() string {
+	return *self.service.Name
 }
 
-func (listener *multiListener) GetService() *rest_model.ServiceDetail {
-	return listener.service
+func (self *multiListener) GetService() *rest_model.ServiceDetail {
+	return self.service
 }
 
-func (listener *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
-	if listener.closed.Load() {
+func (self *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
+	if self.closed.Load() {
 		return
 	}
 
 	edgeListener, ok := netListener.(*edgeListener)
 	if !ok {
-		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(listener))
+		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(self))
 		return
 	}
 
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
-	listener.listeners[edgeListener] = struct{}{}
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+	self.listeners[edgeListener] = struct{}{}
 
 	closer := func() {
-		listener.listenerLock.Lock()
-		defer listener.listenerLock.Unlock()
-		delete(listener.listeners, edgeListener)
+		self.listenerLock.Lock()
+		defer self.listenerLock.Unlock()
+		delete(self.listeners, edgeListener)
 
-		listener.notifyOfConnectionChange()
+		self.notifyOfConnectionChange()
 		go closeHandler()
 	}
 
-	listener.notifyOfConnectionChange()
+	self.notifyOfConnectionChange()
 
-	go listener.forward(edgeListener, closer)
+	go self.forward(edgeListener, closer)
 }
 
-func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {
+func (self *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {
 	defer func() {
 		if err := edgeListener.Close(); err != nil {
 			pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)
@@ -350,24 +368,24 @@ func (listener *multiListener) forward(edgeListener *edgeListener, closeHandler 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
-	for !listener.closed.Load() && !edgeListener.closed.Load() {
+	for !self.closed.Load() && !edgeListener.closed.Load() {
 		select {
 		case conn, ok := <-edgeListener.acceptC:
 			if !ok || conn == nil {
 				// closed, returning
 				return
 			}
-			listener.accept(conn, ticker)
+			self.accept(conn, ticker)
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
 		}
 	}
 }
 
-func (listener *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
-	for !listener.closed.Load() {
+func (self *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
+	for !self.closed.Load() {
 		select {
-		case listener.acceptC <- conn:
+		case self.acceptC <- conn:
 			return
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
@@ -375,38 +393,38 @@ func (listener *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
 	}
 }
 
-func (listener *multiListener) Close() error {
-	listener.closed.Store(true)
+func (self *multiListener) Close() error {
+	self.closed.Store(true)
 
-	listener.listenerLock.Lock()
-	defer listener.listenerLock.Unlock()
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
 
 	var resultErrors []error
-	for child := range listener.listeners {
+	for child := range self.listeners {
 		if err := child.Close(); err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}
 
-	listener.listeners = nil
+	self.listeners = nil
 
 	select {
-	case listener.acceptC <- nil:
+	case self.acceptC <- nil:
 	default:
 		// If the queue is full, bail out, we're just popping a nil on the
 		// accept queue to let it return from accept more quickly
 	}
 
-	return listener.condenseErrors(resultErrors)
+	return self.condenseErrors(resultErrors)
 }
 
-func (listener *multiListener) CloseWithError(err error) {
+func (self *multiListener) CloseWithError(err error) {
 	select {
-	case listener.errorC <- err:
+	case self.errorC <- err:
 	default:
 	}
 
-	listener.closed.Store(true)
+	self.closed.Store(true)
 }
 
 type MultipleErrors []error

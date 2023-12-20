@@ -288,6 +288,7 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 			TLSClientConfig: &tls.Config{
 				RootCAs: caPool,
 			},
+			Proxy: http.ProxyFromEnvironment,
 		},
 	}
 
@@ -319,18 +320,13 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 }
 
 func enrollOTT(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertPool) error {
-
 	pk, err := identity.LoadKey(cfg.ID.Key)
 	if err != nil {
 		return errors.Errorf("failed to load private key '%s': %s", cfg.ID.Key, err.Error())
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	}
 	request, err := certtools.NewCertRequest(map[string]string{
-		"C": "US", "O": "NetFoundry", "CN": hostname,
+		"C": "US", "O": "NetFoundry", "CN": token.Subject,
 	}, nil)
 	if err != nil {
 		return err
@@ -350,6 +346,7 @@ func enrollOTT(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.Cert
 			TLSClientConfig: &tls.Config{
 				RootCAs: caPool,
 			},
+			Proxy: http.ProxyFromEnvironment,
 		},
 	}
 	resp, err := client.Post(token.EnrolmentUrl(), "application/x-pem-file", bytes.NewReader(csrPem))
@@ -431,6 +428,7 @@ func enrollCA(token *ziti.EnrollmentClaims, cfg *ziti.Config, caPool *x509.CertP
 					RootCAs:      caPool,
 					Certificates: []tls.Certificate{*clientCert},
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 		resp, err := client.Post(token.EnrolmentUrl(), "text/plain", bytes.NewReader([]byte{}))
@@ -466,6 +464,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *ziti.Config, caPool *x509.CertPo
 					RootCAs:      caPool,
 					Certificates: []tls.Certificate{*clientCert},
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 
@@ -512,6 +511,7 @@ func enrollCAAuto(enFlags EnrollmentFlags, cfg *ziti.Config, caPool *x509.CertPo
 func FetchServerCert(urlRoot string) (*x509.Certificate, error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		Proxy:           http.ProxyFromEnvironment,
 	}
 	client := &http.Client{Transport: tr}
 
@@ -547,6 +547,7 @@ func FetchCertificates(urlRoot string, rootCaPool *x509.CertPool) []*x509.Certif
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: rootCaPool},
+			Proxy:           http.ProxyFromEnvironment,
 		},
 	}
 

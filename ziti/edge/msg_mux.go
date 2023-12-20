@@ -17,9 +17,11 @@
 package edge
 
 import (
+	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -80,7 +82,7 @@ func (mux *CowMapMsgMux) ContentType() int32 {
 	return ContentTypeData
 }
 
-func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, _ channel.Channel) {
+func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
@@ -90,6 +92,12 @@ func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, _ channel.Channel) 
 	sinks := mux.getSinks()
 	if sink, found := sinks[connId]; found {
 		sink.Accept(msg)
+	} else if msg.ContentType == ContentTypeConnInspectRequest {
+		resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))
+		if err := resp.ReplyTo(msg).Send(ch); err != nil {
+			logrus.WithFields(GetLoggerFields(msg)).WithError(err).
+				Error("failed to send inspect response")
+		}
 	} else {
 		pfxlog.Logger().Debugf("unable to dispatch msg received for unknown edge conn id: %v", connId)
 	}
