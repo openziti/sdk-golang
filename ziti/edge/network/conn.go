@@ -775,5 +775,5 @@ func (self *newConnHandler) dialSucceeded() error {
 func newMarker() string {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
-	return base64.StdEncoding.EncodeToString(b)
+	return base64.URLEncoding.EncodeToString(b)
 }
