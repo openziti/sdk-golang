@@ -29,6 +29,8 @@ import (
 	"github.com/openziti/foundation/v2/info"
 	"github.com/sirupsen/logrus"
 
+	"crypto/rand"
+	"encoding/base64"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -61,6 +63,7 @@ type edgeConn struct {
 	sourceIdentity        string
 	acceptCompleteHandler *newConnHandler
 	connType              ConnType
+	marker                string
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -266,6 +269,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 		pub = conn.keyPair.Public()
 	}
 	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
+	connectRequest.Headers[edge.ConnectionMarkerHeader] = []byte(conn.marker)
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.Channel)
 	if err != nil {
@@ -573,6 +577,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	}
 
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
+	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
@@ -582,9 +587,11 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		crypto:         conn.crypto,
 		appData:        message.Headers[edge.AppDataHeader],
 		connType:       ConnTypeDial,
+		marker:         marker,
 	}
 
 	newConnLogger := pfxlog.Logger().
+		WithField("marker", marker).
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token)
@@ -755,4 +762,11 @@ func (self *newConnHandler) dialSucceeded() error {
 		newConnLogger.Debug("tx crypto established")
 	}
 	return nil
+}
+
+// make a random 8 byte string
+func newMarker() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
 }
