@@ -71,7 +71,7 @@ func getClientAuthInfoOp(credentials Credentials, client *http.Client) func(*run
 		operation.AuthInfo = credentials
 
 		certs := credentials.TlsCerts()
-		
+
 		if len(certs) != 0 {
 			operation.Client = client
 			if transport, ok := operation.Client.Transport.(*http.Transport); ok {

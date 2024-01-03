@@ -1209,7 +1209,7 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 // supplied timeout duration. The requests are sent out concurrently and this function blocks until
 // they all return or timeout. The results are a map of router key -> error or nil.
 func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) map[string]error {
-	var errs map[string]error = nil
+	errs := map[string]error{}
 
 	group := sync.WaitGroup{}
 	for tuple := range context.routerConnections.IterBuffered() {
@@ -1220,9 +1220,6 @@ func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) 
 			err := routerConn.UpdateToken(newToken, timeout)
 
 			if err != nil {
-				if errs == nil {
-					errs = map[string]error{}
-				}
 				errs[routerConn.Key()] = err
 			}
 
@@ -1231,6 +1228,10 @@ func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) 
 	}
 
 	group.Wait()
+
+	if len(errs) == 0 {
+		return nil
+	}
 
 	return errs
 }
