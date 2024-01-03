@@ -27,8 +27,11 @@ import (
 )
 
 type Config struct {
-	//ZtAPI should be in the form of https://<domain>[:<port>]/edge/client/v1
+	//ZtAPI should be in the form of https://<domain>[:<port>]/edge/client/v1. For backwards compatability with single controller identities
 	ZtAPI string `json:"ztAPI"`
+
+	//ZtAPIs is an array of ZtAPI values, supersedes `ZtAPI`. ZtAPIs is used to make an initial connection to a controller.
+	ZtAPIs []string `json:"ztAPIs"`
 
 	//ConfigTypes is an array of string configuration types that will be requested from the controller
 	//for services.

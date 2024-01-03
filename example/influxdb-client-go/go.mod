@@ -115,7 +115,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yosssi/ace v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	go.mongodb.org/mongo-driver v1.12.1 // indirect
+	go.mongodb.org/mongo-driver v1.13.0 // indirect
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352 // indirect
 	go.opentelemetry.io/otel v1.18.0 // indirect
 	go.opentelemetry.io/otel/metric v1.18.0 // indirect

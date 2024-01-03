@@ -33,6 +33,7 @@ import (
 	"net"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -356,9 +357,9 @@ func (context *ContextImpl) AddAuthQueryListener(handler func(Context, *rest_mod
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -378,9 +379,9 @@ func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(C
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -400,9 +401,9 @@ func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Cont
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -596,7 +597,7 @@ func (context *ContextImpl) refreshSessions() {
 		session := entry.Val
 		log.Debugf("refreshing session for %s", key)
 
-		if s, err := context.refreshSession(*session.ID); err != nil {
+		if s, err := context.refreshSession(session); err != nil {
 			log.WithError(err).Errorf("failed to refresh session for %s", key)
 			toDelete = append(toDelete, *session.ID)
 		} else {
@@ -794,7 +795,7 @@ func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, er
 }
 
 func (context *ContextImpl) setUnauthenticated() {
-	prevApiSession := context.CtrlClt.CurrentAPISessionDetail.Swap(nil)
+	prevApiSession := context.CtrlClt.ApiSession.Swap(nil)
 	willEmit := prevApiSession != nil
 
 	context.CtrlClt.ApiSessionCertificate = nil
@@ -820,7 +821,7 @@ func (context *ContextImpl) authenticate() error {
 		return err
 	}
 
-	if len(apiSession.AuthQueries) != 0 {
+	if apiSession.CurrentAPISessionDetail != nil && len(apiSession.AuthQueries) != 0 {
 		context.Emit(EventAuthenticationStatePartial, apiSession)
 		for _, authQuery := range apiSession.AuthQueries {
 			if err := context.handleAuthQuery(authQuery); err != nil {
@@ -835,7 +836,7 @@ func (context *ContextImpl) authenticate() error {
 }
 
 func (context *ContextImpl) Reauthenticate() error {
-	context.CtrlClt.CurrentAPISessionDetail.Store(nil)
+	context.CtrlClt.ApiSession.Store(nil)
 	context.CtrlClt.ApiSessionCertificate = nil
 
 	return context.authenticate()
@@ -868,7 +869,7 @@ func (context *ContextImpl) CloseAllEdgeRouterConns() {
 	}
 }
 
-func (context *ContextImpl) onFullAuth(apiSession *rest_model.CurrentAPISessionDetail) error {
+func (context *ContextImpl) onFullAuth(apiSession *apis.ApiSession) error {
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -906,8 +907,8 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 		return err
 	}
 
-	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && len(currentApiSession.AuthQueries) == 0 {
-		return context.onFullAuth(currentApiSession)
+	if apiSession := context.CtrlClt.ApiSession.Load(); apiSession != nil && len(apiSession.AuthQueries) == 0 {
+		return context.onFullAuth(apiSession)
 	}
 
 	return nil
@@ -976,7 +977,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	var refreshErr error
-	if _, refreshErr = context.refreshSession(*session.ID); refreshErr == nil {
+	if _, refreshErr = context.refreshSession(session); refreshErr == nil {
 		// if the session wasn't expired, no reason to try again, return the failure
 		return nil, errors.Wrapf(err, "unable to dial service '%s'", serviceName)
 	}
@@ -1132,7 +1133,7 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
 	if len(session.EdgeRouters) == 0 {
-		if refreshedSession, err := context.refreshSession(*session.ID); err != nil {
+		if refreshedSession, err := context.refreshSession(session); err != nil {
 			target := &rest_session.DetailSessionNotFound{}
 			if errors.As(err, &target) {
 				sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
@@ -1154,9 +1155,11 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	var bestER edge.RouterConn
 	var unconnected []*rest_model.SessionEdgeRouter
 	for _, edgeRouter := range session.EdgeRouters {
-		for _, routerUrl := range edgeRouter.Urls {
-			if er, found := context.routerConnections.Get(routerUrl); found {
-				h := context.metrics.Histogram("latency." + routerUrl).(metrics2.Histogram)
+		for proto, addr := range edgeRouter.SupportedProtocols {
+			addr = strings.Replace(addr, "://", ":", 1)
+			edgeRouter.SupportedProtocols[proto] = addr
+			if er, found := context.routerConnections.Get(addr); found {
+				h := context.metrics.Histogram("latency." + addr).(metrics2.Histogram)
 				if h.Mean() < float64(bestLatency) {
 					bestLatency = time.Duration(int64(h.Mean()))
 					bestER = er
@@ -1173,9 +1176,9 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	}
 
 	for _, edgeRouter := range unconnected {
-		for _, routerUrl := range edgeRouter.Urls {
-			if context.options.isEdgeRouterUrlAccepted(routerUrl) {
-				go context.connectEdgeRouter(*edgeRouter.Name, routerUrl, ch)
+		for _, addr := range edgeRouter.SupportedProtocols {
+			if context.options.isEdgeRouterUrlAccepted(addr) {
+				go context.connectEdgeRouter(*edgeRouter.Name, addr, ch)
 			}
 		}
 	}
@@ -1198,6 +1201,49 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 			return nil, errors.New("no edge routers connected in time")
 		}
 	}
+}
+
+// updateToken attempts to update all connected edge router tokens. Each update is bounded by the
+// supplied timeout duration. The requests are sent out concurrently and this function blocks until
+// they all return or timeout. The results are a map of router key -> error or nil.
+func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) map[string]error {
+	errs := map[string]error{}
+
+	group := sync.WaitGroup{}
+	for tuple := range context.routerConnections.IterBuffered() {
+		routerConn := tuple.Val
+		group.Add(1)
+
+		go func() {
+			err := routerConn.UpdateToken(newToken, timeout)
+
+			if err != nil {
+				errs[routerConn.Key()] = err
+			}
+
+			group.Done()
+		}()
+	}
+
+	group.Wait()
+
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
+}
+
+// updateTokenCh provides the same functionality as updateToken but is non-blocking. The chan result is a map of
+// router keys -> error values or nil.
+func (context *ContextImpl) updateTokenCh(newToken string, timeout time.Duration) chan map[string]error {
+	ch := make(chan map[string]error, 1)
+
+	go func() {
+		errs := context.updateToken(newToken, timeout)
+		ch <- errs
+	}()
+
+	return ch
 }
 
 func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
@@ -1232,7 +1278,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Debugf("connection to edge router using api session token %v", *currentApiSession.Token)
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", currentApiSession.GetToken())
 	id, err := context.CtrlClt.GetIdentity()
 
 	if err != nil {
@@ -1240,7 +1286,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 	}
 
 	dialer := channel.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: []byte(*currentApiSession.Token),
+		edge.SessionTokenHeader: context.CtrlClt.GetCurrentApiSession().GetToken(),
 	})
 
 	start := time.Now().UnixNano()
@@ -1460,17 +1506,25 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 	return session, nil
 }
 
-func (context *ContextImpl) refreshSession(id string) (*rest_model.SessionDetail, error) {
-	session, err := context.CtrlClt.GetSession(id)
+func (context *ContextImpl) refreshSession(session *rest_model.SessionDetail) (*rest_model.SessionDetail, error) {
+	var refreshedSession *rest_model.SessionDetail
+	var err error
+	if strings.HasPrefix(*session.Token, apis.JwtTokenPrefix) {
+		refreshedSession, err = context.CtrlClt.GetSessionFromJwt(*session.Token)
+	} else {
+		refreshedSession, err = context.CtrlClt.GetSession(*session.ID)
+	}
+
 	if err != nil {
 		return nil, err
 	}
-	context.cacheSession("refresh", session)
-	return session, nil
+
+	context.cacheSession("refresh", refreshedSession)
+	return refreshedSession, nil
 }
 
 func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionDetail) {
-	sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
+	sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
 
 	if *session.Type == SessionDial {
 		if op == "create" {
@@ -1790,7 +1844,13 @@ func (mgr *listenerManager) makeMoreListeners() {
 }
 
 func (mgr *listenerManager) refreshSession() {
-	session, err := mgr.context.refreshSession(*mgr.session.ID)
+	if mgr.session == nil {
+		mgr.createSessionWithBackoff()
+		return
+	}
+
+	session, err := mgr.context.refreshSession(mgr.session)
+
 	if err != nil {
 		var target error = &rest_session.DetailSessionNotFound{}
 		if errors.As(err, &target) {
@@ -1811,7 +1871,7 @@ func (mgr *listenerManager) refreshSession() {
 			}
 		}
 
-		session, err = mgr.context.refreshSession(*mgr.session.ID)
+		session, err = mgr.context.refreshSession(mgr.session)
 		if err != nil {
 			target = &rest_session.DetailSessionUnauthorized{}
 			if errors.As(err, &target) {

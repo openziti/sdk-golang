@@ -27,6 +27,7 @@ package ziti
 
 import (
 	"github.com/kataras/go-events"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	edge_apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -94,16 +95,52 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
 	}
 
-	apiUrl, err := url.Parse(cfg.ZtAPI)
+	var apiStrs []string
+	if len(cfg.ZtAPIs) > 0 {
+		apiStrs = cfg.ZtAPIs
+	} else {
+		apiStrs = []string{cfg.ZtAPI}
+	}
 
-	if err != nil {
-		return nil, errors.Wrap(err, "could not parse ZtAPI from configuration as URI")
+	var apiUrls []*url.URL
+	for _, apiStr := range apiStrs {
+		apiUrl, err := url.Parse(cfg.ZtAPI)
+
+		if err != nil {
+			return nil, errors.Wrapf(err, "could not parse ZtAPI from configuration as URI: %s", apiStr)
+		}
+
+		apiUrls = append(apiUrls, apiUrl)
 	}
 
 	newContext.CtrlClt = &CtrlClient{
-		ClientApiClient: edge_apis.NewClientApiClient(apiUrl, cfg.Credentials.GetCaPool()),
-		Credentials:     cfg.Credentials,
-		ConfigTypes:     cfg.ConfigTypes,
+		ClientApiClient: edge_apis.NewClientApiClient(apiUrls[0], cfg.Credentials.GetCaPool(), func(codeCh chan string) {
+			provider := rest_model.MfaProvidersZiti
+
+			authQuery := &rest_model.AuthQueryDetail{
+				Provider: &provider,
+			}
+
+			newContext.Emit(EventAuthQuery, authQuery)
+
+			if *authQuery.Provider == rest_model.MfaProvidersZiti {
+				handler := newContext.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
+
+				newContext.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(newContext.authenticateMfa))
+
+				if handler == nil {
+					pfxlog.Logger().Errorf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
+					return
+				}
+
+				_ = handler(authQuery, func(code string) error {
+					codeCh <- code
+					return nil
+				})
+			}
+		}),
+		Credentials: cfg.Credentials,
+		ConfigTypes: cfg.ConfigTypes,
 	}
 
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)

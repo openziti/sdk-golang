@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package ziti.edge_client.pb;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/openziti/sdk-golang/pb/edge_client_pb";
+
+enum ContentType {
+  Zero = 0;
+  ConnectType            = 60783;
+  StateConnectedType     = 60784;
+  StateClosedType        = 60785;
+  DataType               = 60786;
+  DialType               = 60787;
+  DialSuccessType        = 60788;
+  DialFailedType         = 60789;
+  BindType               = 60790;
+  UnbindType             = 60791;
+  StateSessionEndedType  = 60792;
+  ProbeType              = 60793;
+  UpdateBindType         = 60794;
+  HealthEventType        = 60795;
+  TraceRouteType         = 60796;
+  TraceRouteResponseType = 60797;
+
+  UpdateTokenType        = 60800;
+  UpdateTokenSuccessType = 60801;
+  UpdateTokenFailureType = 60802;
+
+  PostureResponseType = 10800;
+  PostureResponseSuccessType = 10801;
+}
+
+message PostureResponses {
+  repeated PostureResponse responses = 1;
+}
+
+message PostureResponse {
+  oneof Type {
+    Macs macs = 1;
+    OperatingSystem os = 2;
+    ProcessList processList = 3;
+    Domain domain = 4;
+    Woken woken = 5;
+    Unlocked unlocked = 6;
+    SdkInfo sdkInfo = 7;
+  };
+
+
+  message Macs {
+    repeated string addresses = 1;
+  }
+
+  message OperatingSystem {
+    string type  = 1;
+    string version = 2;
+    string build = 3;
+  }
+
+  message Domain {
+    string name = 1;
+  }
+
+  message Process {
+    string path = 1;
+    bool isRunning = 2;
+    string hash = 3;
+    repeated string signerFingerprints = 4;
+  }
+
+  message ProcessList {
+    repeated Process processes = 1;
+  }
+
+  message Woken {
+    google.protobuf.Timestamp Time = 1;
+  }
+
+  message Unlocked {
+    google.protobuf.Timestamp Time = 1;
+  }
+
+  message SdkInfo {
+    string appId       = 1;
+    string appVersion = 2;
+    string branch     = 3;
+    string revision   = 4;
+    string type       = 5;
+    string version    = 6;
+  }
+}

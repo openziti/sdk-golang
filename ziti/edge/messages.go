@@ -20,26 +20,34 @@ import (
 	"encoding/binary"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/foundation/v2/uuidz"
+	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	ContentTypeConnect             = 60783
-	ContentTypeStateConnected      = 60784
-	ContentTypeStateClosed         = 60785
-	ContentTypeData                = 60786
-	ContentTypeDial                = 60787
-	ContentTypeDialSuccess         = 60788
-	ContentTypeDialFailed          = 60789
-	ContentTypeBind                = 60790
-	ContentTypeUnbind              = 60791
-	ContentTypeStateSessionEnded   = 60792
-	ContentTypeProbe               = 60793
-	ContentTypeUpdateBind          = 60794
-	ContentTypeHealthEvent         = 60795
-	ContentTypeTraceRoute          = 60796
-	ContentTypeTraceRouteResponse  = 60797
+	ContentTypeConnect            = int32(edge_client_pb.ContentType_ConnectType)
+	ContentTypeStateConnected     = int32(edge_client_pb.ContentType_StateConnectedType)
+	ContentTypeStateClosed        = int32(edge_client_pb.ContentType_StateClosedType)
+	ContentTypeData               = int32(edge_client_pb.ContentType_DataType)
+	ContentTypeDial               = int32(edge_client_pb.ContentType_DialType)
+	ContentTypeDialSuccess        = int32(edge_client_pb.ContentType_DialSuccessType)
+	ContentTypeDialFailed         = int32(edge_client_pb.ContentType_DialFailedType)
+	ContentTypeBind               = int32(edge_client_pb.ContentType_BindType)
+	ContentTypeUnbind             = int32(edge_client_pb.ContentType_UnbindType)
+	ContentTypeStateSessionEnded  = int32(edge_client_pb.ContentType_StateSessionEndedType)
+	ContentTypeProbe              = int32(edge_client_pb.ContentType_ProbeType)
+	ContentTypeUpdateBind         = int32(edge_client_pb.ContentType_UpdateBindType)
+	ContentTypeHealthEvent        = int32(edge_client_pb.ContentType_HealthEventType)
+	ContentTypeTraceRoute         = int32(edge_client_pb.ContentType_TraceRouteType)
+	ContentTypeTraceRouteResponse = int32(edge_client_pb.ContentType_TraceRouteResponseType)
+
+	ContentTypeUpdateToken        = int32(edge_client_pb.ContentType_UpdateTokenType)
+	ContentTypeUpdateTokenSuccess = int32(edge_client_pb.ContentType_UpdateTokenSuccessType)
+	ContentTypeUpdateTokenFailure = int32(edge_client_pb.ContentType_UpdateTokenFailureType)
+
+	ContentTypePostureResponse = int32(edge_client_pb.ContentType_PostureResponseType)
+
 	ContentTypeConnInspectRequest  = 60798
 	ContentTypeConnInspectResponse = 60799
 	ContentTypeBindSuccess         = 60800
@@ -87,14 +95,14 @@ const (
 	PrecedenceRequired Precedence = 1
 	PrecedenceFailed   Precedence = 2
 
-	// Put this in the reflected range so replies will share the same UUID
+	// UUIDHeader is put in the reflected range so replies will share the same UUID
 	UUIDHeader = 128
 
-	// Crypto Methods
+	// CryptoMethodLibsodium are used to indicate the crypto engine in use
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
 	CryptoMethodSSL       CryptoMethod = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
 
-	// Edge Payload flags
+	// FIN is an edge payload flag used to signal communication ends
 	FIN = 0x1
 )
 
@@ -103,28 +111,35 @@ type CryptoMethod byte
 type Precedence byte
 
 var ContentTypeValue = map[string]int32{
-	"EdgeConnectType":        ContentTypeConnect,
-	"EdgeStateConnectedType": ContentTypeStateConnected,
-	"EdgeStateClosedType":    ContentTypeStateClosed,
-	"EdgeDataType":           ContentTypeData,
-	"EdgeDialType":           ContentTypeDial,
-	"EdgeDialSuccessType":    ContentTypeDialSuccess,
-	"EdgeDialFailedType":     ContentTypeDialFailed,
-	"EdgeBindType":           ContentTypeBind,
-	"EdgeUnbindType":         ContentTypeUnbind,
+	"EdgeConnectType":            ContentTypeConnect,
+	"EdgeStateConnectedType":     ContentTypeStateConnected,
+	"EdgeStateClosedType":        ContentTypeStateClosed,
+	"EdgeDataType":               ContentTypeData,
+	"EdgeDialType":               ContentTypeDial,
+	"EdgeDialSuccessType":        ContentTypeDialSuccess,
+	"EdgeDialFailedType":         ContentTypeDialFailed,
+	"EdgeBindType":               ContentTypeBind,
+	"EdgeUnbindType":             ContentTypeUnbind,
+	"EdgeProbeType":              ContentTypeProbe,
+	"EdgeUpdateTokenType":        ContentTypeUpdateToken,
+	"EdgeUpdateTokenSuccessType": ContentTypeUpdateTokenSuccess,
+	"EdgeUpdateTokenFailureType": ContentTypeUpdateTokenFailure,
 }
 
 var ContentTypeNames = map[int32]string{
-	ContentTypeConnect:        "EdgeConnectType",
-	ContentTypeStateConnected: "EdgeStateConnectedType",
-	ContentTypeStateClosed:    "EdgeStateClosedType",
-	ContentTypeData:           "EdgeDataType",
-	ContentTypeDial:           "EdgeDialType",
-	ContentTypeDialSuccess:    "EdgeDialSuccessType",
-	ContentTypeDialFailed:     "EdgeDialFailedType",
-	ContentTypeBind:           "EdgeBindType",
-	ContentTypeUnbind:         "EdgeUnbindType",
-	ContentTypeProbe:          "EdgeProbeType",
+	ContentTypeConnect:            "EdgeConnectType",
+	ContentTypeStateConnected:     "EdgeStateConnectedType",
+	ContentTypeStateClosed:        "EdgeStateClosedType",
+	ContentTypeData:               "EdgeDataType",
+	ContentTypeDial:               "EdgeDialType",
+	ContentTypeDialSuccess:        "EdgeDialSuccessType",
+	ContentTypeDialFailed:         "EdgeDialFailedType",
+	ContentTypeBind:               "EdgeBindType",
+	ContentTypeUnbind:             "EdgeUnbindType",
+	ContentTypeProbe:              "EdgeProbeType",
+	ContentTypeUpdateToken:        "EdgeUpdateTokenType",
+	ContentTypeUpdateTokenSuccess: "EdgeUpdateTokenSuccessType",
+	ContentTypeUpdateTokenFailure: "EdgeUpdateTokenFailureType",
 }
 
 type MsgEvent struct {
@@ -277,6 +292,28 @@ func NewDialFailedMsg(connId uint32, message string) *channel.Message {
 
 func NewStateSessionEndedMsg(reason string) *channel.Message {
 	return newMsg(ContentTypeStateSessionEnded, 0, 0, []byte(reason))
+}
+
+// NewUpdateTokenMsg creates a message sent to edge routers to update the token that
+// allows the client to stay connection. If the token is not update before the current
+// one expires, the connection and all service connections through it will be terminated.
+func NewUpdateTokenMsg(token []byte) *channel.Message {
+	msg := channel.NewMessage(ContentTypeUpdateToken, token)
+	return msg
+}
+
+// NewUpdateTokenFailedMsg is returned in response to a token update where the token failed
+// validation.
+func NewUpdateTokenFailedMsg(err error) *channel.Message {
+	msg := channel.NewMessage(ContentTypeUpdateTokenFailure, []byte(err.Error()))
+	return msg
+}
+
+// NewUpdateTokenSuccessMsg is returned in response to a toke update where the token
+// was accepted.
+func NewUpdateTokenSuccessMsg() *channel.Message {
+	msg := channel.NewMessage(ContentTypeUpdateTokenSuccess, nil)
+	return msg
 }
 
 type DialResult struct {

@@ -19,24 +19,23 @@ package network
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/openziti/edge-api/rest_model"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"io"
 	"net"
 	"sync/atomic"
 	"time"
 
-	"github.com/openziti/foundation/v2/info"
-	"github.com/sirupsen/logrus"
-
 	"crypto/rand"
 	"encoding/base64"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
+	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var unsupportedCrypto = errors.New("unsupported crypto")
