@@ -186,8 +186,6 @@ type ContextImpl struct {
 	closeNotify       chan struct{}
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
 
-	failedAttempts map[string]uint
-
 	events.EventEmmiter
 }
 
@@ -1526,7 +1524,7 @@ func (context *ContextImpl) refreshSession(session *rest_model.SessionDetail) (*
 }
 
 func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionDetail) {
-	sessionKey := fmt.Sprintf("%s:%s", session.ServiceID, *session.Type)
+	sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
 
 	if *session.Type == SessionDial {
 		if op == "create" {
