@@ -77,6 +77,7 @@ const (
 	ConnTypeHeader                 = 1022
 	SupportsInspectHeader          = 1023
 	SupportsBindSuccessHeader      = 1024
+	ConnectionMarkerHeader         = 1025
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2

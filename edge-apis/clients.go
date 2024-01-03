@@ -76,7 +76,8 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		self.ApiSession.Store(apiSession)
 
 		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			if currentSession := self.ApiSession.Load(); currentSession != nil && currentSession.Token != nil {
+			currentSession := self.ApiSession.Load()
+			if currentSession != nil && currentSession.GetToken() != nil {
 				if err := currentSession.AuthenticateRequest(request, registry); err != nil {
 					return err
 				}

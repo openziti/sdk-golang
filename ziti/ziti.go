@@ -359,9 +359,9 @@ func (context *ContextImpl) AddAuthQueryListener(handler func(Context, *rest_mod
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -381,9 +381,9 @@ func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(C
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -403,9 +403,9 @@ func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Cont
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *rest_model.CurrentAPISessionDetail)) func() {
+func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*rest_model.CurrentAPISessionDetail)
+		apiSession, ok := args[0].(*apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -834,7 +834,7 @@ func (context *ContextImpl) authenticate() error {
 		return nil
 	}
 
-	return context.onFullAuth(apiSession.CurrentAPISessionDetail)
+	return context.onFullAuth(apiSession)
 }
 
 func (context *ContextImpl) Reauthenticate() error {
@@ -871,7 +871,7 @@ func (context *ContextImpl) CloseAllEdgeRouterConns() {
 	}
 }
 
-func (context *ContextImpl) onFullAuth(apiSession *rest_model.CurrentAPISessionDetail) error {
+func (context *ContextImpl) onFullAuth(apiSession *apis.ApiSession) error {
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -910,7 +910,7 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 	}
 
 	if apiSession := context.CtrlClt.ApiSession.Load(); apiSession != nil && len(apiSession.AuthQueries) == 0 {
-		return context.onFullAuth(apiSession.CurrentAPISessionDetail)
+		return context.onFullAuth(apiSession)
 	}
 
 	return nil
@@ -1280,7 +1280,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret
 		return
 	}
 
-	pfxlog.Logger().Debugf("connection to edge router using api session token %v", *currentApiSession.Token)
+	pfxlog.Logger().Debugf("connection to edge router using api session token %v", currentApiSession.GetToken())
 	id, err := context.CtrlClt.GetIdentity()
 
 	if err != nil {

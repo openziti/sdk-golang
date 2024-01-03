@@ -120,7 +120,7 @@ func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configType
 		}
 		versionParams := manInfo.NewListVersionParams()
 
-		versionResp, _ := self.Informational.ListVersion(versionParams, nil)
+		versionResp, _ := self.Informational.ListVersion(versionParams)
 
 		if versionResp != nil {
 			self.versionInfo = versionResp.Payload.Data
@@ -140,6 +140,14 @@ func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes 
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
 	params.Auth.ConfigTypes = append(params.Auth.ConfigTypes, configTypes...)
+
+	certs := credentials.TlsCerts()
+	if len(certs) != 0 {
+		if transport, ok := httpClient.Transport.(*http.Transport); ok {
+			transport.TLSClientConfig.Certificates = certs
+			transport.CloseIdleConnections()
+		}
+	}
 
 	resp, err := self.Authentication.Authenticate(params, getClientAuthInfoOp(credentials, httpClient))
 
@@ -233,6 +241,14 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
 	params.Auth.ConfigTypes = append(params.Auth.ConfigTypes, configTypes...)
+
+	certs := credentials.TlsCerts()
+	if len(certs) != 0 {
+		if transport, ok := httpClient.Transport.(*http.Transport); ok {
+			transport.TLSClientConfig.Certificates = certs
+			transport.CloseIdleConnections()
+		}
+	}
 
 	resp, err := self.Authentication.Authenticate(params, getClientAuthInfoOp(credentials, httpClient))
 
