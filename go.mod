@@ -7,7 +7,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.26.2
-	github.com/go-openapi/strfmt v0.21.10
+	github.com/go-openapi/strfmt v0.22.0
 	github.com/go-resty/resty/v2 v2.10.0
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/golang/protobuf v1.5.3
