@@ -1232,7 +1232,6 @@ func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) 
 	if len(errs) == 0 {
 		return nil
 	}
-
 	return errs
 }
 

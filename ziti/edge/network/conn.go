@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"crypto/rand"
+	"encoding/base64"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v2"
 	"github.com/openziti/edge-api/rest_model"
@@ -60,6 +62,7 @@ type edgeConn struct {
 	sourceIdentity        string
 	acceptCompleteHandler *newConnHandler
 	connType              ConnType
+	marker                string
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -249,7 +252,7 @@ func (conn *edgeConn) HandleMuxClose() error {
 }
 
 func (conn *edgeConn) HandleClose(channel.Channel) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id())
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
 	conn.readQ.Close()
 	conn.closed.Store(true)
@@ -258,13 +261,17 @@ func (conn *edgeConn) HandleClose(channel.Channel) {
 }
 
 func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("sessionId", session.ID)
+	logger := pfxlog.Logger().
+		WithField("marker", conn.marker).
+		WithField("connId", conn.Id()).
+		WithField("sessionId", session.ID)
 
 	var pub []byte
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
 	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
+	connectRequest.Headers[edge.ConnectionMarkerHeader] = []byte(conn.marker)
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.Channel)
 	if err != nil {
@@ -327,7 +334,10 @@ func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte,
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
-	pfxlog.Logger().WithField("connId", conn.Id()).Debug("crypto established")
+	pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("marker", conn.marker).
+		Debug("crypto established")
 	return nil
 }
 
@@ -424,7 +434,7 @@ func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
 }
 
 func (conn *edgeConn) Read(p []byte) (int, error) {
-	log := pfxlog.Logger().WithField("connId", conn.Id())
+	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	if conn.closed.Load() {
 		return 0, io.EOF
 	}
@@ -518,7 +528,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
 
-	log := pfxlog.Logger().WithField("connId", conn.Id())
+	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
@@ -572,6 +582,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	}
 
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
+	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
@@ -581,9 +592,11 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		crypto:         conn.crypto,
 		appData:        message.Headers[edge.AppDataHeader],
 		connType:       ConnTypeDial,
+		marker:         marker,
 	}
 
 	newConnLogger := pfxlog.Logger().
+		WithField("marker", marker).
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token)
@@ -721,6 +734,7 @@ func (self *newConnHandler) dialSucceeded() error {
 
 	newConnLogger := pfxlog.Logger().
 		WithField("connId", self.edgeCh.Id()).
+		WithField("marker", self.edgeCh.marker).
 		WithField("parentConnId", self.conn.Id()).
 		WithField("token", token)
 
@@ -754,4 +768,11 @@ func (self *newConnHandler) dialSucceeded() error {
 		newConnLogger.Debug("tx crypto established")
 	}
 	return nil
+}
+
+// make a random 8 byte string
+func newMarker() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
 }

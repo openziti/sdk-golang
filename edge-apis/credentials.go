@@ -35,9 +35,6 @@ type Credentials interface {
 	// provided token should be the base64 encoded version of the token.
 	AddJWT(string)
 
-	// AuthenticateRequest authenticates an outgoing request.
-	AuthenticateRequest(runtime.ClientRequest, strfmt.Registry) error
-
 	// ClientAuthInfoWriter is used to pass a Credentials instance to the openapi runtime to authenticate outgoing
 	//requests.
 	runtime.ClientAuthInfoWriter
