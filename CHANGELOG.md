@@ -1,3 +1,7 @@
+# Release 0.22.8
+
+- Deprecate ListenOptions.MaxConnections in favor of ListenOptions.MaxTerminators
+
 # Release 0.22.0
 
 - Add SessionRefreshInterval to DialOptions, with a default of 1 hour.

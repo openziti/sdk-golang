@@ -1109,7 +1109,11 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	edgeListenOptions.Cost = options.Cost
 	edgeListenOptions.Precedence = edge.Precedence(options.Precedence)
 	edgeListenOptions.ConnectTimeout = options.ConnectTimeout
-	edgeListenOptions.MaxConnections = options.MaxConnections
+	if options.MaxTerminators != 0 {
+		edgeListenOptions.MaxTerminators = options.MaxTerminators
+	} else {
+		edgeListenOptions.MaxTerminators = options.MaxConnections
+	}
 	edgeListenOptions.Identity = options.Identity
 	edgeListenOptions.BindUsingEdgeIdentity = options.BindUsingEdgeIdentity
 	edgeListenOptions.ManualStart = options.ManualStart
@@ -1118,8 +1122,8 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.ConnectTimeout = time.Minute
 	}
 
-	if edgeListenOptions.MaxConnections < 1 {
-		edgeListenOptions.MaxConnections = 1
+	if edgeListenOptions.MaxTerminators < 1 {
+		edgeListenOptions.MaxTerminators = 1
 	}
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
@@ -1719,7 +1723,7 @@ func (mgr *listenerManager) run() {
 		var refreshSessionTimer *time.Timer
 		if len(mgr.session.EdgeRouters) == 0 {
 			refreshSessionTimer = time.NewTimer(refreshSessionTimerInterval)
-		} else if len(mgr.session.EdgeRouters) < mgr.options.MaxConnections {
+		} else if len(mgr.session.EdgeRouters) < mgr.options.MaxTerminators {
 			if refreshSessionTimerInterval < 5*time.Minute {
 				refreshSessionTimerInterval = 5 * time.Minute
 			}
@@ -1769,7 +1773,7 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 		return
 	}
 
-	if len(mgr.routerConnections) < mgr.options.MaxConnections {
+	if len(mgr.routerConnections) < mgr.options.MaxTerminators {
 		if _, ok := mgr.routerConnections[routerConnection.GetRouterName()]; !ok {
 			mgr.routerConnections[routerConnection.GetRouterName()] = routerConnection
 			pfxlog.Logger().
@@ -1817,7 +1821,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 }
 
 func (mgr *listenerManager) makeMoreListeners() {
-	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
+	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxTerminators || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
 		return
 	}
 

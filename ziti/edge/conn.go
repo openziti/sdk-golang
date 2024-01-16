@@ -226,7 +226,7 @@ type ListenOptions struct {
 	Cost                  uint16
 	Precedence            Precedence
 	ConnectTimeout        time.Duration
-	MaxConnections        int
+	MaxTerminators        int
 	Identity              string
 	IdentitySecret        string
 	BindUsingEdgeIdentity bool
@@ -245,7 +245,7 @@ func (options *ListenOptions) GetConnectTimeout() time.Duration {
 }
 
 func (options *ListenOptions) String() string {
-	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxConnections)
+	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxTerminators)
 }
 
 type ListenerEventType int
