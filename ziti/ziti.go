@@ -1207,49 +1207,6 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	}
 }
 
-// updateToken attempts to update all connected edge router tokens. Each update is bounded by the
-// supplied timeout duration. The requests are sent out concurrently and this function blocks until
-// they all return or timeout. The results are a map of router key -> error or nil.
-func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) map[string]error {
-	errs := map[string]error{}
-
-	group := sync.WaitGroup{}
-	for tuple := range context.routerConnections.IterBuffered() {
-		routerConn := tuple.Val
-		group.Add(1)
-
-		go func() {
-			err := routerConn.UpdateToken(newToken, timeout)
-
-			if err != nil {
-				errs[routerConn.Key()] = err
-			}
-
-			group.Done()
-		}()
-	}
-
-	group.Wait()
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errs
-}
-
-// updateTokenCh provides the same functionality as updateToken but is non-blocking. The chan result is a map of
-// router keys -> error values or nil.
-func (context *ContextImpl) updateTokenCh(newToken string, timeout time.Duration) chan map[string]error {
-	ch := make(chan map[string]error, 1)
-
-	go func() {
-		errs := context.updateToken(newToken, timeout)
-		ch <- errs
-	}()
-
-	return ch
-}
-
 func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
 	logger := pfxlog.Logger()
 
