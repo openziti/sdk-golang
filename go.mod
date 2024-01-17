@@ -18,9 +18,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.113
 	github.com/openziti/edge-api v0.26.8
-	github.com/openziti/foundation/v2 v2.0.35
+	github.com/openziti/foundation/v2 v2.0.36
 	github.com/openziti/identity v1.0.68
-	github.com/openziti/metrics v1.2.41
+	github.com/openziti/metrics v1.2.42
 	github.com/openziti/secretstream v0.1.15
 	github.com/openziti/transport/v2 v2.0.119
 	github.com/orcaman/concurrent-map/v2 v2.0.1
