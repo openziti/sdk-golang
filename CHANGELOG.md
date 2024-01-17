@@ -1,4 +1,4 @@
-# Release 0.22.8
+# Release 0.22.12
 
 - Deprecate ListenOptions.MaxConnections in favor of ListenOptions.MaxTerminators
 
