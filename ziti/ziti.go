@@ -1109,7 +1109,11 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	edgeListenOptions.Cost = options.Cost
 	edgeListenOptions.Precedence = edge.Precedence(options.Precedence)
 	edgeListenOptions.ConnectTimeout = options.ConnectTimeout
-	edgeListenOptions.MaxConnections = options.MaxConnections
+	if options.MaxTerminators != 0 {
+		edgeListenOptions.MaxTerminators = options.MaxTerminators
+	} else {
+		edgeListenOptions.MaxTerminators = options.MaxConnections
+	}
 	edgeListenOptions.Identity = options.Identity
 	edgeListenOptions.BindUsingEdgeIdentity = options.BindUsingEdgeIdentity
 	edgeListenOptions.ManualStart = options.ManualStart
@@ -1118,8 +1122,8 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.ConnectTimeout = time.Minute
 	}
 
-	if edgeListenOptions.MaxConnections < 1 {
-		edgeListenOptions.MaxConnections = 1
+	if edgeListenOptions.MaxTerminators < 1 {
+		edgeListenOptions.MaxTerminators = 1
 	}
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
@@ -1201,49 +1205,6 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 			return nil, errors.New("no edge routers connected in time")
 		}
 	}
-}
-
-// updateToken attempts to update all connected edge router tokens. Each update is bounded by the
-// supplied timeout duration. The requests are sent out concurrently and this function blocks until
-// they all return or timeout. The results are a map of router key -> error or nil.
-func (context *ContextImpl) updateToken(newToken string, timeout time.Duration) map[string]error {
-	errs := map[string]error{}
-
-	group := sync.WaitGroup{}
-	for tuple := range context.routerConnections.IterBuffered() {
-		routerConn := tuple.Val
-		group.Add(1)
-
-		go func() {
-			err := routerConn.UpdateToken(newToken, timeout)
-
-			if err != nil {
-				errs[routerConn.Key()] = err
-			}
-
-			group.Done()
-		}()
-	}
-
-	group.Wait()
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errs
-}
-
-// updateTokenCh provides the same functionality as updateToken but is non-blocking. The chan result is a map of
-// router keys -> error values or nil.
-func (context *ContextImpl) updateTokenCh(newToken string, timeout time.Duration) chan map[string]error {
-	ch := make(chan map[string]error, 1)
-
-	go func() {
-		errs := context.updateToken(newToken, timeout)
-		ch <- errs
-	}()
-
-	return ch
 }
 
 func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string, ret chan *edgeRouterConnResult) {
@@ -1719,7 +1680,7 @@ func (mgr *listenerManager) run() {
 		var refreshSessionTimer *time.Timer
 		if len(mgr.session.EdgeRouters) == 0 {
 			refreshSessionTimer = time.NewTimer(refreshSessionTimerInterval)
-		} else if len(mgr.session.EdgeRouters) < mgr.options.MaxConnections {
+		} else if len(mgr.session.EdgeRouters) < mgr.options.MaxTerminators {
 			if refreshSessionTimerInterval < 5*time.Minute {
 				refreshSessionTimerInterval = 5 * time.Minute
 			}
@@ -1769,7 +1730,7 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 		return
 	}
 
-	if len(mgr.routerConnections) < mgr.options.MaxConnections {
+	if len(mgr.routerConnections) < mgr.options.MaxTerminators {
 		if _, ok := mgr.routerConnections[routerConnection.GetRouterName()]; !ok {
 			mgr.routerConnections[routerConnection.GetRouterName()] = routerConnection
 			pfxlog.Logger().
@@ -1817,7 +1778,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 }
 
 func (mgr *listenerManager) makeMoreListeners() {
-	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxConnections || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
+	if mgr.listener.IsClosed() || len(mgr.routerConnections) >= mgr.options.MaxTerminators || len(mgr.session.EdgeRouters) <= len(mgr.routerConnections) {
 		return
 	}
 

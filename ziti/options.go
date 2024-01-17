@@ -61,13 +61,42 @@ func (d DialOptions) GetConnectTimeout() time.Duration {
 }
 
 type ListenOptions struct {
-	Cost                         uint16
-	Precedence                   Precedence
-	ConnectTimeout               time.Duration
-	MaxConnections               int
-	Identity                     string
-	BindUsingEdgeIdentity        bool
-	ManualStart                  bool
+	// Initial static cost assigned to terminators for this service
+	Cost uint16
+
+	// Initial precedence assigned to terminators for this service
+	Precedence Precedence
+
+	// When using WaitForNEstablishedListeners, how long to wait before giving
+	// if N listeners can't be established
+	ConnectTimeout time.Duration
+
+	// Maximum number of terminators to establish. If a value less than 1 is provided,
+	// will default to 1. At most one terminator will be established per available
+	// edge router. If both MaxConnections and MaxTerminators have non-zer values,
+	// the value from MaxTerminators will be used
+	//
+	// Deprecated: used MaxTerminators instead.
+	MaxConnections int
+
+	// Maximum number of terminators to establish. If a value less than 1 is provided,
+	// will default to 1. At most one terminator will be established per available
+	// edge router. If both MaxConnections and MaxTerminators have non-zer values,
+	// the value from MaxTerminators will be used
+	MaxTerminators int
+
+	// Instance name to assign to terminators for this service
+	Identity string
+
+	// Assign the name of the edge identity hosting the service to the terminator's instance name
+	// Overrides any name specified using the Identity field in ListenOptions
+	BindUsingEdgeIdentity bool
+
+	// If set to true, requires that AcceptEdge is called on the edge.Listener
+	ManualStart bool
+
+	// Wait for N listeners before returning from the Listen call. By default it will return
+	// before any listeners have been established.
 	WaitForNEstablishedListeners uint
 }
 
@@ -76,6 +105,6 @@ func DefaultListenOptions() *ListenOptions {
 		Cost:           0,
 		Precedence:     PrecedenceDefault,
 		ConnectTimeout: 5 * time.Second,
-		MaxConnections: 3,
+		MaxTerminators: 3,
 	}
 }

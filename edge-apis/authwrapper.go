@@ -456,7 +456,7 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 			return nil, fmt.Errorf("timedout waiting for totpT callback")
 		}
 
-		resp, err = client.R().SetBody(&totpCodePayload{
+		_, err = client.R().SetBody(&totpCodePayload{
 			MfaCode: rest_model.MfaCode{
 				Code: &totpCode,
 			},
@@ -470,13 +470,11 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
-	select {
-	case tokens := <-rpServer.TokenChan:
-		if tokens == nil {
-			return nil, errors.New("authentication did not complete, received nil tokens")
-		}
-		outTokens = tokens
+	tokens := <-rpServer.TokenChan
+	if tokens == nil {
+		return nil, errors.New("authentication did not complete, received nil tokens")
 	}
+	outTokens = tokens
 
 	return &ApiSession{
 		CurrentAPISessionDetail: &rest_model.CurrentAPISessionDetail{
@@ -489,7 +487,7 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 				Token:          ToPtr("Bearer " + outTokens.AccessToken),
 			},
 			ExpiresAt:         ToPtr(strfmt.DateTime(outTokens.Expiry)),
-			ExpirationSeconds: ToPtr(int64(outTokens.Expiry.Sub(time.Now()).Seconds())),
+			ExpirationSeconds: ToPtr(int64(time.Until(outTokens.Expiry).Seconds())),
 		},
 		Tokens: outTokens,
 	}, nil
