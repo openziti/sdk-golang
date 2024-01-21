@@ -30,6 +30,9 @@ func ClientUrl(hostname string) string {
 		hostname = "https://" + hostname
 	}
 
+	if strings.HasSuffix(hostname, "/") {
+		return strings.Trim(hostname, "/") + ClientApiPath
+	}
 	return hostname + ClientApiPath
 }
 
