@@ -16,7 +16,9 @@
 
 package edge_apis
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	ClientApiPath     = "/edge/client/v1"
@@ -29,11 +31,7 @@ func ClientUrl(hostname string) string {
 	if !strings.Contains(hostname, "://") {
 		hostname = "https://" + hostname
 	}
-
-	if strings.HasSuffix(hostname, "/") {
-		return strings.Trim(hostname, "/") + ClientApiPath
-	}
-	return hostname + ClientApiPath
+	return concat(hostname, ClientApiPath)
 }
 
 // ManagementUrl returns a URL with the given hostname in the format of `https://<hostname>/edge/management/v1`.
@@ -42,6 +40,12 @@ func ManagementUrl(hostname string) string {
 	if !strings.Contains(hostname, "://") {
 		hostname = "https://" + hostname
 	}
+	return concat(hostname, ManagementApiPath)
+}
 
-	return hostname + ManagementApiPath
+func concat(base, path string) string {
+	if strings.HasSuffix(base, "/") {
+		return strings.Trim(base, "/") + path
+	}
+	return base + path
 }
