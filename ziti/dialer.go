@@ -88,7 +88,7 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	})
 
 	if best == math.MaxInt && dialer.fallback == nil {
-		pfxlog.Logger().Errorf("attempted to dial %s but no service with matching intercept found", address)
+		pfxlog.Logger().Warnf("attempted to dial %s but no service with matching intercept found", address)
 	}
 
 	if ztx != nil && service != nil {
