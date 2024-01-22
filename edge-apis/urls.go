@@ -28,22 +28,19 @@ const (
 // ClientUrl returns a URL with the given hostname in the format of `https://<hostname>/edge/management/v1`.
 // The hostname provided may include a port.
 func ClientUrl(hostname string) string {
-	if !strings.Contains(hostname, "://") {
-		hostname = "https://" + hostname
-	}
 	return concat(hostname, ClientApiPath)
 }
 
 // ManagementUrl returns a URL with the given hostname in the format of `https://<hostname>/edge/management/v1`.
 // The hostname provided may include a port.
 func ManagementUrl(hostname string) string {
-	if !strings.Contains(hostname, "://") {
-		hostname = "https://" + hostname
-	}
 	return concat(hostname, ManagementApiPath)
 }
 
 func concat(base, path string) string {
+	if !strings.Contains(base, "://") {
+		base = "https://" + base
+	}
 	if strings.HasSuffix(base, "/") {
 		return strings.Trim(base, "/") + path
 	}
