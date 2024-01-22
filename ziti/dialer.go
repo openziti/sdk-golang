@@ -3,6 +3,7 @@ package ziti
 import (
 	"context"
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"math"
 	"net"
@@ -85,6 +86,10 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 			}
 		}
 	})
+
+	if best == math.MaxInt && dialer.fallback == nil {
+		pfxlog.Logger().Errorf("attempted to dial %s but no service with matching intercept found", address)
+	}
 
 	if ztx != nil && service != nil {
 		return ztx.(*ContextImpl).dialServiceFromAddr(*service.Name, network, host, uint16(port))
