@@ -108,8 +108,8 @@ github.com/go-openapi/spec v0.20.14 h1:7CBlRnw+mtjFGlPDRZmAMnq35cRzI91xj03HVyUi/
 github.com/go-openapi/spec v0.20.14/go.mod h1:8EOhTpBoFiask8rrgwbLC3zmJfz4zsCUueRuPM6GNkw=
 github.com/go-openapi/strfmt v0.22.0 h1:Ew9PnEYc246TwrEspvBdDHS4BVKXy/AOVsfqGDgAcaI=
 github.com/go-openapi/strfmt v0.22.0/go.mod h1:HzJ9kokGIju3/K6ap8jL+OlGAbjpSv27135Yr9OivU4=
-github.com/go-openapi/swag v0.22.7 h1:JWrc1uc/P9cSomxfnsFSVWoE1FW6bNbrVPmpQYpCcR8=
-github.com/go-openapi/swag v0.22.7/go.mod h1:Gl91UqO+btAM0plGGxHqJcQZ1ZTy6jbmridBTsDy8A0=
+github.com/go-openapi/swag v0.22.9 h1:XX2DssF+mQKM2DHsbgZK74y/zj4mo9I99+89xUmuZCE=
+github.com/go-openapi/swag v0.22.9/go.mod h1:3/OXnFfnMAwBD099SwYRk7GD3xOrr1iL7d/XNLXVVwE=
 github.com/go-openapi/validate v0.22.6 h1:+NhuwcEYpWdO5Nm4bmvhGLW0rt1Fcc532Mu3wpypXfo=
 github.com/go-openapi/validate v0.22.6/go.mod h1:eaddXSqKeTg5XpSmj1dYyFTK/95n/XHwcOY+BMxKMyM=
 github.com/go-resty/resty/v2 v2.11.0 h1:i7jMfNOJYMp69lq7qozJP+bjgzfAzeOhuGlyDrqxT/8=
@@ -299,8 +299,8 @@ github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
 github.com/openziti/channel/v2 v2.0.116 h1:VUxJ3rICTQz9fmSz6tbssC2tzXafL1MAY6yvgHfSUHI=
 github.com/openziti/channel/v2 v2.0.116/go.mod h1:RADBBOkbwpFMmbznU3bZmUsBB646seqZnQ7GPI6Chjg=
-github.com/openziti/edge-api v0.26.9 h1:2BkODR2WwlxmAr75FTpWlgT7gJ2KTXy0kupgwgJHQZ0=
-github.com/openziti/edge-api v0.26.9/go.mod h1:ScG5sUI0IP/yVsopRIr0SM5kz31JtGKe1KfeTu70qRk=
+github.com/openziti/edge-api v0.26.10 h1:LEDuJHZsExi0PBVO9iVuIdZWJ7eFo/i4TJhXoSFmfOU=
+github.com/openziti/edge-api v0.26.10/go.mod h1:FQLjav9AfqxQYSL0xKPDZ/JWTSZXApkk7jM2/iczGXM=
 github.com/openziti/foundation/v2 v2.0.36 h1:ogEIvsWur8/9mUzf9NOB4hRUyx372Uy6AmnHRcurIkY=
 github.com/openziti/foundation/v2 v2.0.36/go.mod h1:MdK2oAJSwo7iCfvVdG16ZGz47qP7nG97ovnqEdXW2kQ=
 github.com/openziti/identity v1.0.69 h1:wNgQomnv8ar2S1wge9jQK1jpqE2virOKKG8GyfTiHMQ=

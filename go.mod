@@ -17,7 +17,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.116
-	github.com/openziti/edge-api v0.26.9
+	github.com/openziti/edge-api v0.26.10
 	github.com/openziti/foundation/v2 v2.0.36
 	github.com/openziti/identity v1.0.69
 	github.com/openziti/metrics v1.2.42
@@ -51,7 +51,7 @@ require (
 	github.com/go-openapi/jsonreference v0.20.4 // indirect
 	github.com/go-openapi/loads v0.21.5 // indirect
 	github.com/go-openapi/spec v0.20.14 // indirect
-	github.com/go-openapi/swag v0.22.7 // indirect
+	github.com/go-openapi/swag v0.22.9 // indirect
 	github.com/go-openapi/validate v0.22.6 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/schema v1.2.0 // indirect
