@@ -11,7 +11,7 @@ require (
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/golang/protobuf v1.5.3
-	github.com/google/uuid v1.5.0
+	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
@@ -20,7 +20,7 @@ require (
 	github.com/openziti/edge-api v0.26.10
 	github.com/openziti/foundation/v2 v2.0.36
 	github.com/openziti/identity v1.0.69
-	github.com/openziti/metrics v1.2.43
+	github.com/openziti/metrics v1.2.44
 	github.com/openziti/secretstream v0.1.16
 	github.com/openziti/transport/v2 v2.0.121
 	github.com/orcaman/concurrent-map/v2 v2.0.1
