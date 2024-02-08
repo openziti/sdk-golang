@@ -801,6 +801,7 @@ func (context *ContextImpl) setUnauthenticated() {
 	context.CtrlClt.ApiSessionCertificate = nil
 
 	context.CloseAllEdgeRouterConns()
+	context.sessions.Clear()
 
 	if willEmit {
 		context.Emit(EventAuthenticationStateUnauthenticated, prevApiSession)
@@ -1922,6 +1923,7 @@ func (event *routerConnectionListenFailedEvent) handle(mgr *listenerManager) {
 		mgr.disconnectedTime = &now
 	}
 	mgr.notify(ListenerRemoved)
+	mgr.refreshSession() // if a listener failed, ensure our session is valid
 	mgr.makeMoreListeners()
 }
 
