@@ -18,6 +18,7 @@ import (
 	manInfo "github.com/openziti/edge-api/rest_management_api_client/informational"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/edge-api/rest_util"
+	"github.com/openziti/foundation/v2/errorz"
 	"github.com/openziti/foundation/v2/stringz"
 	"github.com/pkg/errors"
 	"github.com/zitadel/oidc/v2/pkg/client/tokenexchange"
@@ -465,7 +466,7 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 			return nil, fmt.Errorf("timedout waiting for totpT callback")
 		}
 
-		_, err = client.R().SetBody(&totpCodePayload{
+		resp, err = client.R().SetBody(&totpCodePayload{
 			MfaCode: rest_model.MfaCode{
 				Code: &totpCode,
 			},
@@ -475,11 +476,24 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 		if err != nil {
 			return nil, err
 		}
+
+		if resp.StatusCode() != http.StatusOK {
+			apiErr := &errorz.ApiError{}
+			err = json.Unmarshal(resp.Body(), apiErr)
+
+			if err != nil {
+				return nil, fmt.Errorf("could not verify TOTP MFA code recieved %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+			}
+
+			return nil, apiErr
+
+		}
 	}
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
 	tokens := <-rpServer.TokenChan
+
 	if tokens == nil {
 		return nil, errors.New("authentication did not complete, received nil tokens")
 	}
