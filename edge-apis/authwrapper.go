@@ -18,6 +18,7 @@ import (
 	manInfo "github.com/openziti/edge-api/rest_management_api_client/informational"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/edge-api/rest_util"
+	"github.com/openziti/foundation/v2/errorz"
 	"github.com/openziti/foundation/v2/stringz"
 	"github.com/pkg/errors"
 	"github.com/zitadel/oidc/v2/pkg/client/tokenexchange"
@@ -426,7 +427,16 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 
 	formData := payload.toMap()
 
-	resp, err = client.R().SetFormData(formData).Post(opLoginUri)
+	req := client.R()
+	clientRequest := asClientRequest(req, client)
+
+	err = credentials.AuthenticateRequest(clientRequest, strfmt.Default)
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err = req.SetFormData(formData).Post(opLoginUri)
 
 	if err != nil {
 		return nil, err
@@ -456,7 +466,7 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 			return nil, fmt.Errorf("timedout waiting for totpT callback")
 		}
 
-		_, err = client.R().SetBody(&totpCodePayload{
+		resp, err = client.R().SetBody(&totpCodePayload{
 			MfaCode: rest_model.MfaCode{
 				Code: &totpCode,
 			},
@@ -466,11 +476,24 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 		if err != nil {
 			return nil, err
 		}
+
+		if resp.StatusCode() != http.StatusOK {
+			apiErr := &errorz.ApiError{}
+			err = json.Unmarshal(resp.Body(), apiErr)
+
+			if err != nil {
+				return nil, fmt.Errorf("could not verify TOTP MFA code recieved %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+			}
+
+			return nil, apiErr
+
+		}
 	}
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
 	tokens := <-rpServer.TokenChan
+
 	if tokens == nil {
 		return nil, errors.New("authentication did not complete, received nil tokens")
 	}
@@ -491,6 +514,83 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 		},
 		Tokens: outTokens,
 	}, nil
+}
+
+// restyClientRequest is meant to mimic open api's client request which is a combination
+// of resty's request and client.
+type restyClientRequest struct {
+	restyRequest *resty.Request
+	restyClient  *resty.Client
+}
+
+func (r *restyClientRequest) SetHeaderParam(s string, s2 ...string) error {
+	r.restyRequest.Header[s] = s2
+	return nil
+}
+
+func (r *restyClientRequest) GetHeaderParams() http.Header {
+	return r.restyRequest.Header
+}
+
+func (r *restyClientRequest) SetQueryParam(s string, s2 ...string) error {
+	r.restyRequest.QueryParam[s] = s2
+	return nil
+}
+
+func (r *restyClientRequest) SetFormParam(s string, s2 ...string) error {
+	r.restyRequest.FormData[s] = s2
+	return nil
+}
+
+func (r *restyClientRequest) SetPathParam(s string, s2 string) error {
+	r.restyRequest.PathParams[s] = s2
+	return nil
+}
+
+func (r *restyClientRequest) GetQueryParams() url.Values {
+	return r.restyRequest.QueryParam
+}
+
+func (r *restyClientRequest) SetFileParam(s string, closer ...runtime.NamedReadCloser) error {
+	for _, curCloser := range closer {
+		r.restyRequest.SetFileReader(s, curCloser.Name(), curCloser)
+	}
+
+	return nil
+}
+
+func (r *restyClientRequest) SetBodyParam(i interface{}) error {
+	r.restyRequest.SetBody(i)
+	return nil
+}
+
+func (r *restyClientRequest) SetTimeout(duration time.Duration) error {
+	r.restyClient.SetTimeout(duration)
+	return nil
+}
+
+func (r *restyClientRequest) GetMethod() string {
+	return r.restyRequest.Method
+}
+
+func (r *restyClientRequest) GetPath() string {
+	return r.restyRequest.URL
+}
+
+func (r *restyClientRequest) GetBody() []byte {
+	return r.restyRequest.Body.([]byte)
+}
+
+func (r *restyClientRequest) GetBodyParam() interface{} {
+	return r.restyRequest.Body
+}
+
+func (r *restyClientRequest) GetFileParam() map[string][]runtime.NamedReadCloser {
+	return nil
+}
+
+func asClientRequest(request *resty.Request, client *resty.Client) runtime.ClientRequest {
+	return &restyClientRequest{request, client}
 }
 
 func ToPtr[T any](s T) *T {
