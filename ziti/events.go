@@ -158,13 +158,13 @@ type Eventer interface {
 	// One all authentication queries are answered, the EventAuthenticationStateFull event will be emitted. For
 	// identities that do not have secondary authentication challenges associated with them, this even will never
 	// be emitted.
-	AddAuthenticationStatePartialListener(func(Context, *edge_apis.ApiSession)) func()
+	AddAuthenticationStatePartialListener(func(Context, edge_apis.ApiSession)) func()
 
 	// AddAuthenticationStateFullListener adds an event listener for the EventAuthenticationStateFull event and
 	// returns a function to remove the listener. Full authentication occurs when there are no unmet authentication
 	// queries - which are defined by the authentication policy associated with the identity. In a fully authenticated
 	// state, the context will be able to perform all client actions.
-	AddAuthenticationStateFullListener(func(Context, *edge_apis.ApiSession)) func()
+	AddAuthenticationStateFullListener(func(Context, edge_apis.ApiSession)) func()
 
 	// AddAuthenticationStateUnauthenticatedListener adds an event listener for the EventAuthenticationStateUnauthenticated
 	// event and returns a function to remove the listener. The unauthenticated state occurs when the API session
@@ -174,7 +174,7 @@ type Eventer interface {
 	//
 	// The API Session detail provided to the listener may be nil. If it is not nil, the API Session detail is the
 	// now expired API Session.
-	AddAuthenticationStateUnauthenticatedListener(func(Context, *edge_apis.ApiSession)) func()
+	AddAuthenticationStateUnauthenticatedListener(func(Context, edge_apis.ApiSession)) func()
 
 	// AddListener is an alias for .On(eventName, listener).
 	AddListener(events.EventName, ...events.Listener)

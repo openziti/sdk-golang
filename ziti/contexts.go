@@ -129,7 +129,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 				newContext.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(newContext.authenticateMfa))
 
 				if handler == nil {
-					pfxlog.Logger().Errorf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
+					pfxlog.Logger().Debugf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
 					return
 				}
 

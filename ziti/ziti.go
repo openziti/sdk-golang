@@ -357,9 +357,9 @@ func (context *ContextImpl) AddAuthQueryListener(handler func(Context, *rest_mod
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, *apis.ApiSession)) func() {
+func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(Context, apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*apis.ApiSession)
+		apiSession, ok := args[0].(apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -379,9 +379,9 @@ func (context *ContextImpl) AddAuthenticationStatePartialListener(handler func(C
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, *apis.ApiSession)) func() {
+func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Context, apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*apis.ApiSession)
+		apiSession, ok := args[0].(apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -401,9 +401,9 @@ func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Cont
 	}
 }
 
-func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, *apis.ApiSession)) func() {
+func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(*apis.ApiSession)
+		apiSession, ok := args[0].(apis.ApiSession)
 
 		if !ok {
 			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
@@ -736,8 +736,8 @@ func (context *ContextImpl) runRefreshes() {
 	defer sessionRefreshTick.Stop()
 
 	refreshAt := time.Now().Add(30 * time.Second)
-	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.ExpiresAt != nil {
-		refreshAt = time.Time(*currentApiSession.ExpiresAt).Add(-10 * time.Second)
+	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
+		refreshAt = time.Time(*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
 	}
 
 	for {
@@ -822,9 +822,10 @@ func (context *ContextImpl) authenticate() error {
 		return err
 	}
 
-	if apiSession.CurrentAPISessionDetail != nil && len(apiSession.AuthQueries) != 0 {
+	authQueries := apiSession.GetAuthQueries()
+	if len(authQueries) != 0 {
 		context.Emit(EventAuthenticationStatePartial, apiSession)
-		for _, authQuery := range apiSession.AuthQueries {
+		for _, authQuery := range apiSession.GetAuthQueries() {
 			if err := context.handleAuthQuery(authQuery); err != nil {
 				return err
 			}
@@ -870,7 +871,7 @@ func (context *ContextImpl) CloseAllEdgeRouterConns() {
 	}
 }
 
-func (context *ContextImpl) onFullAuth(apiSession *apis.ApiSession) error {
+func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -879,10 +880,10 @@ func (context *ContextImpl) onFullAuth(apiSession *apis.ApiSession) error {
 		go context.runRefreshes()
 
 		metricsTags := map[string]string{
-			"srcId": apiSession.Identity.ID,
+			"srcId": apiSession.GetIdentityId(),
 		}
 
-		context.metrics = metrics.NewRegistry(apiSession.Identity.Name, metricsTags)
+		context.metrics = metrics.NewRegistry(apiSession.GetIdentityName(), metricsTags)
 	})
 
 	context.Emit(EventAuthenticationStateFull, apiSession)
@@ -908,7 +909,7 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 		return err
 	}
 
-	if apiSession := context.CtrlClt.ApiSession.Load(); apiSession != nil && len(apiSession.AuthQueries) == 0 {
+	if apiSession := context.CtrlClt.GetCurrentApiSession(); apiSession != nil && len(apiSession.GetAuthQueries()) == 0 {
 		return context.onFullAuth(apiSession)
 	}
 
@@ -924,7 +925,7 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 		context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(context.authenticateMfa))
 
 		if handler == nil {
-			pfxlog.Logger().Errorf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
+			pfxlog.Logger().Debugf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
 		} else {
 			return handler(authQuery, context.authenticateMfa)
 		}
@@ -961,7 +962,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 
 	context.CtrlClt.PostureCache.AddActiveService(*svc.ID)
 
-	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().Identity.Name
+	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
 
 	session, err := context.GetSession(*svc.ID)
 	if err != nil {
@@ -1653,7 +1654,7 @@ func (mgr *listenerManager) run() {
 	mgr.makeMoreListeners()
 
 	if mgr.options.BindUsingEdgeIdentity {
-		mgr.options.Identity = mgr.context.CtrlClt.GetCurrentApiSession().Identity.Name
+		mgr.options.Identity = mgr.context.CtrlClt.GetCurrentApiSession().GetIdentityName()
 	}
 
 	if mgr.options.Identity != "" {

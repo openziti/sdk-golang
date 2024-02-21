@@ -42,31 +42,71 @@ type AuthEnabledApi interface {
 	//Authenticate will attempt to issue an authentication request using the provided credentials and http client.
 	//These functions act as abstraction around the underlying go-swagger generated client and will use the default
 	//http client if not provided.
-	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error)
+	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error)
 	SetUseOidc(bool)
 }
 
-// ApiSession represents both legacy authentication API Session Detail (that contain an opaque token) and OIDC tokens
-// which contain id, access, and optionally refresh tokens.
-type ApiSession struct {
-	*rest_model.CurrentAPISessionDetail
-	*oidc.Tokens[*oidc.IDTokenClaims]
+type ApiSession interface {
+	//GetAccessHeader returns the HTTP header name and value that should be used to represent this ApiSession
+	GetAccessHeader() (string, string)
+
+	//AuthenticateRequest fulfills the interface defined by the OpenAPI libraries to authenticate client HTTP requests
+	AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error
+
+	//GetToken returns the ApiSessions' token bytes
+	GetToken() []byte
+
+	//GetExpiresAt returns the time when the ApiSession will expire.
+	GetExpiresAt() *time.Time
+
+	//GetAuthQueries returns a list of authentication queries the ApiSession is subjected to
+	GetAuthQueries() rest_model.AuthQueryList
+
+	//GetIdentityName returns the name of the authenticating identity
+	GetIdentityName() string
+
+	//GetIdentityId returns the id of the authenticating identity
+	GetIdentityId() string
+
+	//GetId returns the id of the ApiSession
+	GetId() string
+}
+
+var _ ApiSession = (*ApiSessionLegacy)(nil)
+var _ ApiSession = (*ApiSessionOidc)(nil)
+
+// ApiSessionLegacy represents OpenZiti's original authentication API Session Detail, supplied in the `zt-session` header.
+// It has been supplanted by OIDC authentication represented by ApiSessionOidc.
+type ApiSessionLegacy struct {
+	Detail *rest_model.CurrentAPISessionDetail
+}
+
+func (a *ApiSessionLegacy) GetId() string {
+	return stringz.OrEmpty(a.Detail.ID)
+}
+
+func (a *ApiSessionLegacy) GetIdentityName() string {
+	return a.Detail.Identity.Name
+}
+
+func (a *ApiSessionLegacy) GetIdentityId() string {
+	return stringz.OrEmpty(a.Detail.IdentityID)
 }
 
 // GetAccessHeader returns the header and header token value should be used for authentication requests
-func (a *ApiSession) GetAccessHeader() (string, string) {
-	if a.Tokens != nil {
-		return "authorization", "Bearer " + a.Tokens.AccessToken
-	}
-
-	if a.CurrentAPISessionDetail != nil && a.CurrentAPISessionDetail.Token != nil {
-		return "zt-session", *a.CurrentAPISessionDetail.Token
+func (a *ApiSessionLegacy) GetAccessHeader() (string, string) {
+	if a.Detail != nil && a.Detail.Token != nil {
+		return "zt-session", *a.Detail.Token
 	}
 
 	return "", ""
 }
 
-func (a *ApiSession) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+func (a *ApiSessionLegacy) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+	if a == nil {
+		return errors.New("api session is nil")
+	}
+
 	header, val := a.GetAccessHeader()
 
 	err := request.SetHeaderParam(header, val)
@@ -77,27 +117,102 @@ func (a *ApiSession) AuthenticateRequest(request runtime.ClientRequest, _ strfmt
 	return nil
 }
 
-func (a *ApiSession) GetToken() []byte {
-	if a.Tokens != nil {
-		return []byte(a.Tokens.AccessToken)
-	}
-
-	if a.CurrentAPISessionDetail != nil && a.CurrentAPISessionDetail.Token != nil {
-		return []byte(*a.CurrentAPISessionDetail.Token)
+func (a *ApiSessionLegacy) GetToken() []byte {
+	if a.Detail != nil && a.Detail.Token != nil {
+		return []byte(*a.Detail.Token)
 	}
 
 	return nil
 }
 
-func (a *ApiSession) GetExpiresAt() *time.Time {
-	if a.Tokens != nil {
-		return &a.Tokens.Expiry
+func (a *ApiSessionLegacy) GetAuthQueries() rest_model.AuthQueryList {
+	return a.Detail.AuthQueries
+}
+
+func (a *ApiSessionLegacy) GetExpiresAt() *time.Time {
+	if a.Detail != nil {
+		return (*time.Time)(a.Detail.ExpiresAt)
 	}
 
-	if a.CurrentAPISessionDetail != nil {
-		return (*time.Time)(a.CurrentAPISessionDetail.ExpiresAt)
+	return nil
+}
+
+// ApiSessionOidc represents an authenticated session backed by OIDC tokens.
+type ApiSessionOidc struct {
+	OidcTokens *oidc.Tokens[*oidc.IDTokenClaims]
+}
+
+func (a *ApiSessionOidc) GetAccessClaims() (*ApiAccessClaims, error) {
+	claims := &ApiAccessClaims{}
+
+	err := json.Unmarshal([]byte(a.OidcTokens.AccessToken), claims)
+
+	if err != nil {
+		return nil, err
 	}
 
+	return claims, nil
+}
+
+func (a *ApiSessionOidc) GetId() string {
+	claims, err := a.GetAccessClaims()
+
+	if err != nil {
+		return ""
+	}
+
+	return claims.ID
+}
+
+func (a *ApiSessionOidc) GetIdentityName() string {
+	return a.OidcTokens.IDTokenClaims.Name
+}
+
+func (a *ApiSessionOidc) GetIdentityId() string {
+	return a.OidcTokens.IDTokenClaims.Subject
+}
+
+// GetAccessHeader returns the header and header token value should be used for authentication requests
+func (a *ApiSessionOidc) GetAccessHeader() (string, string) {
+	if a.OidcTokens != nil {
+		return "authorization", "Bearer " + a.OidcTokens.AccessToken
+	}
+
+	return "", ""
+}
+
+func (a *ApiSessionOidc) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+	if a == nil {
+		return errors.New("api session is nil")
+	}
+
+	header, val := a.GetAccessHeader()
+
+	err := request.SetHeaderParam(header, val)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *ApiSessionOidc) GetToken() []byte {
+	if a.OidcTokens != nil && a.OidcTokens.AccessToken != "" {
+		return []byte(a.OidcTokens.AccessToken)
+	}
+
+	return nil
+}
+
+func (a *ApiSessionOidc) GetAuthQueries() rest_model.AuthQueryList {
+	//todo convert JWT auth queries to rest_model.AuthQueryList
+	return nil
+}
+
+func (a *ApiSessionOidc) GetExpiresAt() *time.Time {
+	if a.OidcTokens != nil {
+		return &a.OidcTokens.Expiry
+	}
 	return nil
 }
 
@@ -114,7 +229,7 @@ type ZitiEdgeManagement struct {
 	TotpCallback func(chan string)
 }
 
-func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	self.versionOnce.Do(func() {
 		if self.oidcExplicitSet {
 			return
@@ -136,7 +251,7 @@ func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configType
 	return self.legacyAuth(credentials, configTypes, httpClient)
 }
 
-func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	params := manAuth.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
@@ -156,10 +271,10 @@ func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes 
 		return nil, err
 	}
 
-	return &ApiSession{CurrentAPISessionDetail: resp.GetPayload().Data}, err
+	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
 }
 
-func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	return oidcAuth(self.apiUrl.Host, credentials, configTypes, httpClient, self.TotpCallback)
 }
 
@@ -168,29 +283,26 @@ func (self *ZitiEdgeManagement) SetUseOidc(use bool) {
 	self.useOidc = use
 }
 
-func (self *ZitiEdgeManagement) RefreshApiSession(apiSession *ApiSession) (*ApiSession, error) {
-	if apiSession.CurrentAPISessionDetail != nil {
+func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
+	switch s := apiSession.(type) {
+	case *ApiSessionLegacy:
 		params := manCurApiSession.NewGetCurrentAPISessionParams()
-		resp, err := self.CurrentAPISession.GetCurrentAPISession(params, apiSession)
+		_, err := self.CurrentAPISession.GetCurrentAPISession(params, s)
 
 		if err != nil {
 			return nil, rest_util.WrapErr(err)
 		}
 
-		return &ApiSession{
-			CurrentAPISessionDetail: resp.Payload.Data,
-		}, nil
-	}
-
-	if apiSession.Tokens != nil {
-		tokens, err := self.ExchangeTokens(apiSession.Tokens)
+		return s, nil
+	case *ApiSessionOidc:
+		tokens, err := self.ExchangeTokens(s.OidcTokens)
 
 		if err != nil {
 			return nil, err
 		}
 
-		return &ApiSession{
-			Tokens: tokens,
+		return &ApiSessionOidc{
+			OidcTokens: tokens,
 		}, nil
 	}
 
@@ -214,7 +326,7 @@ type ZitiEdgeClient struct {
 	TotpCallback func(chan string)
 }
 
-func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	self.versionOnce.Do(func() {
 		if self.oidcExplicitSet {
 			return
@@ -237,7 +349,7 @@ func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []
 	return self.legacyAuth(credentials, configTypes, httpClient)
 }
 
-func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	params := clientAuth.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
 	params.Method = credentials.Method()
@@ -257,10 +369,10 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 		return nil, err
 	}
 
-	return &ApiSession{CurrentAPISessionDetail: resp.GetPayload().Data}, err
+	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
 }
 
-func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (*ApiSession, error) {
+func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	return oidcAuth(self.apiUrl.Host, credentials, configTypes, httpClient, self.TotpCallback)
 }
 
@@ -269,30 +381,26 @@ func (self *ZitiEdgeClient) SetUseOidc(use bool) {
 	self.useOidc = use
 }
 
-func (self *ZitiEdgeClient) RefreshApiSession(apiSession *ApiSession) (*ApiSession, error) {
-	if apiSession.CurrentAPISessionDetail != nil {
+func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
+	switch s := apiSession.(type) {
+	case *ApiSessionLegacy:
 		params := clientApiSession.NewGetCurrentAPISessionParams()
-		resp, err := self.CurrentAPISession.GetCurrentAPISession(params, apiSession)
+		_, err := self.CurrentAPISession.GetCurrentAPISession(params, s)
 
 		if err != nil {
 			return nil, rest_util.WrapErr(err)
 		}
 
-		return &ApiSession{
-			Tokens:                  apiSession.Tokens,
-			CurrentAPISessionDetail: resp.Payload.Data,
-		}, nil
-	}
-
-	if apiSession.Tokens != nil {
-		tokens, err := self.ExchangeTokens(apiSession.Tokens)
+		return s, nil
+	case *ApiSessionOidc:
+		tokens, err := self.ExchangeTokens(s.OidcTokens)
 
 		if err != nil {
 			return nil, err
 		}
 
-		return &ApiSession{
-			Tokens: tokens,
+		return &ApiSessionOidc{
+			OidcTokens: tokens,
 		}, nil
 	}
 
@@ -381,7 +489,7 @@ func (a *authPayload) toMap() map[string]string {
 	return result
 }
 
-func oidcAuth(issuer string, credentials Credentials, configTypes []string, httpClient *http.Client, totpCallback func(chan string)) (*ApiSession, error) {
+func oidcAuth(issuer string, credentials Credentials, configTypes []string, httpClient *http.Client, totpCallback func(chan string)) (ApiSession, error) {
 	payload := &authPayload{
 		Authenticate: credentials.Payload(),
 	}
@@ -499,20 +607,8 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 	}
 	outTokens = tokens
 
-	return &ApiSession{
-		CurrentAPISessionDetail: &rest_model.CurrentAPISessionDetail{
-			APISessionDetail: rest_model.APISessionDetail{
-				Identity: &rest_model.EntityRef{
-					ID:   outTokens.IDTokenClaims.Name,
-					Name: outTokens.IDTokenClaims.Subject,
-				},
-				LastActivityAt: strfmt.DateTime{},
-				Token:          ToPtr("Bearer " + outTokens.AccessToken),
-			},
-			ExpiresAt:         ToPtr(strfmt.DateTime(outTokens.Expiry)),
-			ExpirationSeconds: ToPtr(int64(time.Until(outTokens.Expiry).Seconds())),
-		},
-		Tokens: outTokens,
+	return &ApiSessionOidc{
+		OidcTokens: outTokens,
 	}, nil
 }
 
@@ -591,8 +687,4 @@ func (r *restyClientRequest) GetFileParam() map[string][]runtime.NamedReadCloser
 
 func asClientRequest(request *resty.Request, client *resty.Client) runtime.ClientRequest {
 	return &restyClientRequest{request, client}
-}
-
-func ToPtr[T any](s T) *T {
-	return &s
 }

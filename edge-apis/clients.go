@@ -45,15 +45,20 @@ type BaseClient[A ApiType] struct {
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
-func (self *BaseClient[A]) GetCurrentApiSession() *ApiSession {
-	return self.ApiSession.Load()
+func (self *BaseClient[A]) GetCurrentApiSession() ApiSession {
+	ptr := self.ApiSession.Load()
+	if ptr == nil {
+		return nil
+	}
+
+	return *ptr
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
 // the API Session details will be returned and the current client will make authenticated requests on future
 // calls. On an error the API Session in use will be cleared and subsequent requests will become/continue to be
 // made in an unauthenticated fashion.
-func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (*ApiSession, error) {
+func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (ApiSession, error) {
 	//casting to `any` works around golang error that happens when type asserting a generic typed field
 	myAny := any(self.API)
 	if a, ok := myAny.(AuthEnabledApi); ok {
@@ -73,13 +78,17 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		}
 
 		self.Credentials = credentials
-		self.ApiSession.Store(apiSession)
+		self.ApiSession.Store(&apiSession)
 
 		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			currentSession := self.ApiSession.Load()
-			if currentSession != nil && currentSession.GetToken() != nil {
-				if err := currentSession.AuthenticateRequest(request, registry); err != nil {
-					return err
+			currentSessionPtr := self.ApiSession.Load()
+			if currentSessionPtr != nil {
+				currentSession := *currentSessionPtr
+
+				if currentSession != nil && currentSession.GetToken() != nil {
+					if err := currentSession.AuthenticateRequest(request, registry); err != nil {
+						return err
+					}
 				}
 			}
 
