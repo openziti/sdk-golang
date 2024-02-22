@@ -1888,7 +1888,7 @@ func (mgr *listenerManager) refreshSession() {
 	}
 
 	log = log.WithField("sessionId", stringz.OrEmpty(mgr.session.ID)).WithField("erCount", len(mgr.session.EdgeRouters))
-	log.Info("starting session refresh")
+	log.Debug("starting session refresh")
 	session, err := mgr.context.refreshSession(mgr.session)
 
 	if err != nil {

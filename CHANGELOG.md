@@ -1,3 +1,15 @@
+# Release 0.22.29
+
+- Improve session refresh behavior. 
+
+## Changes to API session refresh
+* Limit refreshes of both api and sessions to at most every 30 seconds. 
+* Base faster refreshes not on number of available ERs but on usable ER endpoints, since some ERs may not have usable endpoints
+* Only refresh API sessions if session is no longer valid, as opposed if an api session refresh fails, which can happen if the 
+  controller is down or busy.
+* Only allow one api session refresh at a time
+* Use exponential backoff for api session refresh retries
+
 # Release 0.22.12
 
 - Deprecate ListenOptions.MaxConnections in favor of ListenOptions.MaxTerminators
