@@ -1,3 +1,34 @@
+# Release 0.23.0
+
+## What's New
+
+* `ApiSession` interface abstraction for HA support
+
+
+### `ApiSession` Interface 
+With the introduction of High Availability (HA) support, ApiSessions as a struct in `zitContext.Events()` callbacks
+is no longer supported. A new `ApiSession` interface is provided in its place. This affects the following `Events()` functions:
+
+  - `AddAuthenticationStatePartialListener`
+  - `AddAuthenticationStateFullListener`
+  - `AddAuthenticationStateUnauthenticatedListener`
+
+This change is meant to alleviate issues between ApiSession fidelity between legacy and HA modes. However, it is
+possible that information that was available with the struct version of `ApiSession` that is no longer available via
+the interface value. As a short term work around, type casting the `ApiSession` interface to `ApiSessionLegacy` is
+suggested. However, please provide feedback on scenarios where this is being done. It may be possible to enhance the
+interface version if the data is available in both HA OIDC tokens and legacy ApiSession details.
+
+The `ApiSession` interface supports the following functions:
+- `GetAccessHeader() (string, string)` - returns the HTTP header name and value that should be used to represent this ApiSession
+- `AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error` - AuthenticateRequest fulfills the interface defined by OpenAPI libraries to authenticate client HTTP requests
+- `GetToken() []byte` - returns the ApiSessions' token bytes 
+- `GetExpiresAt() *time.Time` -  returns the time when the ApiSession will expire.
+- `GetAuthQueries() rest_model.AuthQueryList` - returns a list of authentication queries the ApiSession is subjected to
+- `GetIdentityName() string` - returns the name of the authenticating identity
+- `GetIdentityId() string` - returns the id of the authenticating identity
+- `GetId() string` - returns the id of the ApiSession
+
 # Release 0.22.29
 
 - Improve session refresh behavior. 
@@ -41,7 +72,7 @@
 
 # Release 0.20.51
 
-## WHat's New
+## What's New
 
 * Edge Router Filter Options - now possible to filter Edge Routers based on connection URL
 

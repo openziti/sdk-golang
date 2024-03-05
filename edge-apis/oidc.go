@@ -27,6 +27,18 @@ type ServiceAccessClaims struct {
 	Type         string `json:"z_st"`
 }
 
+type ApiAccessClaims struct {
+	jwt.RegisteredClaims
+	ApiSessionId     string   `json:"z_asid,omitempty"`
+	ExternalId       string   `json:"z_eid,omitempty"`
+	IsAdmin          bool     `json:"z_ia,omitempty"`
+	ConfigTypes      []string `json:"z_ct,omitempty"`
+	ApplicationId    string   `json:"z_aid,omitempty"`
+	Type             string   `json:"z_t"`
+	CertFingerprints []string `json:"z_cfs"`
+	Scopes           []string `json:"scopes,omitempty"`
+}
+
 type localRpServer struct {
 	Server       *http.Server
 	Port         string
