@@ -44,6 +44,10 @@ type Config struct {
 	//The Credentials field is used to authenticate with the Edge Client API. If the ID field is set, it will be used
 	//to populate this field with credentials.
 	Credentials apis.Credentials `json:"-"`
+
+	//EnableHa will signal to the SDK to query and use OIDC authentication which is required for HA controller setups.
+	//This is a temporary feature flag that will be removed and "default to true" at a later date.
+	EnableHa bool `json:"enableHa"`
 }
 
 // NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.

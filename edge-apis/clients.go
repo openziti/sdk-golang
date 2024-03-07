@@ -34,6 +34,10 @@ type ApiType interface {
 	ZitiEdgeManagement | ZitiEdgeClient
 }
 
+type OidcEnabledApi interface {
+	SetUseOidc(use bool)
+}
+
 // BaseClient implements the Client interface specifically for the types specified in the ApiType constraint. It
 // provides shared functionality that all ApiType types require.
 type BaseClient[A ApiType] struct {
@@ -52,6 +56,12 @@ func (self *BaseClient[A]) GetCurrentApiSession() ApiSession {
 	}
 
 	return *ptr
+}
+
+func (self *BaseClient[A]) SetUseOidc(use bool) {
+	v := any(self.API)
+	apiType := v.(OidcEnabledApi)
+	apiType.SetUseOidc(use)
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
