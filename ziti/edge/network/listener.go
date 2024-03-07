@@ -22,6 +22,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
+	"math"
 	"net"
 	"reflect"
 	"strings"
@@ -93,6 +94,10 @@ type edgeListener struct {
 	manualStart bool
 	established atomic.Bool
 	eventC      chan *edge.ListenerEvent
+}
+
+func (listener *edgeListener) Id() uint32 {
+	return listener.edgeChan.Id()
 }
 
 func (listener *edgeListener) UpdateCost(cost uint16) error {
@@ -197,6 +202,10 @@ type multiListener struct {
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
 	listenerEventC       chan *edge.ListenerEvent
+}
+
+func (self *multiListener) Id() uint32 {
+	return math.MaxUint32
 }
 
 func (self *multiListener) GetEstablishedCount() uint {

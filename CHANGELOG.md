@@ -1,4 +1,12 @@
-# Relase 0.23.2
+# Release 0.23.4
+
+## What's New
+
+* Adds `GetCurrentIdentityWithBackoff` so hosting doesn't fail on a single failure
+* Ensure that ER dial requests time-out in a reasonable time frame
+* Further refine edge session refreshes based on session changes and if we have hit the requested terminator count
+
+# Release 0.23.2
 
 ## What's New
 
