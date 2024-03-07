@@ -1,3 +1,16 @@
+# Relase 0.23.1
+
+## What's New
+
+* `EnableHa` Feature Toggle
+
+### `EnableHa` Feature Toggle
+
+Configuration structs and files used to initialize SDK contexts now supports a boolean field named `EnableHa` (struct) 
+and `enableHa` (JSON configuration) that enables OIDC HA authentication models. Existing implementations should not
+have to make any adjustments as it will default to `false`/disabled. HA is experimental only and should not be used
+unless one expects to test HA deployments.
+
 # Release 0.23.0
 
 ## What's New
