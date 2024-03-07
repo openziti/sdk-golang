@@ -7,7 +7,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.27.1
-	github.com/go-openapi/strfmt v0.22.1
+	github.com/go-openapi/strfmt v0.22.2
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/golang/protobuf v1.5.3
@@ -28,7 +28,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/shirou/gopsutil/v3 v3.24.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/zitadel/oidc/v2 v2.12.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
@@ -46,7 +46,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-openapi/analysis v0.22.2 // indirect
-	github.com/go-openapi/errors v0.21.0 // indirect
+	github.com/go-openapi/errors v0.21.1 // indirect
 	github.com/go-openapi/jsonpointer v0.20.2 // indirect
 	github.com/go-openapi/jsonreference v0.20.4 // indirect
 	github.com/go-openapi/loads v0.21.5 // indirect
