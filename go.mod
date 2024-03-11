@@ -16,13 +16,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.120
+	github.com/openziti/channel/v2 v2.0.121
 	github.com/openziti/edge-api v0.26.12
 	github.com/openziti/foundation/v2 v2.0.39
-	github.com/openziti/identity v1.0.71
+	github.com/openziti/identity v1.0.72
 	github.com/openziti/metrics v1.2.47
 	github.com/openziti/secretstream v0.1.16
-	github.com/openziti/transport/v2 v2.0.123
+	github.com/openziti/transport/v2 v2.0.124
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
