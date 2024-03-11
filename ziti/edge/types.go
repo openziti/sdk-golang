@@ -154,7 +154,7 @@ type InterceptDialOptions struct {
 }
 
 func ParseServiceConfig(service *rest_model.ServiceDetail, configType string, target interface{}) (bool, error) {
-	logger := pfxlog.Logger().WithField("serviceId", *service.ID).WithField("serviceName", service.Name)
+	logger := pfxlog.Logger().WithField("serviceId", *service.ID).WithField("serviceName", *service.Name)
 	if service.Config == nil {
 		logger.Debug("no service configs defined for service")
 		return false, nil

@@ -93,6 +93,7 @@ func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel)
 	if sink, found := sinks[connId]; found {
 		sink.Accept(msg)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
+		pfxlog.Logger().WithField("connId", connId).Trace("no conn found for connection inspect")
 		resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))
 		if err := resp.ReplyTo(msg).Send(ch); err != nil {
 			logrus.WithFields(GetLoggerFields(msg)).WithError(err).

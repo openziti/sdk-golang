@@ -61,6 +61,7 @@ type Identifiable interface {
 
 type Listener interface {
 	net.Listener
+	Identifiable
 	AcceptEdge() (Conn, error)
 	IsClosed() bool
 	UpdateCost(cost uint16) error
