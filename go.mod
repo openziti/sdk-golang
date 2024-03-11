@@ -18,9 +18,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.119
 	github.com/openziti/edge-api v0.26.12
-	github.com/openziti/foundation/v2 v2.0.38
+	github.com/openziti/foundation/v2 v2.0.39
 	github.com/openziti/identity v1.0.70
-	github.com/openziti/metrics v1.2.46
+	github.com/openziti/metrics v1.2.47
 	github.com/openziti/secretstream v0.1.16
 	github.com/openziti/transport/v2 v2.0.122
 	github.com/orcaman/concurrent-map/v2 v2.0.1
@@ -28,12 +28,12 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/shirou/gopsutil/v3 v3.24.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/zitadel/oidc/v2 v2.12.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
 	golang.org/x/oauth2 v0.16.0
-	golang.org/x/sys v0.17.0
+	golang.org/x/sys v0.18.0
 	google.golang.org/protobuf v1.32.0
 )
 
@@ -82,7 +82,7 @@ require (
 	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
-	golang.org/x/term v0.17.0 // indirect
+	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
