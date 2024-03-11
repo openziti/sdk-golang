@@ -304,8 +304,8 @@ github.com/openziti/identity v1.0.72 h1:Y14nUtgDiUBWZ6WBo6S1rw5qb57QNnZGhsFnMPqf
 github.com/openziti/identity v1.0.72/go.mod h1:sh1STe6K3EM3K0atBVDLq5jpUxAAFCAQZmIkD0MYIKY=
 github.com/openziti/metrics v1.2.47 h1:hIp1xnqLxNc7O0yTHIp65REhYBXj7QWeOiayGDzjRrw=
 github.com/openziti/metrics v1.2.47/go.mod h1:pHj/z3HCls4/+dLoQKTURNTnHmwUbjZFZOGzj2X6HeI=
-github.com/openziti/secretstream v0.1.16 h1:tVanF7OpJL1MJ1gvWaRlR2i+kAbrGsxr3q6EXFOS08U=
-github.com/openziti/secretstream v0.1.16/go.mod h1:bvjGBUW/0e5MzD5S3FW3rhGASRNWAi+kTkTENZ9qRDE=
+github.com/openziti/secretstream v0.1.17 h1:bcaPGGpUl0+3GzfQkshKh5slUE7QDXxFq3vyDQgHkCA=
+github.com/openziti/secretstream v0.1.17/go.mod h1:gosi8ohW+dAHhz1h/MjZEcEVWO0jisWqWjEjmx7oAEs=
 github.com/openziti/transport/v2 v2.0.124 h1:84bq7vyqzGJXPek9qyc/7mtVEhp6KTQMK2msq3hwGkY=
 github.com/openziti/transport/v2 v2.0.124/go.mod h1:eQ3011tfSlmBI3cIkcJOf9YP/afj+Jd2EQM6MCHoJCQ=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=
@@ -416,8 +416,8 @@ golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPh
 golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
 golang.org/x/crypto v0.1.0/go.mod h1:RecgLatLF4+eUMCP1PoPZQb+cVrJcOPbHkTkbkB9sbw=
 golang.org/x/crypto v0.14.0/go.mod h1:MVFd36DqK4CsrnJYDkBA3VC4m2GkXAM0PvzMCn4JQf4=
-golang.org/x/crypto v0.19.0 h1:ENy+Az/9Y1vSrlrvBSyna3PITt4tiZLf7sgCjZBX7Wo=
-golang.org/x/crypto v0.19.0/go.mod h1:Iy9bg/ha4yyC70EfRS8jz+B6ybOBKMaSxLj6P6oBDfU=
+golang.org/x/crypto v0.21.0 h1:X31++rzVUdKhX5sWmSOFZxx8UW/ldWx55cbf08iNAMA=
+golang.org/x/crypto v0.21.0/go.mod h1:0BP7YvVV9gBbVKyeTG0Gyn+gZm94bibOW5BjDEYAOMs=
 golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
 golang.org/x/exp v0.0.0-20190306152737-a1d7652674e8/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
 golang.org/x/exp v0.0.0-20190510132918-efd6b22b2522/go.mod h1:ZjyILWgesfNpC6sMxTJOJm9Kp84zZh5NQWvqDGG3Qr8=
