@@ -35,7 +35,13 @@ type ApiType interface {
 }
 
 type OidcEnabledApi interface {
+	// SetUseOidc forces an API Client to operate in OIDC mode (true) or legacy mode (false). The state of the controller
+	// is ignored and dynamic enable/disable of OIDC support is suspended.
 	SetUseOidc(use bool)
+
+	// SetAllowOidcDynamicallyEnabled sets whether clients will check the controller for OIDC support or not. If supported
+	// OIDC is favored over legacy authentication.
+	SetAllowOidcDynamicallyEnabled(allow bool)
 }
 
 // BaseClient implements the Client interface specifically for the types specified in the ApiType constraint. It
@@ -62,6 +68,12 @@ func (self *BaseClient[A]) SetUseOidc(use bool) {
 	v := any(self.API)
 	apiType := v.(OidcEnabledApi)
 	apiType.SetUseOidc(use)
+}
+
+func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
+	v := any(self.API)
+	apiType := v.(OidcEnabledApi)
+	apiType.SetAllowOidcDynamicallyEnabled(allow)
 }
 
 // Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success

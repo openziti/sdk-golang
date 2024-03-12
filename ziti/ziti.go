@@ -410,14 +410,15 @@ func (context *ContextImpl) AddAuthenticationStateFullListener(handler func(Cont
 
 func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handler func(Context, apis.ApiSession)) func() {
 	listener := func(args ...interface{}) {
-		apiSession, ok := args[0].(apis.ApiSession)
+		var apiSession apis.ApiSession
 
-		if !ok {
-			pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
-		}
+		if args[0] != nil {
+			var ok bool
+			apiSession, ok = args[0].(apis.ApiSession)
 
-		if apiSession == nil {
-			pfxlog.Logger().Fatalf("expected arg[0] was nil, unexpected")
+			if !ok {
+				pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiSession, args[0])
+			}
 		}
 
 		handler(context, apiSession)
@@ -823,8 +824,8 @@ func (context *ContextImpl) GetCurrentIdentityWithBackoff() (*rest_model.Identit
 }
 
 func (context *ContextImpl) setUnauthenticated() {
-	prevApiSession := context.CtrlClt.ApiSession.Swap(nil)
-	willEmit := prevApiSession != nil
+	prevApiSessionPtr := context.CtrlClt.ApiSession.Swap(nil)
+	willEmit := prevApiSessionPtr != nil
 
 	context.CtrlClt.ApiSessionCertificate = nil
 
@@ -832,7 +833,7 @@ func (context *ContextImpl) setUnauthenticated() {
 	context.sessions.Clear()
 
 	if willEmit {
-		context.Emit(EventAuthenticationStateUnauthenticated, prevApiSession)
+		context.Emit(EventAuthenticationStateUnauthenticated, *prevApiSessionPtr)
 	}
 }
 
@@ -968,8 +969,9 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 	if _, err := context.CtrlClt.Refresh(); err != nil {
 		return err
 	}
+	apiSession := context.CtrlClt.GetCurrentApiSession()
 
-	if apiSession := context.CtrlClt.GetCurrentApiSession(); apiSession != nil && len(apiSession.GetAuthQueries()) == 0 {
+	if apiSession != nil && len(apiSession.GetAuthQueries()) == 0 {
 		return context.onFullAuth(apiSession)
 	}
 
