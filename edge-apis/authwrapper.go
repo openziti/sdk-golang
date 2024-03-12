@@ -220,27 +220,40 @@ func (a *ApiSessionOidc) GetExpiresAt() *time.Time {
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeManagement struct {
 	*rest_management_api_client.ZitiEdgeManagement
-	useOidc         bool
-	versionOnce     sync.Once
-	versionInfo     *rest_model.Version
-	oidcExplicitSet bool
-	apiUrl          *url.URL
+	// useOidc tracks if OIDC auth should be used
+	useOidc bool
+
+	// useOidcExplicitlySet signals if useOidc was set from an external caller and should be used as is
+	useOidcExplicitlySet bool
+
+	// oidcDynamicallyEnabled will cause the client to check the controller for OIDC support and use if possible as long as useOidc was not explicitly set
+	oidcDynamicallyEnabled bool //currently defaults false till HA release
+
+	versionOnce sync.Once
+	versionInfo *rest_model.Version
+
+	apiUrl *url.URL
 
 	TotpCallback func(chan string)
 }
 
 func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	self.versionOnce.Do(func() {
-		if self.oidcExplicitSet {
+		if self.useOidcExplicitlySet {
 			return
 		}
-		versionParams := manInfo.NewListVersionParams()
 
-		versionResp, _ := self.Informational.ListVersion(versionParams)
+		if self.oidcDynamicallyEnabled {
+			versionParams := manInfo.NewListVersionParams()
 
-		if versionResp != nil {
-			self.versionInfo = versionResp.Payload.Data
-			self.useOidc = stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+			versionResp, _ := self.Informational.ListVersion(versionParams)
+
+			if versionResp != nil {
+				self.versionInfo = versionResp.Payload.Data
+				self.useOidc = stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+			}
+		} else {
+			self.useOidc = false
 		}
 	})
 
@@ -279,8 +292,12 @@ func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypes []
 }
 
 func (self *ZitiEdgeManagement) SetUseOidc(use bool) {
-	self.oidcExplicitSet = true
+	self.useOidcExplicitlySet = true
 	self.useOidc = use
+}
+
+func (self *ZitiEdgeManagement) SetAllowOidcDynamicallyEnabled(allow bool) {
+	self.oidcDynamicallyEnabled = allow
 }
 
 func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
@@ -317,28 +334,39 @@ func (self *ZitiEdgeManagement) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTo
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeClient struct {
 	*rest_client_api_client.ZitiEdgeClient
-	useOidc         bool
-	versionInfo     *rest_model.Version
-	versionOnce     sync.Once
-	oidcExplicitSet bool
-	apiUrl          *url.URL
+	// useOidc tracks if OIDC auth should be used
+	useOidc bool
+
+	// useOidcExplicitlySet signals if useOidc was set from an external caller and should be used as is
+	useOidcExplicitlySet bool
+
+	// oidcDynamicallyEnabled will cause the client to check the controller for OIDC support and use if possible as long as useOidc was not explicitly set.
+	oidcDynamicallyEnabled bool //currently defaults false till HA release
+
+	versionInfo *rest_model.Version
+	versionOnce sync.Once
+	apiUrl      *url.URL
 
 	TotpCallback func(chan string)
 }
 
 func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	self.versionOnce.Do(func() {
-		if self.oidcExplicitSet {
+		if self.useOidcExplicitlySet {
 			return
 		}
 
-		versionParams := clientInfo.NewListVersionParams()
+		if self.oidcDynamicallyEnabled {
+			versionParams := clientInfo.NewListVersionParams()
 
-		versionResp, _ := self.Informational.ListVersion(versionParams)
+			versionResp, _ := self.Informational.ListVersion(versionParams)
 
-		if versionResp != nil {
-			self.versionInfo = versionResp.Payload.Data
-			self.useOidc = stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+			if versionResp != nil {
+				self.versionInfo = versionResp.Payload.Data
+				self.useOidc = stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+			}
+		} else {
+			self.useOidc = false
 		}
 	})
 
@@ -377,21 +405,29 @@ func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypes []stri
 }
 
 func (self *ZitiEdgeClient) SetUseOidc(use bool) {
-	self.oidcExplicitSet = true
+	self.useOidcExplicitlySet = true
 	self.useOidc = use
+}
+
+func (self *ZitiEdgeClient) SetAllowOidcDynamicallyEnabled(allow bool) {
+	self.oidcDynamicallyEnabled = allow
 }
 
 func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
 	switch s := apiSession.(type) {
 	case *ApiSessionLegacy:
 		params := clientApiSession.NewGetCurrentAPISessionParams()
-		_, err := self.CurrentAPISession.GetCurrentAPISession(params, s)
+		newApiSessionDetail, err := self.CurrentAPISession.GetCurrentAPISession(params, s)
 
 		if err != nil {
 			return nil, rest_util.WrapErr(err)
 		}
 
-		return s, nil
+		newApiSession := &ApiSessionLegacy{
+			Detail: newApiSessionDetail.Payload.Data,
+		}
+
+		return newApiSession, nil
 	case *ApiSessionOidc:
 		tokens, err := self.ExchangeTokens(s.OidcTokens)
 
