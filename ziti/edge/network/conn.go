@@ -63,6 +63,7 @@ type edgeConn struct {
 	acceptCompleteHandler *newConnHandler
 	connType              ConnType
 	marker                string
+	circuitId             string
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -251,6 +252,10 @@ func (conn *edgeConn) HandleMuxClose() error {
 	return nil
 }
 
+func (conn *edgeConn) GetCircuitId() string {
+	return conn.circuitId
+}
+
 func (conn *edgeConn) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
@@ -306,6 +311,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 			logger.Warn("connection is not end-to-end-encrypted")
 		}
 	}
+	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
 	logger.Debug("connected")
 
 	return conn, nil
@@ -583,6 +589,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
+	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
@@ -593,13 +600,15 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		appData:        message.Headers[edge.AppDataHeader],
 		connType:       ConnTypeDial,
 		marker:         marker,
+		circuitId:      circuitId,
 	}
 
 	newConnLogger := pfxlog.Logger().
 		WithField("marker", marker).
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
-		WithField("token", token)
+		WithField("token", token).
+		WithField("circuitId", token)
 
 	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {

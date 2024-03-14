@@ -78,6 +78,7 @@ const (
 	SupportsInspectHeader          = 1023
 	SupportsBindSuccessHeader      = 1024
 	ConnectionMarkerHeader         = 1025
+	CircuitIdHeader                = 1026
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
