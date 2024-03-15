@@ -1,3 +1,9 @@
+# Release 0.23.11
+
+## What's New
+
+* Add GetCircuitId to edge.Conn. Allows correlation with controller/router metrics. Requires support from controller.
+
 # Release 0.23.4
 
 ## What's New

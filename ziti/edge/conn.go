@@ -89,6 +89,7 @@ type ServiceConn interface {
 	GetAppData() []byte
 	SourceIdentifier() string
 	TraceRoute(hops uint32, timeout time.Duration) (*TraceRouteResult, error)
+	GetCircuitId() string
 }
 
 type Conn interface {
