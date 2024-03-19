@@ -10,7 +10,7 @@ require (
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/go-resty/resty/v2 v2.12.0
 	github.com/golang-jwt/jwt/v5 v5.2.0
-	github.com/golang/protobuf v1.5.3
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
@@ -34,7 +34,7 @@ require (
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
 	golang.org/x/oauth2 v0.16.0
 	golang.org/x/sys v0.18.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
