@@ -240,19 +240,19 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 		msg.Headers[CostHeader] = costBytes
 	}
 	if options.Precedence != PrecedenceDefault {
-		msg.Headers[PrecedenceHeader] = []byte{byte(options.Precedence)}
+		msg.PutByteHeader(PrecedenceHeader, byte(options.Precedence))
 	}
 
 	if options.Identity != "" {
-		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
+		msg.PutStringHeader(TerminatorIdentityHeader, options.Identity)
 
 		if options.IdentitySecret != "" {
-			msg.Headers[TerminatorIdentitySecretHeader] = []byte(options.IdentitySecret)
+			msg.PutStringHeader(TerminatorIdentitySecretHeader, options.IdentitySecret)
 		}
 	}
 
 	if options.ListenerId != "" {
-		msg.Headers[ListenerId] = []byte(options.ListenerId)
+		msg.PutStringHeader(ListenerId, options.ListenerId)
 	}
 
 	msg.PutBoolHeader(RouterProvidedConnId, true)
