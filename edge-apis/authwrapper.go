@@ -24,6 +24,7 @@ import (
 	"github.com/zitadel/oidc/v2/pkg/client/tokenexchange"
 	"github.com/zitadel/oidc/v2/pkg/oidc"
 	"golang.org/x/oauth2"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -550,7 +551,11 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 	defer rpServer.Stop()
 
 	client := resty.NewWithClient(httpClient)
-	client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy("127.0.0.1", "localhost"))
+	apiHost := issuer
+	if host, _, err := net.SplitHostPort(issuer); err == nil {
+		apiHost = host
+	}
+	client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy("127.0.0.1", "localhost", apiHost))
 	resp, err := client.R().Get(rpServer.LoginUri)
 
 	if err != nil {

@@ -1,3 +1,9 @@
+# Release 0.23.12
+
+* Fix DomainCheckRedirectPolicy for OIDC auth to controllers
+* Update workflows
+* Deps updates
+
 # Release 0.23.11
 
 ## What's New
