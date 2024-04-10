@@ -19,11 +19,14 @@ package edge_apis
 import (
 	"crypto/x509"
 	"github.com/go-openapi/runtime"
+	openapiclient "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_management_api_client"
-	"github.com/pkg/errors"
+	"net/http"
 	"net/url"
+	"strings"
 	"sync/atomic"
 )
 
@@ -47,11 +50,25 @@ type OidcEnabledApi interface {
 // BaseClient implements the Client interface specifically for the types specified in the ApiType constraint. It
 // provides shared functionality that all ApiType types require.
 type BaseClient[A ApiType] struct {
-	API *A
+	API            *A
+	AuthEnabledApi AuthEnabledApi
 	Components
-	AuthInfoWriter runtime.ClientAuthInfoWriter
-	ApiSession     atomic.Pointer[ApiSession]
-	Credentials    Credentials
+	AuthInfoWriter        runtime.ClientAuthInfoWriter
+	ApiSession            atomic.Pointer[ApiSession]
+	Credentials           Credentials
+	ApiUrls               []*url.URL
+	ApiBinding            string
+	ApiVersion            string
+	Schemes               []string
+	onControllerListeners []func([]*url.URL)
+}
+
+func (self *BaseClient[A]) Url() url.URL {
+	return *self.AuthEnabledApi.GetClientTransportPool().GetActiveTransport().ApiUrl
+}
+
+func (self *BaseClient[A]) AddOnControllerUpdateListeners(listener func([]*url.URL)) {
+	self.onControllerListeners = append(self.onControllerListeners, listener)
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
@@ -80,61 +97,42 @@ func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
 // the API Session details will be returned and the current client will make authenticated requests on future
 // calls. On an error the API Session in use will be cleared and subsequent requests will become/continue to be
 // made in an unauthenticated fashion.
-func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (ApiSession, error) {
-	//casting to `any` works around golang error that happens when type asserting a generic typed field
-	myAny := any(self.API)
-	if a, ok := myAny.(AuthEnabledApi); ok {
-		self.Credentials = nil
-		self.ApiSession.Store(nil)
+func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypesOverride []string) (ApiSession, error) {
 
-		if credCaPool := credentials.GetCaPool(); credCaPool != nil {
-			self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
-		} else {
-			self.HttpTransport.TLSClientConfig.RootCAs = self.Components.CaPool
-		}
+	self.Credentials = nil
+	self.ApiSession.Store(nil)
 
-		apiSession, err := a.Authenticate(credentials, configTypes, self.HttpClient)
-
-		if err != nil {
-			return nil, err
-		}
-
-		self.Credentials = credentials
-		self.ApiSession.Store(&apiSession)
-
-		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			currentSessionPtr := self.ApiSession.Load()
-			if currentSessionPtr != nil {
-				currentSession := *currentSessionPtr
-
-				if currentSession != nil && currentSession.GetToken() != nil {
-					if err := currentSession.AuthenticateRequest(request, registry); err != nil {
-						return err
-					}
-				}
-			}
-
-			if self.Credentials != nil {
-				if err := self.Credentials.AuthenticateRequest(request, registry); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
-
-		return apiSession, nil
+	if credCaPool := credentials.GetCaPool(); credCaPool != nil {
+		self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
+	} else {
+		self.HttpTransport.TLSClientConfig.RootCAs = self.Components.CaPool
 	}
-	return nil, errors.New("authentication not supported")
+
+	apiSession, err := self.AuthEnabledApi.Authenticate(credentials, configTypesOverride, self.HttpClient)
+
+	if err != nil {
+		return nil, err
+	}
+
+	self.Credentials = credentials
+	self.ApiSession.Store(&apiSession)
+
+	self.ProcessControllers(self.AuthEnabledApi)
+
+	return apiSession, nil
 }
 
 // initializeComponents assembles the lower level components necessary for the go-swagger/openapi facilities.
-func (self *BaseClient[A]) initializeComponents(apiUrl *url.URL, schemes []string, authInfoWriter runtime.ClientAuthInfoWriter, caPool *x509.CertPool) {
-	components := NewComponents(apiUrl, schemes)
+func (self *BaseClient[A]) initializeComponents(apiUrls []*url.URL, caPool *x509.CertPool) {
+	components := NewComponents()
 	components.HttpTransport.TLSClientConfig.RootCAs = caPool
-	components.Runtime.DefaultAuthentication = authInfoWriter
 	components.CaPool = caPool
+
 	self.Components = *components
+}
+
+func NewRuntime(apiUrl *url.URL, schemes []string, httpClient *http.Client) *openapiclient.Runtime {
+	return openapiclient.NewWithClient(apiUrl.Host, apiUrl.Path, schemes, httpClient)
 }
 
 // AuthenticateRequest implements the openapi runtime.ClientAuthInfoWriter interface from the OpenAPI libraries. It is used
@@ -143,7 +141,63 @@ func (self *BaseClient[A]) AuthenticateRequest(request runtime.ClientRequest, re
 	if self.AuthInfoWriter != nil {
 		return self.AuthInfoWriter.AuthenticateRequest(request, registry)
 	}
+
+	// do not add auth to authenticating endpoints
+	if strings.Contains(request.GetPath(), "/oidc/auth") || strings.Contains(request.GetPath(), "/authenticate") {
+		return nil
+	}
+
+	currentSessionPtr := self.ApiSession.Load()
+	if currentSessionPtr != nil {
+		currentSession := *currentSessionPtr
+
+		if currentSession != nil && currentSession.GetToken() != nil {
+			if err := currentSession.AuthenticateRequest(request, registry); err != nil {
+				return err
+			}
+		}
+	}
+
+	if self.Credentials != nil {
+		if err := self.Credentials.AuthenticateRequest(request, registry); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
+	list, err := authEnabledApi.ListControllers()
+
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("error listing controllers, continuing with 1 default configured controller")
+		return
+	}
+
+	if list == nil || len(*list) <= 1 {
+		pfxlog.Logger().Info("no additional controllers reported, continuing with 1 default configured controller")
+		return
+	}
+
+	//look for matching api binding and versions
+	for _, controller := range *list {
+		apis := controller.APIAddresses[self.ApiBinding]
+
+		for _, apiAddr := range apis {
+			if apiAddr.Version == self.ApiVersion {
+				apiUrl, parseErr := url.Parse(apiAddr.URL)
+				if parseErr == nil {
+					self.AuthEnabledApi.GetClientTransportPool().Add(apiUrl, NewRuntime(apiUrl, self.Schemes, self.HttpClient))
+				}
+			}
+		}
+	}
+
+	apis := self.AuthEnabledApi.GetClientTransportPool().GetApiUrls()
+	for _, listener := range self.onControllerListeners {
+		listener(apis)
+	}
 }
 
 // ManagementApiClient provides the ability to authenticate and interact with the Edge Management API.
@@ -162,19 +216,31 @@ type ManagementApiClient struct {
 // For OpenZiti instances not using publicly signed certificates, `ziti.GetControllerWellKnownCaPool()` can be used
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
-func NewManagementApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ManagementApiClient {
+func NewManagementApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ManagementApiClient {
 	ret := &ManagementApiClient{}
+	ret.Schemes = rest_management_api_client.DefaultSchemes
+	ret.ApiBinding = "edge-management"
+	ret.ApiVersion = "v1"
+	ret.ApiUrls = apiUrls
+	ret.initializeComponents(apiUrls, caPool)
 
-	ret.initializeComponents(apiUrl, rest_management_api_client.DefaultSchemes, ret, caPool)
+	transportPool := NewClientTransportPoolRandom()
 
-	newApi := rest_management_api_client.New(ret.Components.Runtime, nil)
+	for _, apiUrl := range apiUrls {
+		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
+		newRuntime.DefaultAuthentication = ret
+		transportPool.Add(apiUrl, newRuntime)
+	}
+
+	newApi := rest_management_api_client.New(transportPool, nil)
 	api := ZitiEdgeManagement{
-		ZitiEdgeManagement: newApi,
-		apiUrl:             apiUrl,
-		TotpCallback:       totpCallback,
+		ZitiEdgeManagement:  newApi,
+		TotpCallback:        totpCallback,
+		ClientTransportPool: transportPool,
 	}
 
 	ret.API = &api
+	ret.AuthEnabledApi = &api
 
 	return ret
 }
@@ -194,18 +260,31 @@ type ClientApiClient struct {
 // For OpenZiti instances not using publicly signed certificates, `ziti.GetControllerWellKnownCaPool()` can be used
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
-func NewClientApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
+func NewClientApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
 	ret := &ClientApiClient{}
+	ret.ApiBinding = "edge-client"
+	ret.ApiVersion = "v1"
+	ret.Schemes = rest_client_api_client.DefaultSchemes
+	ret.ApiUrls = apiUrls
 
-	ret.initializeComponents(apiUrl, rest_client_api_client.DefaultSchemes, ret, caPool)
+	ret.initializeComponents(apiUrls, caPool)
 
-	newApi := rest_client_api_client.New(ret.Components.Runtime, nil)
+	transportPool := NewClientTransportPoolRandom()
+
+	for _, apiUrl := range apiUrls {
+		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
+		newRuntime.DefaultAuthentication = ret
+		transportPool.Add(apiUrl, newRuntime)
+	}
+
+	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
-		ZitiEdgeClient: newApi,
-		apiUrl:         apiUrl,
-		TotpCallback:   totpCallback,
+		ZitiEdgeClient:      newApi,
+		TotpCallback:        totpCallback,
+		ClientTransportPool: transportPool,
 	}
 	ret.API = &api
+	ret.AuthEnabledApi = &api
 
 	return ret
 }
