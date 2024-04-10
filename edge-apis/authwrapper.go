@@ -10,10 +10,12 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	clientAuth "github.com/openziti/edge-api/rest_client_api_client/authentication"
+	clientControllers "github.com/openziti/edge-api/rest_client_api_client/controllers"
 	clientApiSession "github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	clientInfo "github.com/openziti/edge-api/rest_client_api_client/informational"
 	"github.com/openziti/edge-api/rest_management_api_client"
 	manAuth "github.com/openziti/edge-api/rest_management_api_client/authentication"
+	manControllers "github.com/openziti/edge-api/rest_management_api_client/controllers"
 	manCurApiSession "github.com/openziti/edge-api/rest_management_api_client/current_api_session"
 	manInfo "github.com/openziti/edge-api/rest_management_api_client/informational"
 	"github.com/openziti/edge-api/rest_model"
@@ -45,6 +47,7 @@ type AuthEnabledApi interface {
 	//http client if not provided.
 	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error)
 	SetUseOidc(bool)
+	ListControllers() (*rest_model.ControllersList, error)
 }
 
 type ApiSession interface {
@@ -217,6 +220,8 @@ func (a *ApiSessionOidc) GetExpiresAt() *time.Time {
 	return nil
 }
 
+var _ AuthEnabledApi = (*ZitiEdgeManagement)(nil)
+
 // ZitiEdgeManagement is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeManagement struct {
@@ -236,6 +241,16 @@ type ZitiEdgeManagement struct {
 	apiUrl *url.URL
 
 	TotpCallback func(chan string)
+}
+
+func (self *ZitiEdgeManagement) ListControllers() (*rest_model.ControllersList, error) {
+	params := manControllers.NewListControllersParams()
+	resp, err := self.Controllers.ListControllers(params, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp.GetPayload().Data, nil
 }
 
 func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
@@ -331,6 +346,8 @@ func (self *ZitiEdgeManagement) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTo
 	return exchangeTokens(self.apiUrl.String(), curTokens)
 }
 
+var _ AuthEnabledApi = (*ZitiEdgeClient)(nil)
+
 // ZitiEdgeClient is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeClient struct {
@@ -349,6 +366,16 @@ type ZitiEdgeClient struct {
 	apiUrl      *url.URL
 
 	TotpCallback func(chan string)
+}
+
+func (self *ZitiEdgeClient) ListControllers() (*rest_model.ControllersList, error) {
+	params := clientControllers.NewListControllersParams()
+	resp, err := self.Controllers.ListControllers(params, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp.GetPayload().Data, nil
 }
 
 func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {

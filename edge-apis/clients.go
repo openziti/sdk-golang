@@ -19,11 +19,15 @@ package edge_apis
 import (
 	"crypto/x509"
 	"github.com/go-openapi/runtime"
+	openapiclient "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_management_api_client"
 	"github.com/pkg/errors"
+	"net/http"
 	"net/url"
+	"strings"
 	"sync/atomic"
 )
 
@@ -49,9 +53,18 @@ type OidcEnabledApi interface {
 type BaseClient[A ApiType] struct {
 	API *A
 	Components
-	AuthInfoWriter runtime.ClientAuthInfoWriter
-	ApiSession     atomic.Pointer[ApiSession]
-	Credentials    Credentials
+	AuthInfoWriter      runtime.ClientAuthInfoWriter
+	ApiSession          atomic.Pointer[ApiSession]
+	Credentials         Credentials
+	ApiUrl              *url.URL
+	ClientTransportPool *ClientTransportPoolRandom
+	ApiBinding          string
+	ApiVersion          string
+	Schemes             []string
+}
+
+func (self *BaseClient[A]) Url() url.URL {
+	return *self.ApiUrl
 }
 
 // GetCurrentApiSession returns the ApiSession that is being used to authenticate requests.
@@ -83,7 +96,7 @@ func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
 func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []string) (ApiSession, error) {
 	//casting to `any` works around golang error that happens when type asserting a generic typed field
 	myAny := any(self.API)
-	if a, ok := myAny.(AuthEnabledApi); ok {
+	if authEnabledApi, ok := myAny.(AuthEnabledApi); ok {
 		self.Credentials = nil
 		self.ApiSession.Store(nil)
 
@@ -93,7 +106,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 			self.HttpTransport.TLSClientConfig.RootCAs = self.Components.CaPool
 		}
 
-		apiSession, err := a.Authenticate(credentials, configTypes, self.HttpClient)
+		apiSession, err := authEnabledApi.Authenticate(credentials, configTypes, self.HttpClient)
 
 		if err != nil {
 			return nil, err
@@ -102,26 +115,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 		self.Credentials = credentials
 		self.ApiSession.Store(&apiSession)
 
-		self.Runtime.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(func(request runtime.ClientRequest, registry strfmt.Registry) error {
-			currentSessionPtr := self.ApiSession.Load()
-			if currentSessionPtr != nil {
-				currentSession := *currentSessionPtr
-
-				if currentSession != nil && currentSession.GetToken() != nil {
-					if err := currentSession.AuthenticateRequest(request, registry); err != nil {
-						return err
-					}
-				}
-			}
-
-			if self.Credentials != nil {
-				if err := self.Credentials.AuthenticateRequest(request, registry); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
+		self.ProcessControllers(authEnabledApi)
 
 		return apiSession, nil
 	}
@@ -129,12 +123,21 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypes []s
 }
 
 // initializeComponents assembles the lower level components necessary for the go-swagger/openapi facilities.
-func (self *BaseClient[A]) initializeComponents(apiUrl *url.URL, schemes []string, authInfoWriter runtime.ClientAuthInfoWriter, caPool *x509.CertPool) {
-	components := NewComponents(apiUrl, schemes)
+func (self *BaseClient[A]) initializeComponents(apiUrl *url.URL, caPool *x509.CertPool) {
+	components := NewComponents()
 	components.HttpTransport.TLSClientConfig.RootCAs = caPool
-	components.Runtime.DefaultAuthentication = authInfoWriter
 	components.CaPool = caPool
 	self.Components = *components
+
+	firstRuntime := NewRuntime(apiUrl, self.Schemes, self.Components.HttpClient)
+	firstRuntime.DefaultAuthentication = self
+
+	self.ClientTransportPool = NewClientTransportPoolRandom()
+	self.ClientTransportPool.Add(apiUrl, firstRuntime)
+}
+
+func NewRuntime(apiUrl *url.URL, schemes []string, httpClient *http.Client) *openapiclient.Runtime {
+	return openapiclient.NewWithClient(apiUrl.Host, apiUrl.Path, schemes, httpClient)
 }
 
 // AuthenticateRequest implements the openapi runtime.ClientAuthInfoWriter interface from the OpenAPI libraries. It is used
@@ -143,7 +146,58 @@ func (self *BaseClient[A]) AuthenticateRequest(request runtime.ClientRequest, re
 	if self.AuthInfoWriter != nil {
 		return self.AuthInfoWriter.AuthenticateRequest(request, registry)
 	}
+
+	// do not add auth to authenticating endpoints
+	if strings.Contains(request.GetPath(), "/oidc/auth") || strings.Contains(request.GetPath(), "/authenticate") {
+		return nil
+	}
+
+	currentSessionPtr := self.ApiSession.Load()
+	if currentSessionPtr != nil {
+		currentSession := *currentSessionPtr
+
+		if currentSession != nil && currentSession.GetToken() != nil {
+			if err := currentSession.AuthenticateRequest(request, registry); err != nil {
+				return err
+			}
+		}
+	}
+
+	if self.Credentials != nil {
+		if err := self.Credentials.AuthenticateRequest(request, registry); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
+	list, err := authEnabledApi.ListControllers()
+
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("error listing controllers, continuing with 1 default configured controller")
+		return
+	}
+
+	if list == nil || len(*list) <= 1 {
+		pfxlog.Logger().Info("no additional controllers reported, continuing with 1 default configured controller")
+		return
+	}
+
+	//look for matching api binding and versions
+	for _, controller := range *list {
+		apis := controller.APIAddresses[self.ApiBinding]
+
+		for _, apiAddr := range apis {
+			if apiAddr.Version == self.ApiVersion {
+				apiUrl, parseErr := url.Parse(apiAddr.URL)
+				if parseErr == nil {
+					self.ClientTransportPool.Add(apiUrl, NewRuntime(apiUrl, self.Schemes, self.HttpClient))
+				}
+			}
+		}
+	}
 }
 
 // ManagementApiClient provides the ability to authenticate and interact with the Edge Management API.
@@ -164,10 +218,13 @@ type ManagementApiClient struct {
 // that have not been verified from an outside secret (such as an enrollment token).
 func NewManagementApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ManagementApiClient {
 	ret := &ManagementApiClient{}
+	ret.Schemes = rest_management_api_client.DefaultSchemes
+	ret.ApiBinding = "edge-management"
+	ret.ApiVersion = "v1"
+	ret.ApiUrl = apiUrl
+	ret.initializeComponents(apiUrl, caPool)
 
-	ret.initializeComponents(apiUrl, rest_management_api_client.DefaultSchemes, ret, caPool)
-
-	newApi := rest_management_api_client.New(ret.Components.Runtime, nil)
+	newApi := rest_management_api_client.New(ret.ClientTransportPool, nil)
 	api := ZitiEdgeManagement{
 		ZitiEdgeManagement: newApi,
 		apiUrl:             apiUrl,
@@ -196,10 +253,14 @@ type ClientApiClient struct {
 // that have not been verified from an outside secret (such as an enrollment token).
 func NewClientApiClient(apiUrl *url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
 	ret := &ClientApiClient{}
+	ret.ApiBinding = "edge-client"
+	ret.ApiVersion = "v1"
+	ret.Schemes = rest_client_api_client.DefaultSchemes
+	ret.ApiUrl = apiUrl
 
-	ret.initializeComponents(apiUrl, rest_client_api_client.DefaultSchemes, ret, caPool)
+	ret.initializeComponents(apiUrl, caPool)
 
-	newApi := rest_client_api_client.New(ret.Components.Runtime, nil)
+	newApi := rest_client_api_client.New(ret.ClientTransportPool, nil)
 	api := ZitiEdgeClient{
 		ZitiEdgeClient: newApi,
 		apiUrl:         apiUrl,
