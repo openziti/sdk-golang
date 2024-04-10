@@ -2,11 +2,9 @@ package edge_apis
 
 import (
 	"crypto/x509"
-	openapiclient "github.com/go-openapi/runtime/client"
 	"github.com/openziti/edge-api/rest_util"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
 	"time"
 )
 
@@ -14,14 +12,13 @@ import (
 // components are interconnected and have references to each other. This struct is used to set, move, and manage
 // them as a set.
 type Components struct {
-	Runtime       *openapiclient.Runtime
 	HttpClient    *http.Client
 	HttpTransport *http.Transport
 	CaPool        *x509.CertPool
 }
 
 // NewComponents assembles a new set of components with reasonable production defaults.
-func NewComponents(api *url.URL, schemes []string) *Components {
+func NewComponents() *Components {
 	tlsClientConfig, _ := rest_util.NewTlsConfig()
 
 	httpTransport := &http.Transport{
@@ -43,10 +40,7 @@ func NewComponents(api *url.URL, schemes []string) *Components {
 		Timeout:       10 * time.Second,
 	}
 
-	apiRuntime := openapiclient.NewWithClient(api.Host, api.Path, schemes, httpClient)
-
 	return &Components{
-		Runtime:       apiRuntime,
 		HttpClient:    httpClient,
 		HttpTransport: httpTransport,
 	}

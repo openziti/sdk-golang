@@ -10,10 +10,12 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	clientAuth "github.com/openziti/edge-api/rest_client_api_client/authentication"
+	clientControllers "github.com/openziti/edge-api/rest_client_api_client/controllers"
 	clientApiSession "github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	clientInfo "github.com/openziti/edge-api/rest_client_api_client/informational"
 	"github.com/openziti/edge-api/rest_management_api_client"
 	manAuth "github.com/openziti/edge-api/rest_management_api_client/authentication"
+	manControllers "github.com/openziti/edge-api/rest_management_api_client/controllers"
 	manCurApiSession "github.com/openziti/edge-api/rest_management_api_client/current_api_session"
 	manInfo "github.com/openziti/edge-api/rest_management_api_client/informational"
 	"github.com/openziti/edge-api/rest_model"
@@ -24,7 +26,6 @@ import (
 	"github.com/zitadel/oidc/v2/pkg/client/tokenexchange"
 	"github.com/zitadel/oidc/v2/pkg/oidc"
 	"golang.org/x/oauth2"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -45,6 +46,9 @@ type AuthEnabledApi interface {
 	//http client if not provided.
 	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error)
 	SetUseOidc(bool)
+	ListControllers() (*rest_model.ControllersList, error)
+	GetClientTransportPool() ClientTransportPool
+	SetClientTransportPool(ClientTransportPool)
 }
 
 type ApiSession interface {
@@ -217,6 +221,8 @@ func (a *ApiSessionOidc) GetExpiresAt() *time.Time {
 	return nil
 }
 
+var _ AuthEnabledApi = (*ZitiEdgeManagement)(nil)
+
 // ZitiEdgeManagement is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
 type ZitiEdgeManagement struct {
@@ -233,9 +239,26 @@ type ZitiEdgeManagement struct {
 	versionOnce sync.Once
 	versionInfo *rest_model.Version
 
-	apiUrl *url.URL
+	TotpCallback        func(chan string)
+	ClientTransportPool ClientTransportPool
+}
 
-	TotpCallback func(chan string)
+func (self *ZitiEdgeManagement) SetClientTransportPool(transportPool ClientTransportPool) {
+	self.ClientTransportPool = transportPool
+}
+
+func (self *ZitiEdgeManagement) GetClientTransportPool() ClientTransportPool {
+	return self.ClientTransportPool
+}
+
+func (self *ZitiEdgeManagement) ListControllers() (*rest_model.ControllersList, error) {
+	params := manControllers.NewListControllersParams()
+	resp, err := self.Controllers.ListControllers(params, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp.GetPayload().Data, nil
 }
 
 func (self *ZitiEdgeManagement) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
@@ -288,8 +311,8 @@ func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes 
 	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
 }
 
-func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
-	return oidcAuth(self.apiUrl.Host, credentials, configTypes, httpClient, self.TotpCallback)
+func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
+	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCallback)
 }
 
 func (self *ZitiEdgeManagement) SetUseOidc(use bool) {
@@ -328,8 +351,10 @@ func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession, httpCli
 }
 
 func (self *ZitiEdgeManagement) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	return exchangeTokens(getBaseUrl(self.apiUrl), curTokens, httpClient)
+	return exchangeTokens(self.ClientTransportPool, curTokens, httpClient)
 }
+
+var _ AuthEnabledApi = (*ZitiEdgeClient)(nil)
 
 // ZitiEdgeClient is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
@@ -346,12 +371,30 @@ type ZitiEdgeClient struct {
 
 	versionInfo *rest_model.Version
 	versionOnce sync.Once
-	apiUrl      *url.URL
 
-	TotpCallback func(chan string)
+	TotpCallback        func(chan string)
+	ClientTransportPool ClientTransportPool
 }
 
-func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
+func (self *ZitiEdgeClient) GetClientTransportPool() ClientTransportPool {
+	return self.ClientTransportPool
+}
+
+func (self *ZitiEdgeClient) SetClientTransportPool(transportPool ClientTransportPool) {
+	self.ClientTransportPool = transportPool
+}
+
+func (self *ZitiEdgeClient) ListControllers() (*rest_model.ControllersList, error) {
+	params := clientControllers.NewListControllersParams()
+	resp, err := self.Controllers.ListControllers(params, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp.GetPayload().Data, nil
+}
+
+func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypesOverrides []string, httpClient *http.Client) (ApiSession, error) {
 	self.versionOnce.Do(func() {
 		if self.useOidcExplicitlySet {
 			return
@@ -372,10 +415,10 @@ func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypes []
 	})
 
 	if self.useOidc {
-		return self.oidcAuth(credentials, configTypes, httpClient)
+		return self.oidcAuth(credentials, configTypesOverrides, httpClient)
 	}
 
-	return self.legacyAuth(credentials, configTypes, httpClient)
+	return self.legacyAuth(credentials, configTypesOverrides, httpClient)
 }
 
 func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
@@ -401,8 +444,8 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
 }
 
-func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
-	return oidcAuth(self.apiUrl.Host, credentials, configTypes, httpClient, self.TotpCallback)
+func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
+	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCallback)
 }
 
 func (self *ZitiEdgeClient) SetUseOidc(use bool) {
@@ -445,59 +488,67 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient 
 }
 
 func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	return exchangeTokens(getBaseUrl(self.apiUrl), curTokens, httpClient)
+	return exchangeTokens(self.ClientTransportPool, curTokens, httpClient)
 }
 
-func getBaseUrl(apiUrl *url.URL) string {
-	urlCopy := *apiUrl
-	urlCopy.Path = ""
-	return urlCopy.String()
-}
+func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 
-func exchangeTokens(issuer string, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	te, err := tokenexchange.NewTokenExchanger(issuer, tokenexchange.WithHTTPClient(client))
+	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
+
+	_, err := clientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
+		apiHost := transport.ApiUrl.Host
+		te, err := tokenexchange.NewTokenExchanger(apiHost, tokenexchange.WithHTTPClient(client))
+
+		if err != nil {
+			return nil, err
+		}
+
+		accessResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
+
+		if err != nil {
+			return nil, err
+		}
+
+		//TODO: be smarter, only refresh refresh token if the new access token lives beyond refresh
+		refreshResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
+
+		if err != nil {
+			return nil, err
+		}
+
+		idResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
+
+		if err != nil {
+			return nil, err
+		}
+
+		idClaims := &oidc.IDTokenClaims{}
+
+		err = json.Unmarshal([]byte(idResp.AccessToken), idClaims)
+
+		if err != nil {
+			return nil, err
+		}
+
+		outTokens = &oidc.Tokens[*oidc.IDTokenClaims]{
+			Token: &oauth2.Token{
+				AccessToken:  accessResp.AccessToken,
+				TokenType:    accessResp.TokenType,
+				RefreshToken: refreshResp.RefreshToken,
+				Expiry:       time.Time{},
+			},
+			IDTokenClaims: idClaims,
+			IDToken:       idResp.AccessToken, //access token is used to hold id token per zitadel comments
+		}
+
+		return outTokens, nil
+	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	accessResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
-
-	if err != nil {
-		return nil, err
-	}
-
-	//TODO: be smarter, only refresh refresh token if the new access token lives beyond refresh
-	refreshResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
-
-	if err != nil {
-		return nil, err
-	}
-
-	idResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
-
-	if err != nil {
-		return nil, err
-	}
-
-	idClaims := &oidc.IDTokenClaims{}
-
-	err = json.Unmarshal([]byte(idResp.AccessToken), idClaims)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &oidc.Tokens[*oidc.IDTokenClaims]{
-		Token: &oauth2.Token{
-			AccessToken:  accessResp.AccessToken,
-			TokenType:    accessResp.TokenType,
-			RefreshToken: refreshResp.RefreshToken,
-			Expiry:       time.Time{},
-		},
-		IDTokenClaims: idClaims,
-		IDToken:       idResp.AccessToken, //access token is used to hold id token per zitadel comments
-	}, nil
+	return outTokens, nil
 }
 
 type authPayload struct {
@@ -532,14 +583,18 @@ func (a *authPayload) toMap() map[string]string {
 	return result
 }
 
-func oidcAuth(issuer string, credentials Credentials, configTypes []string, httpClient *http.Client, totpCallback func(chan string)) (ApiSession, error) {
+func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, configTypeOverrides []string, httpClient *http.Client, totpCallback func(chan string)) (ApiSession, error) {
 	payload := &authPayload{
 		Authenticate: credentials.Payload(),
 	}
 	method := credentials.Method()
-	payload.ConfigTypes = configTypes
+
+	if configTypeOverrides != nil {
+		payload.ConfigTypes = configTypeOverrides
+	}
 
 	certs := credentials.TlsCerts()
+
 	if len(certs) != 0 {
 		if transport, ok := httpClient.Transport.(*http.Transport); ok {
 			transport.TLSClientConfig.Certificates = certs
@@ -547,112 +602,118 @@ func oidcAuth(issuer string, credentials Credentials, configTypes []string, http
 		}
 	}
 
-	rpServer, err := newLocalRpServer(issuer, method)
+	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
-	if err != nil {
-		return nil, err
-	}
+	_, err := clientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
+		rpServer, err := newLocalRpServer(transport.ApiUrl.Host, method)
 
-	rpServer.Start()
-	defer rpServer.Stop()
-
-	client := resty.NewWithClient(httpClient)
-	apiHost := issuer
-	if host, _, err := net.SplitHostPort(issuer); err == nil {
-		apiHost = host
-	}
-	client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy("127.0.0.1", "localhost", apiHost))
-	resp, err := client.R().Get(rpServer.LoginUri)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("local rp login response is expected to be HTTP status %d got %d with body: %s", http.StatusOK, resp.StatusCode(), resp.Body())
-	}
-	payload.AuthRequestId = resp.Header().Get(AuthRequestIdHeader)
-
-	if payload.AuthRequestId == "" {
-		return nil, errors.New("could not find auth request id header")
-	}
-
-	opLoginUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/" + method
-	totpUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/totp"
-
-	formData := payload.toMap()
-
-	req := client.R()
-	clientRequest := asClientRequest(req, client)
-
-	err = credentials.AuthenticateRequest(clientRequest, strfmt.Default)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err = req.SetFormData(formData).Post(opLoginUri)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("remote op login response is expected to be HTTP status %d got %d with body: %s", http.StatusOK, resp.StatusCode(), resp.Body())
-	}
-
-	authRequestId := resp.Header().Get(AuthRequestIdHeader)
-	totpRequiredHeader := resp.Header().Get(TotpRequiredHeader)
-	totpRequired := totpRequiredHeader != ""
-	totpCode := ""
-
-	if totpRequired {
-
-		if totpCallback == nil {
-			return nil, errors.New("totp is required but not totp callback was defined")
-		}
-		codeChan := make(chan string)
-		go totpCallback(codeChan)
-
-		select {
-		case code := <-codeChan:
-			totpCode = code
-		case <-time.After(30 * time.Minute):
-			return nil, fmt.Errorf("timedout waiting for totpT callback")
+		if err != nil {
+			return nil, err
 		}
 
-		resp, err = client.R().SetBody(&totpCodePayload{
-			MfaCode: rest_model.MfaCode{
-				Code: &totpCode,
-			},
-			AuthRequestId: authRequestId,
-		}).Post(totpUri)
+		rpServer.Start()
+		defer rpServer.Stop()
+
+		client := resty.NewWithClient(httpClient)
+		apiHost := transport.ApiUrl.Hostname()
+
+		client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy("127.0.0.1", "localhost", apiHost))
+		resp, err := client.R().Get(rpServer.LoginUri)
 
 		if err != nil {
 			return nil, err
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			apiErr := &errorz.ApiError{}
-			err = json.Unmarshal(resp.Body(), apiErr)
+			return nil, fmt.Errorf("local rp login response is expected to be HTTP status %d got %d with body: %s", http.StatusOK, resp.StatusCode(), resp.Body())
+		}
+		payload.AuthRequestId = resp.Header().Get(AuthRequestIdHeader)
 
-			if err != nil {
-				return nil, fmt.Errorf("could not verify TOTP MFA code recieved %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+		if payload.AuthRequestId == "" {
+			return nil, errors.New("could not find auth request id header")
+		}
+
+		opLoginUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/" + method
+		totpUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/totp"
+
+		formData := payload.toMap()
+
+		req := client.R()
+		clientRequest := asClientRequest(req, client)
+
+		err = credentials.AuthenticateRequest(clientRequest, strfmt.Default)
+
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err = req.SetFormData(formData).Post(opLoginUri)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			return nil, fmt.Errorf("remote op login response is expected to be HTTP status %d got %d with body: %s", http.StatusOK, resp.StatusCode(), resp.Body())
+		}
+
+		authRequestId := resp.Header().Get(AuthRequestIdHeader)
+		totpRequiredHeader := resp.Header().Get(TotpRequiredHeader)
+		totpRequired := totpRequiredHeader != ""
+		totpCode := ""
+
+		if totpRequired {
+
+			if totpCallback == nil {
+				return nil, errors.New("totp is required but not totp callback was defined")
+			}
+			codeChan := make(chan string)
+			go totpCallback(codeChan)
+
+			select {
+			case code := <-codeChan:
+				totpCode = code
+			case <-time.After(30 * time.Minute):
+				return nil, fmt.Errorf("timedout waiting for totpT callback")
 			}
 
-			return nil, apiErr
+			resp, err = client.R().SetBody(&totpCodePayload{
+				MfaCode: rest_model.MfaCode{
+					Code: &totpCode,
+				},
+				AuthRequestId: authRequestId,
+			}).Post(totpUri)
 
+			if err != nil {
+				return nil, err
+			}
+
+			if resp.StatusCode() != http.StatusOK {
+				apiErr := &errorz.ApiError{}
+				err = json.Unmarshal(resp.Body(), apiErr)
+
+				if err != nil {
+					return nil, fmt.Errorf("could not verify TOTP MFA code recieved %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+				}
+
+				return nil, apiErr
+
+			}
 		}
+
+		tokens := <-rpServer.TokenChan
+
+		if tokens == nil {
+			return nil, errors.New("authentication did not complete, received nil tokens")
+		}
+		outTokens = tokens
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-
-	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
-
-	tokens := <-rpServer.TokenChan
-
-	if tokens == nil {
-		return nil, errors.New("authentication did not complete, received nil tokens")
-	}
-	outTokens = tokens
 
 	return &ApiSessionOidc{
 		OidcTokens: outTokens,
