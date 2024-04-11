@@ -610,7 +610,7 @@ func (context *ContextImpl) refreshSessions() {
 			toDelete = append(toDelete, *session.ID)
 		} else {
 			for _, er := range s.EdgeRouters {
-				for _, u := range er.Urls {
+				for _, u := range er.SupportedProtocols {
 					if context.options.isEdgeRouterUrlAccepted(u) {
 						edgeRouters[u] = *er.Name
 					}
@@ -1843,7 +1843,7 @@ func (mgr *listenerManager) getUsableEndpointCount(session *rest_model.SessionDe
 
 	count := 0
 	for _, edgeRouter := range session.EdgeRouters {
-		for _, routerUrl := range edgeRouter.Urls {
+		for _, routerUrl := range edgeRouter.SupportedProtocols {
 			if mgr.context.options.isEdgeRouterUrlAccepted(routerUrl) {
 				count++
 			}
@@ -1928,7 +1928,7 @@ func (mgr *listenerManager) makeMoreListeners() {
 			continue
 		}
 
-		for _, routerUrl := range edgeRouter.Urls {
+		for _, routerUrl := range edgeRouter.SupportedProtocols {
 			if !mgr.context.options.isEdgeRouterUrlAccepted(routerUrl) {
 				log.WithField("router", *edgeRouter.Name).WithField("url", routerUrl).
 					Trace("skipping unusable url")
