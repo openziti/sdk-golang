@@ -74,7 +74,7 @@ func (self *CtrlClient) GetCurrentApiSession() apis.ApiSession {
 // Refresh will contact the controller extending the current ApiSession for legacy API Sessions
 func (self *CtrlClient) Refresh() (*time.Time, error) {
 	if apiSession := self.GetCurrentApiSession(); apiSession != nil {
-		newApiSession, err := self.API.RefreshApiSession(apiSession)
+		newApiSession, err := self.API.RefreshApiSession(apiSession, self.HttpClient)
 
 		if err != nil {
 			return nil, err
