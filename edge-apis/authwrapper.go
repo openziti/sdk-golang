@@ -301,7 +301,7 @@ func (self *ZitiEdgeManagement) SetAllowOidcDynamicallyEnabled(allow bool) {
 	self.oidcDynamicallyEnabled = allow
 }
 
-func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
+func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession, httpClient *http.Client) (ApiSession, error) {
 	switch s := apiSession.(type) {
 	case *ApiSessionLegacy:
 		params := manCurApiSession.NewGetCurrentAPISessionParams()
@@ -313,7 +313,7 @@ func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession) (ApiSes
 
 		return s, nil
 	case *ApiSessionOidc:
-		tokens, err := self.ExchangeTokens(s.OidcTokens)
+		tokens, err := self.ExchangeTokens(s.OidcTokens, httpClient)
 
 		if err != nil {
 			return nil, err
@@ -327,8 +327,8 @@ func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession) (ApiSes
 	return nil, errors.New("api session does not have any tokens")
 }
 
-func (self *ZitiEdgeManagement) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims]) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	return exchangeTokens(self.apiUrl.String(), curTokens)
+func (self *ZitiEdgeManagement) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	return exchangeTokens(getBaseUrl(self.apiUrl), curTokens, httpClient)
 }
 
 // ZitiEdgeClient is an alias of the go-swagger generated client that allows this package to add additional
@@ -414,7 +414,7 @@ func (self *ZitiEdgeClient) SetAllowOidcDynamicallyEnabled(allow bool) {
 	self.oidcDynamicallyEnabled = allow
 }
 
-func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession) (ApiSession, error) {
+func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient *http.Client) (ApiSession, error) {
 	switch s := apiSession.(type) {
 	case *ApiSessionLegacy:
 		params := clientApiSession.NewGetCurrentAPISessionParams()
@@ -430,7 +430,7 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession) (ApiSession
 
 		return newApiSession, nil
 	case *ApiSessionOidc:
-		tokens, err := self.ExchangeTokens(s.OidcTokens)
+		tokens, err := self.ExchangeTokens(s.OidcTokens, httpClient)
 
 		if err != nil {
 			return nil, err
@@ -444,12 +444,18 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession) (ApiSession
 	return nil, errors.New("api session does not have any tokens")
 }
 
-func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims]) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	return exchangeTokens(self.apiUrl.String(), curTokens)
+func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	return exchangeTokens(getBaseUrl(self.apiUrl), curTokens, httpClient)
 }
 
-func exchangeTokens(issuer string, curTokens *oidc.Tokens[*oidc.IDTokenClaims]) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	te, err := tokenexchange.NewTokenExchanger(issuer)
+func getBaseUrl(apiUrl *url.URL) string {
+	urlCopy := *apiUrl
+	urlCopy.Path = ""
+	return urlCopy.String()
+}
+
+func exchangeTokens(issuer string, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	te, err := tokenexchange.NewTokenExchanger(issuer, tokenexchange.WithHTTPClient(client))
 
 	if err != nil {
 		return nil, err
