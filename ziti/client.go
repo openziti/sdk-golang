@@ -230,6 +230,8 @@ func (self *CtrlClient) GetSessionFromJwt(sessionToken string) (*rest_model.Sess
 		})
 	}
 
+	self.sanitizeSessionUrls(sessionDetail)
+
 	return sessionDetail, nil
 }
 
@@ -465,7 +467,7 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
 	for _, edgeRouter := range session.EdgeRouters {
 		newUrls := map[string]string{}
-		for protocol, url := range edgeRouter.Urls {
+		for protocol, url := range edgeRouter.SupportedProtocols {
 			url = strings.Replace(url, "://", ":", 1)
 			if _, err := transport.ParseAddress(url); err == nil {
 				newUrls[protocol] = url
@@ -473,6 +475,6 @@ func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
 				pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(edgeRouter.Name))
 			}
 		}
-		edgeRouter.Urls = newUrls
+		edgeRouter.SupportedProtocols = newUrls
 	}
 }
