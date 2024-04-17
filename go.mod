@@ -1,8 +1,7 @@
 module github.com/openziti/sdk-golang
 
 go 1.21
-
-toolchain go1.22.1
+toolchain go1.22.2
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -15,7 +14,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
-	github.com/michaelquigley/pfxlog v0.6.10
+	github.com/michaelquigley/pfxlog v1.0.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v2 v2.0.128
