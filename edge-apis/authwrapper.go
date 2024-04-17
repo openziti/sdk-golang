@@ -28,7 +28,6 @@ import (
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 )
@@ -561,23 +560,22 @@ type totpCodePayload struct {
 	AuthRequestId string `json:"id"`
 }
 
-func (a *authPayload) toMap() map[string]string {
-	configTypes := strings.Join(a.ConfigTypes, ",")
-	result := map[string]string{
-		"id":            a.AuthRequestId,
-		"configTypes":   configTypes,
-		"password":      string(a.Password),
-		"username":      string(a.Username),
-		"envArch":       a.EnvInfo.Arch,
-		"envOs":         a.EnvInfo.Os,
-		"envOsRelease":  a.EnvInfo.OsRelease,
-		"envOsVersion":  a.EnvInfo.OsVersion,
-		"sdkAppID":      a.SdkInfo.AppID,
-		"sdkAppVersion": a.SdkInfo.AppVersion,
-		"sdkBranch":     a.SdkInfo.Branch,
-		"sdkRevision":   a.SdkInfo.Revision,
-		"sdkType":       a.SdkInfo.Type,
-		"sdkVersion":    a.SdkInfo.Version,
+func (a *authPayload) toValues() url.Values {
+	result := url.Values{
+		"id":            []string{a.AuthRequestId},
+		"password":      []string{string(a.Password)},
+		"username":      []string{string(a.Username)},
+		"configTypes":   a.ConfigTypes,
+		"envArch":       []string{a.EnvInfo.Arch},
+		"envOs":         []string{a.EnvInfo.Os},
+		"envOsRelease":  []string{a.EnvInfo.OsRelease},
+		"envOsVersion":  []string{a.EnvInfo.OsVersion},
+		"sdkAppID":      []string{a.SdkInfo.AppID},
+		"sdkAppVersion": []string{a.SdkInfo.AppVersion},
+		"sdkBranch":     []string{a.SdkInfo.Branch},
+		"sdkRevision":   []string{a.SdkInfo.Revision},
+		"sdkType":       []string{a.SdkInfo.Type},
+		"sdkVersion":    []string{a.SdkInfo.Version},
 	}
 
 	return result
@@ -636,7 +634,7 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 		opLoginUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/" + method
 		totpUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/totp"
 
-		formData := payload.toMap()
+		formData := payload.toValues()
 
 		req := client.R()
 		clientRequest := asClientRequest(req, client)
@@ -647,7 +645,7 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 			return nil, err
 		}
 
-		resp, err = req.SetFormData(formData).Post(opLoginUri)
+		resp, err = req.SetFormDataFromValues(formData).Post(opLoginUri)
 
 		if err != nil {
 			return nil, err
