@@ -178,12 +178,16 @@ func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport
 		activeKey = active.ApiUrl.String()
 		result, err := cb(active)
 
-		if err == nil || !errorIndicatesControllerSwap(err) {
-			pfxlog.Logger().WithError(err).Debugf("determine a network error did not occur on (%T) returning", err)
+		if err == nil {
+			return result, err
+		}
+		
+		if !errorIndicatesControllerSwap(err) {
+			pfxlog.Logger().WithError(err).Debugf("determined that error (%T) does not indicate controller swap, returning error", err)
 			return result, err
 		}
 
-		pfxlog.Logger().WithError(err).Debugf("encountered network error (%T) while submitting request", err)
+		pfxlog.Logger().WithError(err).Debugf("encountered error (%T) while submitting request indicating controller swap", err)
 
 		if c.pool.Count() == 1 {
 			pfxlog.Logger().Debug("active transport failed, only 1 transport in pool")
