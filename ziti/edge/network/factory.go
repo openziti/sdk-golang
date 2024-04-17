@@ -116,8 +116,8 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 	return edgeCh
 }
 
-func (conn *routerConn) UpdateToken(token string, timeout time.Duration) error {
-	msg := edge.NewUpdateTokenMsg([]byte(token))
+func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
+	msg := edge.NewUpdateTokenMsg(token)
 	resp, err := msg.WithTimeout(timeout).SendForReply(conn.ch)
 
 	if err != nil {

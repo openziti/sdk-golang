@@ -39,6 +39,38 @@ type ApiAccessClaims struct {
 	Scopes           []string `json:"scopes,omitempty"`
 }
 
+var _ jwt.Claims = (*IdClaims)(nil)
+
+// IdClaims wraps oidc.IDToken claims to fulfill the jwt.Claims interface
+type IdClaims struct {
+	oidc.IDTokenClaims
+}
+
+func (r *IdClaims) GetExpirationTime() (*jwt.NumericDate, error) {
+	return &jwt.NumericDate{Time: r.TokenClaims.GetExpiration()}, nil
+}
+
+func (r *IdClaims) GetNotBefore() (*jwt.NumericDate, error) {
+	notBefore := r.TokenClaims.NotBefore.AsTime()
+	return &jwt.NumericDate{Time: notBefore}, nil
+}
+
+func (r *IdClaims) GetIssuedAt() (*jwt.NumericDate, error) {
+	return &jwt.NumericDate{Time: r.TokenClaims.GetIssuedAt()}, nil
+}
+
+func (r *IdClaims) GetIssuer() (string, error) {
+	return r.TokenClaims.Issuer, nil
+}
+
+func (r *IdClaims) GetSubject() (string, error) {
+	return r.TokenClaims.Issuer, nil
+}
+
+func (r *IdClaims) GetAudience() (jwt.ClaimStrings, error) {
+	return jwt.ClaimStrings(r.TokenClaims.Audience), nil
+}
+
 type localRpServer struct {
 	Server       *http.Server
 	Port         string

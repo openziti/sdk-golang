@@ -165,4 +165,5 @@ func main() {
 		logger.Infof("new connection")
 		go server.handleChat(conn)
 	}
+
 }
