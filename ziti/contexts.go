@@ -90,7 +90,9 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
-		cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+		idCredentials := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+		idCredentials.ConfigTypes = cfg.ConfigTypes
+		cfg.Credentials = idCredentials
 	} else if cfg.Credentials == nil {
 		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
 	}
@@ -114,7 +116,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	newContext.CtrlClt = &CtrlClient{
-		ClientApiClient: edge_apis.NewClientApiClient(apiUrls[0], cfg.Credentials.GetCaPool(), func(codeCh chan string) {
+		ClientApiClient: edge_apis.NewClientApiClient(apiUrls, cfg.Credentials.GetCaPool(), func(codeCh chan string) {
 			provider := rest_model.MfaProvidersZiti
 
 			authQuery := &rest_model.AuthQueryDetail{
@@ -145,6 +147,10 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 
 	newContext.CtrlClt.ClientApiClient.SetAllowOidcDynamicallyEnabled(cfg.EnableHa)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
+
+	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {
+		newContext.Emit(EventControllerUrlsUpdated, urls)
+	})
 
 	return newContext, nil
 }

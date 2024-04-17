@@ -33,6 +33,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -425,6 +426,29 @@ func (context *ContextImpl) AddAuthenticationStateUnauthenticatedListener(handle
 	}
 
 	context.AddListener(EventAuthenticationStateUnauthenticated, listener)
+
+	return func() {
+		context.RemoveListener(EventAuthenticationStateUnauthenticated, listener)
+	}
+}
+
+func (context *ContextImpl) AddControllerUrlsUpdateListener(handler func(Context, []*url.URL)) func() {
+	listener := func(args ...interface{}) {
+		var apiUrls []*url.URL
+
+		if args[0] != nil {
+			var ok bool
+			apiUrls, ok = args[0].([]*url.URL)
+
+			if !ok {
+				pfxlog.Logger().Fatalf("could not convert args[0] to %T was %T", apiUrls, args[0])
+			}
+		}
+
+		handler(context, apiUrls)
+	}
+
+	context.AddListener(EventControllerUrlsUpdated, listener)
 
 	return func() {
 		context.RemoveListener(EventAuthenticationStateUnauthenticated, listener)

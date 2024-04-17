@@ -101,6 +101,13 @@ const (
 	// 1) Context - the context that triggered the listener
 	// 2) apiSession *rest_model.CurrentApiSessionDetail - details of the invalid API Session
 	EventAuthenticationStateUnauthenticated = events.EventName("auth-state-unauthenticated")
+
+	// EventControllerUrlsUpdated is emitted when a new set of controllers is detected
+	//
+	// Arguments:
+	// 1) Context - the context that triggered the listener
+	// 2) apiUrls []*urls.URL - the URLs of the API for the available controllers
+	EventControllerUrlsUpdated = events.EventName("controller-urls-updated")
 )
 
 // Eventer provides types methods for adding event listeners to a context and exposes some weakly typed functions
