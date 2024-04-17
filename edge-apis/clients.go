@@ -176,7 +176,7 @@ func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
 	}
 
 	if list == nil || len(*list) <= 1 {
-		pfxlog.Logger().Info("no additional controllers reported, continuing with 1 default configured controller")
+		pfxlog.Logger().Debug("no additional controllers reported, continuing with 1 default configured controller")
 		return
 	}
 

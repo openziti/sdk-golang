@@ -123,7 +123,7 @@ func NewClientTransportPoolRandom() *ClientTransportPoolRandom {
 }
 
 func (c *ClientTransportPoolRandom) SetActiveTransport(transport *ApiClientTransport) {
-	pfxlog.Logger().WithField("key", transport.ApiUrl.String()).Info("setting active controller")
+	pfxlog.Logger().WithField("key", transport.ApiUrl.String()).Debug("setting active controller")
 	c.current.Store(transport)
 }
 
@@ -181,7 +181,7 @@ func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport
 		if err == nil {
 			return result, err
 		}
-		
+
 		if !errorIndicatesControllerSwap(err) {
 			pfxlog.Logger().WithError(err).Debugf("determined that error (%T) does not indicate controller swap, returning error", err)
 			return result, err
