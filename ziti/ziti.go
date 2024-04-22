@@ -782,13 +782,12 @@ func (context *ContextImpl) runRefreshes() {
 	defer sessionRefreshTick.Stop()
 
 	refreshAt := time.Now().Add(30 * time.Second)
+
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
 		refreshAt = (*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
 	}
 
 	for {
-		refreshAt = time.Now().Add(10 * time.Second)
-
 		select {
 		case <-context.closeNotify:
 			return
