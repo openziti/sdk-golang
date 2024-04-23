@@ -8,6 +8,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-resty/resty/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	clientAuth "github.com/openziti/edge-api/rest_client_api_client/authentication"
 	clientControllers "github.com/openziti/edge-api/rest_client_api_client/controllers"
@@ -74,6 +75,9 @@ type ApiSession interface {
 
 	//GetId returns the id of the ApiSession
 	GetId() string
+
+	//RequiresRouterTokenUpdate returns true if the token is a bearer token requires updating on edge router connections.
+	RequiresRouterTokenUpdate() bool
 }
 
 var _ ApiSession = (*ApiSessionLegacy)(nil)
@@ -83,6 +87,10 @@ var _ ApiSession = (*ApiSessionOidc)(nil)
 // It has been supplanted by OIDC authentication represented by ApiSessionOidc.
 type ApiSessionLegacy struct {
 	Detail *rest_model.CurrentAPISessionDetail
+}
+
+func (a *ApiSessionLegacy) RequiresRouterTokenUpdate() bool {
+	return false
 }
 
 func (a *ApiSessionLegacy) GetId() string {
@@ -144,6 +152,10 @@ func (a *ApiSessionLegacy) GetExpiresAt() *time.Time {
 // ApiSessionOidc represents an authenticated session backed by OIDC tokens.
 type ApiSessionOidc struct {
 	OidcTokens *oidc.Tokens[*oidc.IDTokenClaims]
+}
+
+func (a *ApiSessionOidc) RequiresRouterTokenUpdate() bool {
+	return true
 }
 
 func (a *ApiSessionOidc) GetAccessClaims() (*ApiAccessClaims, error) {
@@ -491,39 +503,60 @@ func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenC
 }
 
 func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	subjectToken := curTokens.RefreshToken
+	subjectTokenType := oidc.RefreshTokenType
+
+	// if subjectToken is "", then we don't have a refresh token, attempt to exchange a non-expired access token
+	if subjectToken == "" {
+		if curTokens.Expiry.Before(time.Now()) {
+			return nil, errors.New("cannot exchange token: refresh token not found, access token expired")
+		}
+
+		if curTokens.AccessToken == "" {
+			return nil, errors.New("cannot exchange token: refresh token not found, access token not found")
+		}
+		subjectToken = curTokens.AccessToken
+		subjectTokenType = oidc.AccessTokenType
+	}
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
 	_, err := clientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
 		apiHost := transport.ApiUrl.Host
-		te, err := tokenexchange.NewTokenExchanger(apiHost, tokenexchange.WithHTTPClient(client))
+		issuer := "https://" + apiHost + "/oidc"
+		tokenEndpoint := "https://" + apiHost + "/oidc/oauth/token"
+
+		te, err := tokenexchange.NewTokenExchangerClientCredentials(issuer, "native", "", tokenexchange.WithHTTPClient(client), tokenexchange.WithStaticTokenEndpoint(issuer, tokenEndpoint))
 
 		if err != nil {
 			return nil, err
 		}
 
-		accessResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
+		var tokenResponse *oidc.TokenExchangeResponse
+
+		now := time.Now()
+
+		switch subjectTokenType {
+		case oidc.RefreshTokenType:
+			tokenResponse, err = tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
+		case oidc.AccessTokenType:
+			tokenResponse, err = tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
+		}
 
 		if err != nil {
 			return nil, err
 		}
 
-		//TODO: be smarter, only refresh refresh token if the new access token lives beyond refresh
-		refreshResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
+		idResp, err := tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
 
 		if err != nil {
 			return nil, err
 		}
 
-		idResp, err := tokenexchange.ExchangeToken(te, curTokens.RefreshToken, oidc.RefreshTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
+		idClaims := &IdClaims{}
 
-		if err != nil {
-			return nil, err
-		}
-
-		idClaims := &oidc.IDTokenClaims{}
-
-		err = json.Unmarshal([]byte(idResp.AccessToken), idClaims)
+		//access token is used to hold id token per zitadel comments
+		_, _, err = jwt.NewParser().ParseUnverified(idResp.AccessToken, idClaims)
 
 		if err != nil {
 			return nil, err
@@ -531,13 +564,13 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 
 		outTokens = &oidc.Tokens[*oidc.IDTokenClaims]{
 			Token: &oauth2.Token{
-				AccessToken:  accessResp.AccessToken,
-				TokenType:    accessResp.TokenType,
-				RefreshToken: refreshResp.RefreshToken,
-				Expiry:       time.Time{},
+				AccessToken:  tokenResponse.AccessToken,
+				TokenType:    tokenResponse.TokenType,
+				RefreshToken: tokenResponse.RefreshToken,
+				Expiry:       now.Add(time.Duration(tokenResponse.ExpiresIn)),
 			},
-			IDTokenClaims: idClaims,
-			IDToken:       idResp.AccessToken, //access token is used to hold id token per zitadel comments
+			IDTokenClaims: &idClaims.IDTokenClaims,
+			IDToken:       idResp.AccessToken, //access token field is used to hold id token per zitadel comments
 		}
 
 		return outTokens, nil

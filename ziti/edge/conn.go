@@ -42,7 +42,7 @@ type RouterClient interface {
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
-	UpdateToken(token string, timeout time.Duration) error
+	UpdateToken(token []byte, timeout time.Duration) error
 }
 
 type RouterConn interface {

@@ -25,14 +25,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/openziti/foundation/v2/genext"
-	"github.com/openziti/transport/v2"
-	"github.com/pkg/errors"
-	"strings"
-	"time"
-
 	"github.com/go-openapi/strfmt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
@@ -43,10 +37,14 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/session"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/edge-api/rest_util"
+	"github.com/openziti/foundation/v2/genext"
 	nfPem "github.com/openziti/foundation/v2/pem"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	"github.com/openziti/transport/v2"
+	"github.com/pkg/errors"
+	"strings"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -72,7 +70,7 @@ func (self *CtrlClient) GetCurrentApiSession() apis.ApiSession {
 }
 
 // Refresh will contact the controller extending the current ApiSession for legacy API Sessions
-func (self *CtrlClient) Refresh() (*time.Time, error) {
+func (self *CtrlClient) Refresh() (apis.ApiSession, error) {
 	if apiSession := self.GetCurrentApiSession(); apiSession != nil {
 		newApiSession, err := self.API.RefreshApiSession(apiSession, self.HttpClient)
 
@@ -82,7 +80,7 @@ func (self *CtrlClient) Refresh() (*time.Time, error) {
 
 		self.ApiSession.Store(&newApiSession)
 
-		return newApiSession.GetExpiresAt(), nil
+		return newApiSession, nil
 	}
 
 	return nil, errors.New("no api session")

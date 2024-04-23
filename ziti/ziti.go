@@ -743,6 +743,20 @@ func (context *ContextImpl) RefreshService(serviceName string) (*rest_model.Serv
 	return serviceDetail, nil
 }
 
+func (context *ContextImpl) updateTokenOnAllErs(apiSession apis.ApiSession) {
+	if apiSession.RequiresRouterTokenUpdate() {
+		for tpl := range context.routerConnections.IterBuffered() {
+			erConn := tpl.Val
+			erKey := tpl.Key
+			go func() {
+				if err := erConn.UpdateToken(apiSession.GetToken(), 10*time.Second); err != nil {
+					pfxlog.Logger().WithError(err).WithField("er", erKey).Warn("error updating apiSession token to connected ER")
+				}
+			}()
+		}
+	}
+}
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -768,8 +782,9 @@ func (context *ContextImpl) runRefreshes() {
 	defer sessionRefreshTick.Stop()
 
 	refreshAt := time.Now().Add(30 * time.Second)
+
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
-		refreshAt = time.Time(*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
+		refreshAt = (*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
 	}
 
 	for {
@@ -778,14 +793,25 @@ func (context *ContextImpl) runRefreshes() {
 			return
 
 		case <-time.After(time.Until(refreshAt)):
-			exp, err := context.CtrlClt.Refresh()
+			apiSession := context.CtrlClt.GetCurrentApiSession()
+
+			if apiSession == nil {
+				pfxlog.Logger().Warn("could not refresh api session, current api session is nil")
+				continue
+			}
+
+			newApiSession, err := context.CtrlClt.Refresh()
+
 			if err != nil {
 				log.Errorf("could not refresh apiSession: %v", err)
 
 				refreshAt = time.Now().Add(5 * time.Second)
 			} else {
+				exp := newApiSession.GetExpiresAt()
 				refreshAt = exp.Add(-10 * time.Second)
 				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
+
+				context.updateTokenOnAllErs(newApiSession)
 			}
 
 		case <-svcRefreshTick.C:
@@ -926,8 +952,9 @@ func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 	expBackoff.MaxElapsedTime = 24 * time.Hour
 
 	operation := func() error {
-		_, err := context.CtrlClt.Refresh()
+		newApiSession, err := context.CtrlClt.Refresh()
 		if err == nil {
+			context.updateTokenOnAllErs(newApiSession)
 			return nil
 		}
 
@@ -990,9 +1017,13 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 		return err
 	}
 
-	if _, err := context.CtrlClt.Refresh(); err != nil {
+	newApiSession, err := context.CtrlClt.Refresh()
+
+	if err != nil {
 		return err
 	}
+	context.updateTokenOnAllErs(newApiSession)
+
 	apiSession := context.CtrlClt.GetCurrentApiSession()
 
 	if apiSession != nil && len(apiSession.GetAuthQueries()) == 0 {
