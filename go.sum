@@ -303,8 +303,8 @@ github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
 github.com/openziti/channel/v2 v2.0.128 h1:kRigyUmrN1q56ydRmBWzruV0DvVntYx/f2DT2P0qSh4=
 github.com/openziti/channel/v2 v2.0.128/go.mod h1:ugebO2eO2CdaVQE45o20iE4R9DK0VRoJsGBZt0x3eLc=
-github.com/openziti/edge-api v0.26.17 h1:B/FKdFufMIdXCD3SqXiS13vHq0D/obXjW5NCdGJZmcg=
-github.com/openziti/edge-api v0.26.17/go.mod h1:d+Ebv13UahoO9q2Vl8nFExu+WNFn1cO8mZyAcNf2QJ8=
+github.com/openziti/edge-api v0.26.18 h1:5V2Hr7gybCrg/XPlqjz3Z8nsCUBsqOm40HjXerYVlqw=
+github.com/openziti/edge-api v0.26.18/go.mod h1:FGkZr+55qItptJBHriogJDo64OY85kuiEEWEZsik0+A=
 github.com/openziti/foundation/v2 v2.0.42 h1:cXZFql3xY92AHPCk/wqIoSUX9EHgegwPrs5bhFE2jNg=
 github.com/openziti/foundation/v2 v2.0.42/go.mod h1:a+REYnK9bZ2cvmOiuBLp57MjQqn3U5cHhJcDMLMO8rE=
 github.com/openziti/identity v1.0.75 h1:FDm3ZojmmGP9eoOxMvmF52RS6JzToTTeWB0pthIA+ks=
@@ -395,8 +395,8 @@ github.com/zitadel/oidc/v2 v2.12.0/go.mod h1:LrRav74IiThHGapQgCHZOUNtnqJG0tcZKHr
 go.etcd.io/etcd/api/v3 v3.5.0/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=
 go.etcd.io/etcd/client/pkg/v3 v3.5.0/go.mod h1:IJHfcCEKxYu1Os13ZdwCwIUTUVGYTSAM3YSwc9/Ac1g=
 go.etcd.io/etcd/client/v2 v2.305.0/go.mod h1:h9puh54ZTgAKtEbut2oe9P4L/oqKCVB6xsXlzd7alYQ=
-go.mongodb.org/mongo-driver v1.14.0 h1:P98w8egYRjYe3XDjxhYJagTokP/H6HzlsnojRgZRd80=
-go.mongodb.org/mongo-driver v1.14.0/go.mod h1:Vzb0Mk/pa7e6cWw85R4F/endUC3u0U9jGcNU603k65c=
+go.mongodb.org/mongo-driver v1.15.0 h1:rJCKC8eEliewXjZGf0ddURtl7tTVy1TK3bfl0gkUSLc=
+go.mongodb.org/mongo-driver v1.15.0/go.mod h1:Vzb0Mk/pa7e6cWw85R4F/endUC3u0U9jGcNU603k65c=
 go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1 h1:A/5uWzF44DlIgdm/PQFwfMkW0JX+cIcQi/SwLAmZP5M=
 go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1/go.mod h1:SNgMg+EgDFwmvSmLRTNKC5fegJjB7v23qTQ0XLGUNHk=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
