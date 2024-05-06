@@ -79,6 +79,7 @@ const (
 	SupportsBindSuccessHeader      = 1024
 	ConnectionMarkerHeader         = 1025
 	CircuitIdHeader                = 1026
+	StickinessTokenHeader          = 1027
 
 	ErrorCodeInternal                    = 1
 	ErrorCodeInvalidApiSession           = 2
@@ -206,6 +207,9 @@ func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOpti
 	}
 	if options.AppData != nil {
 		msg.Headers[AppDataHeader] = options.AppData
+	}
+	if options.StickinessToken != nil {
+		msg.Headers[StickinessTokenHeader] = options.StickinessToken
 	}
 	return msg
 }
