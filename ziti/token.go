@@ -25,6 +25,8 @@ import (
 
 var EnrollUrl, _ = url.Parse("/edge/client/v1/enroll")
 
+const EnrollmentMethodCa = "ca"
+
 type Versions struct {
 	Api           string `json:"api"`
 	EnrollmentApi string `json:"enrollmentApi"`
@@ -48,7 +50,11 @@ func (t *EnrollmentClaims) EnrolmentUrl() string {
 
 	query := enrollmentUrl.Query()
 	query.Add("method", t.EnrollmentMethod)
-	query.Add("token", t.ID)
+
+	if t.EnrollmentMethod != EnrollmentMethodCa {
+		query.Add("token", t.ID)
+	}
+
 	enrollmentUrl.RawQuery = query.Encode()
 
 	return enrollmentUrl.String()
