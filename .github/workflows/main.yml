@@ -27,17 +27,7 @@ jobs:
 
       - name: Build and Test
         run: |
-          $(go env GOPATH)/bin/ziti-ci generate-build-info ziti/sdkinfo/build_info.go sdkinfo
           go test ./...
           go test -C example ./...
-
-      - name: Release
-        env:
-          gh_ci_key: ${{ secrets.GH_CI_KEY }}
-          ziti_ci_gpg_key: ${{ secrets.ZITI_CI_GPG_KEY }}
-          ziti_ci_gpg_key_id: ${{ secrets.ZITI_CI_GPG_KEY_ID }}
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-')
-        run: |
-          $(go env GOPATH)/bin/ziti-ci configure-git
-          $(go env GOPATH)/bin/ziti-ci tag -v -f version
-          $(go env GOPATH)/bin/ziti-ci trigger-github-build openziti/edge update-dependency --token ${{ secrets.ZITI_CI_GH_TOKEN }}
+          go install ./...
+          $(go env GOPATH)/bin/ziti-ci verify-version $($(go env GOPATH)/bin/sdk-version)

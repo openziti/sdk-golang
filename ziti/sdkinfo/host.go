@@ -31,12 +31,9 @@ func SetApplication(theAppId, theAppVersion string) {
 }
 
 func GetSdkInfo() (*rest_model.EnvInfo, *rest_model.SdkInfo) {
-
 	sdkInfo := &rest_model.SdkInfo{
 		AppID:      appId,
 		AppVersion: appVersion,
-		Branch:     Branch,
-		Revision:   Revision,
 		Type:       "ziti-sdk-golang",
 		Version:    Version,
 	}
