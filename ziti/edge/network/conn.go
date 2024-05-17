@@ -64,6 +64,7 @@ type edgeConn struct {
 	connType              ConnType
 	marker                string
 	circuitId             string
+	customState           map[int32][]byte
 
 	crypto   bool
 	keyPair  *kx.KeyPair
@@ -256,6 +257,10 @@ func (conn *edgeConn) GetCircuitId() string {
 	return conn.circuitId
 }
 
+func (conn *edgeConn) GetStickinessToken() []byte {
+	return conn.customState[edge.StickinessTokenHeader]
+}
+
 func (conn *edgeConn) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
@@ -312,6 +317,12 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 		}
 	}
 	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
+		if conn.customState == nil {
+			conn.customState = map[int32][]byte{}
+		}
+		conn.customState[edge.StickinessTokenHeader] = stickinessToken
+	}
 	logger.Debug("connected")
 
 	return conn, nil

@@ -1,3 +1,13 @@
+# Release notes 0.23.37
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.36 -> v0.23.37](https://github.com/openziti/sdk-golang/compare/v0.23.36...v0.23.37)
+    * [Issue #562](https://github.com/openziti/sdk-golang/issues/562) - Support sticky dials
+
+* github.com/openziti/edge-api: [v0.26.18 -> v0.26.19](https://github.com/openziti/edge-api/compare/v0.26.18...v0.26.19)
+* github.com/openziti/secretstream: [v0.1.19 -> v0.1.20](https://github.com/openziti/secretstream/compare/v0.1.19...v0.1.20)
+
 # Release 0.23.12
 
 * Fix DomainCheckRedirectPolicy for OIDC auth to controllers

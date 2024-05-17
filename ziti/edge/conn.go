@@ -90,6 +90,7 @@ type ServiceConn interface {
 	SourceIdentifier() string
 	TraceRoute(hops uint32, timeout time.Duration) (*TraceRouteResult, error)
 	GetCircuitId() string
+	GetStickinessToken() []byte
 }
 
 type Conn interface {
@@ -208,10 +209,11 @@ type ConnOptions interface {
 }
 
 type DialOptions struct {
-	ConnectTimeout time.Duration
-	Identity       string
-	CallerId       string
-	AppData        []byte
+	ConnectTimeout  time.Duration
+	Identity        string
+	CallerId        string
+	AppData         []byte
+	StickinessToken []byte
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {

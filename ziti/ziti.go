@@ -1060,9 +1060,10 @@ func (context *ContextImpl) Dial(serviceName string) (edge.Conn, error) {
 
 func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error) {
 	edgeDialOptions := &edge.DialOptions{
-		ConnectTimeout: options.ConnectTimeout,
-		Identity:       options.Identity,
-		AppData:        options.AppData,
+		ConnectTimeout:  options.ConnectTimeout,
+		Identity:        options.Identity,
+		AppData:         options.AppData,
+		StickinessToken: options.StickinessToken,
 	}
 	if edgeDialOptions.GetConnectTimeout() == 0 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second

@@ -51,9 +51,10 @@ var DefaultOptions = &Options{
 }
 
 type DialOptions struct {
-	ConnectTimeout time.Duration
-	Identity       string
-	AppData        []byte
+	ConnectTimeout  time.Duration
+	Identity        string
+	AppData         []byte
+	StickinessToken []byte
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
