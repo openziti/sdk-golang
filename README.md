@@ -50,7 +50,7 @@ to be aware of.
     - [`jwtchat`](example/jwtchat) - highlights
       using [external JWTs](https://openziti.io/docs/learn/core-concepts/security/authentication/external-jwt-signers) (
       from OIDC/oAuth/etc.) to authenticate with OpenZIti
-    - [`reflect`](example/chat/reflect) - a low level network "echo" client and server example
+    - [`reflect`](example/reflect) - a low level network "echo" client and server example
     - [`simple-server`](example/simple-server) - a bare-bones HTTP server side only example
     - [`zcat`](example/zcat) - wrapping existing network tooling (netcat) to work over OpenZiti
     - [`zping`](example/zping) - wrapping existing network tooling (ping) to work over OpenZiti
