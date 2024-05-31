@@ -5,6 +5,14 @@
 * github.com/openziti/sdk-golang: [v0.23.37 -> v0.23.38](https://github.com/openziti/sdk-golang/compare/v0.23.37...v0.23.38)
     * [Issue #573](https://github.com/openziti/sdk-golang/issues/573) - api session refresh spins in a tight loop if there is no current api session
 
+* github.com/openziti/channel/v2: [v2.0.130 -> v2.0.131](https://github.com/openziti/channel/compare/v2.0.130...v2.0.131)
+* github.com/openziti/foundation/v2: [v2.0.45 -> v2.0.46](https://github.com/openziti/foundation/compare/v2.0.45...v2.0.46)
+    * [Issue #407](https://github.com/openziti/foundation/issues/407) - Remove Branch from build info
+
+* github.com/openziti/identity: [v1.0.77 -> v1.0.78](https://github.com/openziti/identity/compare/v1.0.77...v1.0.78)
+* github.com/openziti/metrics: [v1.2.54 -> v1.2.55](https://github.com/openziti/metrics/compare/v1.2.54...v1.2.55)
+* github.com/openziti/transport/v2: [v2.0.133 -> v2.0.134](https://github.com/openziti/transport/compare/v2.0.133...v2.0.134)
+
 # Release notes 0.23.37
 
 ## Issues Fixed and Dependency Updates
