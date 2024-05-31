@@ -796,7 +796,11 @@ func (context *ContextImpl) runRefreshes() {
 			apiSession := context.CtrlClt.GetCurrentApiSession()
 
 			if apiSession == nil {
-				pfxlog.Logger().Warn("could not refresh api session, current api session is nil")
+				pfxlog.Logger().Warn("could not refresh api session, current api session is nil, authenticating")
+				if err := context.Authenticate(); err != nil {
+					pfxlog.Logger().WithError(err).Error("failed to authenticate")
+				}
+				refreshAt = time.Now().Add(5 * time.Second)
 				continue
 			}
 

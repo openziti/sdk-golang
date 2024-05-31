@@ -1,3 +1,10 @@
+# Release notes 0.23.38
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.37 -> v0.23.38](https://github.com/openziti/sdk-golang/compare/v0.23.37...v0.23.38)
+    * [Issue #573](https://github.com/openziti/sdk-golang/issues/573) - api session refresh spins in a tight loop if there is no current api session
+
 # Release notes 0.23.37
 
 ## Issues Fixed and Dependency Updates
