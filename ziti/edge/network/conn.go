@@ -190,7 +190,8 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 
 	case ConnTypeBind:
 		if msg.ContentType == edge.ContentTypeDial {
-			logrus.WithFields(edge.GetLoggerFields(msg)).Debug("received dial request")
+			newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
+			logrus.WithFields(edge.GetLoggerFields(msg)).WithField("newConnId", newConnId).Debug("received dial request")
 			go conn.newChildConnection(msg)
 		} else if msg.ContentType == edge.ContentTypeStateClosed {
 			conn.close(true)
@@ -575,7 +576,13 @@ func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
 
 func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	token := string(message.Body)
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("token", token)
+	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
+	logger := pfxlog.Logger().WithField("connId", conn.Id())
+	if circuitId != "" {
+		logger = logger.WithField("circuitId", circuitId)
+	}
+	logger.WithField("token", token).Debug("logging token")
+
 	logger.Debug("looking up listener")
 	listener, found := conn.getListener(token)
 	if !found {
@@ -600,7 +607,6 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
-	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
 
 	edgeCh := &edgeConn{
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
@@ -648,11 +654,11 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	}
 
 	if err != nil {
-		newConnLogger.WithError(err).Error("Failed to establish connection")
+		newConnLogger.WithError(err).Error("failed to establish connection")
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
 		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
-			logger.WithError(err).Error("Failed to send reply to dial request")
+			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
 	}
@@ -663,11 +669,13 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		message:              message,
 		txHeader:             txHeader,
 		routerProvidedConnId: routerProvidedConnId,
+		circuitId:            circuitId,
 	}
 
 	if listener.manualStart {
 		edgeCh.acceptCompleteHandler = connHandler
 	} else if err := connHandler.dialSucceeded(); err != nil {
+		logger.Debug("calling dial succeeded")
 		return
 	}
 
@@ -729,6 +737,7 @@ type newConnHandler struct {
 	message              *channel.Message
 	txHeader             []byte
 	routerProvidedConnId bool
+	circuitId            string
 }
 
 func (self *newConnHandler) dialFailed(err error) {
@@ -749,14 +758,13 @@ func (self *newConnHandler) dialFailed(err error) {
 }
 
 func (self *newConnHandler) dialSucceeded() error {
-	token := string(self.message.Body)
-	logger := pfxlog.Logger().WithField("connId", self.conn.Id()).WithField("token", token)
+	logger := pfxlog.Logger().WithField("connId", self.conn.Id()).WithField("circuitId", self.circuitId)
 
 	newConnLogger := pfxlog.Logger().
 		WithField("connId", self.edgeCh.Id()).
 		WithField("marker", self.edgeCh.marker).
 		WithField("parentConnId", self.conn.Id()).
-		WithField("token", token)
+		WithField("circuitId", self.circuitId)
 
 	newConnLogger.Debug("new connection established")
 

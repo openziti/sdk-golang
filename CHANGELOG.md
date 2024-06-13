@@ -4,6 +4,28 @@
 
 * github.com/openziti/sdk-golang: [v0.23.37 -> v0.23.38](https://github.com/openziti/sdk-golang/compare/v0.23.37...v0.23.38)
     * [Issue #573](https://github.com/openziti/sdk-golang/issues/573) - api session refresh spins in a tight loop if there is no current api session
+    * [Issue #562](https://github.com/openziti/sdk-golang/issues/562) - Support sticky dials
+
+* github.com/openziti/channel/v2: [v2.0.130 -> v2.0.132](https://github.com/openziti/channel/compare/v2.0.130...v2.0.132)
+* github.com/openziti/edge-api: [v0.26.19 -> v0.26.20](https://github.com/openziti/edge-api/compare/v0.26.19...v0.26.20)
+    * [Issue #113](https://github.com/openziti/edge-api/issues/113) - RecoveryCodesEnvelope is wrong
+
+* github.com/openziti/foundation/v2: [v2.0.45 -> v2.0.46](https://github.com/openziti/foundation/compare/v2.0.45...v2.0.46)
+    * [Issue #407](https://github.com/openziti/foundation/issues/407) - Remove Branch from build info
+
+* github.com/openziti/identity: [v1.0.77 -> v1.0.79](https://github.com/openziti/identity/compare/v1.0.77...v1.0.79)
+* github.com/openziti/metrics: [v1.2.54 -> v1.2.55](https://github.com/openziti/metrics/compare/v1.2.54...v1.2.55)
+* github.com/openziti/transport/v2: [v2.0.133 -> v2.0.135](https://github.com/openziti/transport/compare/v2.0.133...v2.0.135)
+* golang.org/x/sys: v0.20.0 -> v0.21.0
+* github.com/go-logr/logr: v1.4.1 -> v1.4.2
+* go.opentelemetry.io/otel: v1.25.0 -> v1.27.0
+* go.opentelemetry.io/otel/metric: v1.25.0 -> v1.27.0
+* go.opentelemetry.io/otel/trace: v1.25.0 -> v1.27.0
+* golang.org/x/crypto: v0.23.0 -> v0.24.0
+* golang.org/x/net: v0.25.0 -> v0.26.0
+* golang.org/x/term: v0.20.0 -> v0.21.0
+* golang.org/x/text: v0.15.0 -> v0.16.0
+
 
 # Release notes 0.23.37
 
