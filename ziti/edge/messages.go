@@ -377,6 +377,10 @@ func GetLoggerFields(msg *channel.Message) logrus.Fields {
 		fields["uuid"] = msgUUID
 	}
 
+	if circuitId, found := msg.GetStringHeader(CircuitIdHeader); found {
+		fields["circuitId"] = circuitId
+	}
+
 	return fields
 }
 
