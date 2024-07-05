@@ -84,7 +84,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20221212215047-62379fc7944b // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	github.com/rs/cors v1.10.1 // indirect
+	github.com/rs/cors v1.11.0 // indirect
 	github.com/sagikazarmark/locafero v0.3.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.10 // indirect
