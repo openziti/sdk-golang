@@ -161,7 +161,8 @@ func (a *ApiSessionOidc) RequiresRouterTokenUpdate() bool {
 func (a *ApiSessionOidc) GetAccessClaims() (*ApiAccessClaims, error) {
 	claims := &ApiAccessClaims{}
 
-	err := json.Unmarshal([]byte(a.OidcTokens.AccessToken), claims)
+	parser := jwt.NewParser()
+	_, _, err := parser.ParseUnverified(a.OidcTokens.AccessToken, claims)
 
 	if err != nil {
 		return nil, err
@@ -177,7 +178,7 @@ func (a *ApiSessionOidc) GetId() string {
 		return ""
 	}
 
-	return claims.ID
+	return claims.ApiSessionId
 }
 
 func (a *ApiSessionOidc) GetIdentityName() string {
