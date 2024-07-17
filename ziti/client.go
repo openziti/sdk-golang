@@ -105,7 +105,7 @@ func (self *CtrlClient) Authenticate() (apis.ApiSession, error) {
 
 	self.ApiSessionCertificate = nil
 
-	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials, nil)
+	apiSession, err := self.ClientApiClient.Authenticate(self.Credentials, self.ConfigTypes)
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
