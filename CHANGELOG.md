@@ -1,3 +1,34 @@
+# Release notes 0.23.39
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.38 -> v0.23.39](https://github.com/openziti/sdk-golang/compare/v0.23.38...v0.23.39)
+    * [Issue #596](https://github.com/openziti/sdk-golang/issues/596) - SDK should submit selected config types to auth and service list APIs
+    * [Issue #593](https://github.com/openziti/sdk-golang/issues/593) - SDK Golang OIDC Get API Session Returns Wrong Value
+
+* github.com/openziti/channel/v2: [v2.0.132 -> v2.0.136](https://github.com/openziti/channel/compare/v2.0.132...v2.0.136)
+    * [Issue #132](https://github.com/openziti/channel/issues/132) - reconnecting dialer doesn't take local binding into account when reconnecting
+
+* github.com/openziti/edge-api: [v0.26.20 -> v0.26.21](https://github.com/openziti/edge-api/compare/v0.26.20...v0.26.21)
+* github.com/openziti/foundation/v2: [v2.0.46 -> v2.0.47](https://github.com/openziti/foundation/compare/v2.0.46...v2.0.47)
+* github.com/openziti/identity: [v1.0.79 -> v1.0.81](https://github.com/openziti/identity/compare/v1.0.79...v1.0.81)
+* github.com/openziti/metrics: [v1.2.55 -> v1.2.56](https://github.com/openziti/metrics/compare/v1.2.55...v1.2.56)
+* github.com/openziti/secretstream: [v0.1.20 -> v0.1.21](https://github.com/openziti/secretstream/compare/v0.1.20...v0.1.21)
+* github.com/openziti/transport/v2: [v2.0.135 -> v2.0.138](https://github.com/openziti/transport/compare/v2.0.135...v2.0.138)
+    * [Issue #83](https://github.com/openziti/transport/issues/83) - tls.Dial should use proxy configuration if provided
+
+* github.com/shirou/gopsutil/v3: v3.24.4 -> v3.24.5
+* golang.org/x/oauth2: v0.20.0 -> v0.21.0
+* golang.org/x/sys: v0.21.0 -> v0.22.0
+* google.golang.org/protobuf: v1.34.1 -> v1.34.2
+* go.mongodb.org/mongo-driver: v1.15.0 -> v1.16.0
+* go.opentelemetry.io/otel: v1.27.0 -> v1.28.0
+* go.opentelemetry.io/otel/metric: v1.27.0 -> v1.28.0
+* go.opentelemetry.io/otel/trace: v1.27.0 -> v1.28.0
+* golang.org/x/crypto: v0.24.0 -> v0.25.0
+* golang.org/x/net: v0.26.0 -> v0.27.0
+* golang.org/x/term: v0.21.0 -> v0.22.0
+
 # Release notes 0.23.38
 
 ## Issues Fixed and Dependency Updates
