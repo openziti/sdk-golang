@@ -333,7 +333,7 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	for {
 		params.Limit = &pageLimit
 		params.Offset = &pageOffset
-		//params.ConfigTypes = self.ConfigTypes
+		params.ConfigTypes = self.ConfigTypes
 
 		resp, err := self.API.Service.ListServices(params, self.GetCurrentApiSession())
 
