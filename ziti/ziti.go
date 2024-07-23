@@ -193,7 +193,6 @@ type ContextImpl struct {
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
 
 	events.EventEmmiter
-	apiSessionLock                  sync.Mutex
 	lastSuccessfulApiSessionRefresh time.Time
 }
 
@@ -928,9 +927,6 @@ func (context *ContextImpl) Reauthenticate() error {
 }
 
 func (context *ContextImpl) Authenticate() error {
-	context.apiSessionLock.Lock()
-	defer context.apiSessionLock.Unlock()
-
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		if time.Since(context.lastSuccessfulApiSessionRefresh) < 5*time.Second {
 			return nil
