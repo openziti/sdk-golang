@@ -245,7 +245,7 @@ func (a *ApiSessionOidc) AuthenticateRequest(request runtime.ClientRequest, _ st
 	}
 
 	//restore auth headers
-	err := request.SetHeaderParam(primaryAuthHeader, primaryAuthValue)
+	err := request.SetHeaderParam(primaryAuthHeader, authValues...)
 
 	if err != nil {
 		return err
