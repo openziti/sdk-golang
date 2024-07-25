@@ -78,6 +78,8 @@ type ApiSession interface {
 
 	//RequiresRouterTokenUpdate returns true if the token is a bearer token requires updating on edge router connections.
 	RequiresRouterTokenUpdate() bool
+
+	GetRequestHeaders() http.Header
 }
 
 var _ ApiSession = (*ApiSessionLegacy)(nil)
@@ -86,7 +88,12 @@ var _ ApiSession = (*ApiSessionOidc)(nil)
 // ApiSessionLegacy represents OpenZiti's original authentication API Session Detail, supplied in the `zt-session` header.
 // It has been supplanted by OIDC authentication represented by ApiSessionOidc.
 type ApiSessionLegacy struct {
-	Detail *rest_model.CurrentAPISessionDetail
+	Detail         *rest_model.CurrentAPISessionDetail
+	RequestHeaders http.Header
+}
+
+func (a *ApiSessionLegacy) GetRequestHeaders() http.Header {
+	return a.RequestHeaders
 }
 
 func (a *ApiSessionLegacy) RequiresRouterTokenUpdate() bool {
@@ -119,8 +126,15 @@ func (a *ApiSessionLegacy) AuthenticateRequest(request runtime.ClientRequest, _ 
 		return errors.New("api session is nil")
 	}
 
-	header, val := a.GetAccessHeader()
+	for h, v := range a.RequestHeaders {
+		err := request.SetHeaderParam(h, v...)
+		if err != nil {
+			return err
+		}
+	}
 
+	//legacy does not support multiple zt-session headers, so we can it sfely
+	header, val := a.GetAccessHeader()
 	err := request.SetHeaderParam(header, val)
 	if err != nil {
 		return err
@@ -151,7 +165,12 @@ func (a *ApiSessionLegacy) GetExpiresAt() *time.Time {
 
 // ApiSessionOidc represents an authenticated session backed by OIDC tokens.
 type ApiSessionOidc struct {
-	OidcTokens *oidc.Tokens[*oidc.IDTokenClaims]
+	OidcTokens     *oidc.Tokens[*oidc.IDTokenClaims]
+	RequestHeaders http.Header
+}
+
+func (a *ApiSessionOidc) GetRequestHeaders() http.Header {
+	return a.RequestHeaders
 }
 
 func (a *ApiSessionOidc) RequiresRouterTokenUpdate() bool {
@@ -203,9 +222,31 @@ func (a *ApiSessionOidc) AuthenticateRequest(request runtime.ClientRequest, _ st
 		return errors.New("api session is nil")
 	}
 
-	header, val := a.GetAccessHeader()
+	if a.RequestHeaders == nil {
+		a.RequestHeaders = http.Header{}
+	}
 
-	err := request.SetHeaderParam(header, val)
+	//multiple Authorization headers are allowed, obtain all auth header candidates
+	primaryAuthHeader, primaryAuthValue := a.GetAccessHeader()
+	altAuthValues := a.RequestHeaders.Get(primaryAuthHeader)
+
+	authValues := []string{primaryAuthValue}
+
+	if len(altAuthValues) > 0 {
+		authValues = append(authValues, altAuthValues)
+	}
+
+	//set request headers
+	for h, v := range a.RequestHeaders {
+		err := request.SetHeaderParam(h, v...)
+		if err != nil {
+			return err
+		}
+	}
+
+	//restore auth headers
+	err := request.SetHeaderParam(primaryAuthHeader, authValues...)
+
 	if err != nil {
 		return err
 	}
@@ -320,7 +361,9 @@ func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes 
 		return nil, err
 	}
 
-	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
+	return &ApiSessionLegacy{
+		Detail:         resp.GetPayload().Data,
+		RequestHeaders: credentials.GetRequestHeaders()}, err
 }
 
 func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
@@ -355,7 +398,8 @@ func (self *ZitiEdgeManagement) RefreshApiSession(apiSession ApiSession, httpCli
 		}
 
 		return &ApiSessionOidc{
-			OidcTokens: tokens,
+			OidcTokens:     tokens,
+			RequestHeaders: apiSession.GetRequestHeaders(),
 		}, nil
 	}
 
@@ -453,7 +497,7 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 		return nil, err
 	}
 
-	return &ApiSessionLegacy{Detail: resp.GetPayload().Data}, err
+	return &ApiSessionLegacy{Detail: resp.GetPayload().Data, RequestHeaders: credentials.GetRequestHeaders()}, err
 }
 
 func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
@@ -480,7 +524,8 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient 
 		}
 
 		newApiSession := &ApiSessionLegacy{
-			Detail: newApiSessionDetail.Payload.Data,
+			Detail:         newApiSessionDetail.Payload.Data,
+			RequestHeaders: apiSession.GetRequestHeaders(),
 		}
 
 		return newApiSession, nil
@@ -492,7 +537,8 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient 
 		}
 
 		return &ApiSessionOidc{
-			OidcTokens: tokens,
+			OidcTokens:     tokens,
+			RequestHeaders: apiSession.GetRequestHeaders(),
 		}, nil
 	}
 
@@ -748,7 +794,8 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 	}
 
 	return &ApiSessionOidc{
-		OidcTokens: outTokens,
+		OidcTokens:     outTokens,
+		RequestHeaders: credentials.GetRequestHeaders(),
 	}, nil
 }
 

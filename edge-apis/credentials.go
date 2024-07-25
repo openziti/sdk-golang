@@ -28,8 +28,11 @@ type Credentials interface {
 	// Method returns the authentication necessary to complete an authentication request.
 	Method() string
 
-	// AddHeader adds a header to the request.
-	AddHeader(key, value string)
+	// AddAuthHeader adds a header for all authentication requests.
+	AddAuthHeader(key, value string)
+
+	// AddRequestHeader adds a header for all requests after authentication
+	AddRequestHeader(key, value string)
 
 	// AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
 	// provided token should be the base64 encoded version of the token.
@@ -38,6 +41,9 @@ type Credentials interface {
 	// ClientAuthInfoWriter is used to pass a Credentials instance to the openapi runtime to authenticate outgoing
 	//requests.
 	runtime.ClientAuthInfoWriter
+
+	// GetRequestHeaders returns a set of headers to use after authentication during normal HTTP operations
+	GetRequestHeaders() http.Header
 }
 
 // IdentityProvider is a sentinel interface used to determine whether the backing Credentials instance can provide
@@ -83,8 +89,11 @@ type BaseCredentials struct {
 	// ConfigTypes is used to set the configuration types for services during authentication
 	ConfigTypes []string
 
-	// Headers is a map of strings to string arrays of headers to send with auth requests.
-	Headers *http.Header
+	// AuthHeaders is a map of strings to string arrays of headers to send with auth requests.
+	AuthHeaders http.Header
+
+	// RequestHeaders is a map of string to string arrays of headers to send on non-authentication requests.
+	RequestHeaders http.Header
 
 	// EnvInfo is provided during authentication to set environmental information about the client.
 	EnvInfo *rest_model.EnvInfo
@@ -121,18 +130,28 @@ func (c *BaseCredentials) GetCaPool() *x509.CertPool {
 	return c.CaPool
 }
 
-// AddHeader provides a base implementation to add a header to the request.
-func (c *BaseCredentials) AddHeader(key, value string) {
-	if c.Headers == nil {
-		c.Headers = &http.Header{}
+// AddAuthHeader provides a base implementation to add a header to authentication requests.
+func (c *BaseCredentials) AddAuthHeader(key, value string) {
+	if c.AuthHeaders == nil {
+		c.AuthHeaders = http.Header{}
 	}
-	c.Headers.Add(key, value)
+	c.AuthHeaders.Add(key, value)
+}
+
+// AddRequestHeader provides a base implementation to add a header to all requests after authentication.
+func (c *BaseCredentials) AddRequestHeader(key, value string) {
+	if c.RequestHeaders == nil {
+		c.RequestHeaders = http.Header{}
+	}
+
+	c.RequestHeaders.Add(key, value)
 }
 
 // AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
 // provided token should be the base64 encoded version of the token. Convenience function for AddHeader.
 func (c *BaseCredentials) AddJWT(token string) {
-	c.AddHeader("Authorization", "Bearer "+token)
+	c.AddAuthHeader("Authorization", "Bearer "+token)
+	c.AddRequestHeader("Authorization", "Bearer "+token)
 }
 
 // AuthenticateRequest provides a base implementation to authenticate an outgoing request. This is provided here
@@ -140,20 +159,44 @@ func (c *BaseCredentials) AddJWT(token string) {
 func (c *BaseCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
 	var errors []error
 
-	if c.Headers != nil {
-		for hName, hVals := range *c.Headers {
-			for _, hVal := range hVals {
-				err := request.SetHeaderParam(hName, hVal)
-				if err != nil {
-					errors = append(errors, err)
-				}
+	for hName, hVals := range c.AuthHeaders {
+		for _, hVal := range hVals {
+			err := request.SetHeaderParam(hName, hVal)
+			if err != nil {
+				errors = append(errors, err)
 			}
 		}
 	}
+
 	if len(errors) > 0 {
 		return network.MultipleErrors(errors)
 	}
 	return nil
+}
+
+// ProcessRequest proves a base implemmentation mutate runtime.ClientRequests as they are sent out after
+// authentication. Useful for adding headers.
+func (c *BaseCredentials) ProcessRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
+	var errors []error
+
+	for hName, hVals := range c.RequestHeaders {
+		for _, hVal := range hVals {
+			err := request.SetHeaderParam(hName, hVal)
+			if err != nil {
+				errors = append(errors, err)
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return network.MultipleErrors(errors)
+	}
+	return nil
+}
+
+// GetRequestHeaders returns headers that should be sent on requests post authentication.
+func (c *BaseCredentials) GetRequestHeaders() http.Header {
+	return c.RequestHeaders
 }
 
 // TlsCerts provides a base implementation of returning the tls.Certificate array that will be used to setup

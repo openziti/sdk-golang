@@ -150,7 +150,7 @@ type Context interface {
 	Close()
 
 	// Deprecated: AddZitiMfaHandler adds a Ziti MFA handler, invoked during authentication.
-	// Replaced with event functionality. Use `zitiContext.AddListener(MfaTotpCode, handler)` instead.
+	// Replaced with event functionality. Use `zitiContext.Events().AddMfaTotpCodeListener(func(Context, *rest_model.AuthQueryDetail, MfaCodeResponse))` instead.
 	AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, resp MfaCodeResponse) error)
 
 	// EnrollZitiMfa will attempt to enable TOTP 2FA on the currently authenticating identity if not already enrolled.
@@ -193,7 +193,6 @@ type ContextImpl struct {
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
 
 	events.EventEmmiter
-	apiSessionLock                  sync.Mutex
 	lastSuccessfulApiSessionRefresh time.Time
 }
 
@@ -928,9 +927,6 @@ func (context *ContextImpl) Reauthenticate() error {
 }
 
 func (context *ContextImpl) Authenticate() error {
-	context.apiSessionLock.Lock()
-	defer context.apiSessionLock.Unlock()
-
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		if time.Since(context.lastSuccessfulApiSessionRefresh) < 5*time.Second {
 			return nil
@@ -1040,6 +1036,10 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetail) error {
 	context.Emit(EventAuthQuery, authQuery)
 
+	if authQuery.Provider == nil {
+		return fmt.Errorf("unhandled response from controller: authentication query has no provider specified")
+	}
+
 	if *authQuery.Provider == rest_model.MfaProvidersZiti {
 		handler := context.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
 
@@ -1054,7 +1054,7 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 		return nil
 	}
 
-	return fmt.Errorf("unsupported MFA provider: %v", authQuery.Provider)
+	return fmt.Errorf("unsupported MFA provider: %v", *authQuery.Provider)
 }
 
 func (context *ContextImpl) Dial(serviceName string) (edge.Conn, error) {
