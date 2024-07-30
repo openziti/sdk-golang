@@ -331,16 +331,18 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	params := service.NewListServicesParams()
 
 	pageOffset := int64(0)
+
 	pageLimit := int64(500)
+	params.Limit = &pageLimit
+
+	if self.supportsSetOfConfigTypesOnServiceList() {
+		params.ConfigTypes = self.ConfigTypes
+	}
 
 	var services []*rest_model.ServiceDetail
 
 	for {
-		params.Limit = &pageLimit
 		params.Offset = &pageOffset
-		if self.supportsSetOfConfigTypesOnServiceList() {
-			params.ConfigTypes = self.ConfigTypes
-		}
 		resp, err := self.API.Service.ListServices(params, self.GetCurrentApiSession())
 
 		if err != nil {
