@@ -1,3 +1,14 @@
+# Release notes 0.23.40
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.39 -> v0.23.40](https://github.com/openziti/sdk-golang/compare/v0.23.39...v0.23.40)
+    * [Issue #601](https://github.com/openziti/sdk-golang/issues/601) - Only send config types on service list if controller version supports it
+
+* github.com/openziti/edge-api: [v0.26.21 -> v0.26.23](https://github.com/openziti/edge-api/compare/v0.26.21...v0.26.23)
+    * [Issue #120](https://github.com/openziti/edge-api/issues/120) - Add API for retrieving services referencing a config
+    * [Issue #121](https://github.com/openziti/edge-api/issues/121) - Add API for retrieving the set of attribute roles used by posture checks
+
 # Release notes 0.23.39
 
 ## Issues Fixed and Dependency Updates

@@ -32,6 +32,7 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	"github.com/openziti/edge-api/rest_client_api_client/current_identity"
+	"github.com/openziti/edge-api/rest_client_api_client/informational"
 	"github.com/openziti/edge-api/rest_client_api_client/posture_checks"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	"github.com/openziti/edge-api/rest_client_api_client/session"
@@ -39,12 +40,14 @@ import (
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/foundation/v2/genext"
 	nfPem "github.com/openziti/foundation/v2/pem"
+	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
 	"strings"
+	"sync/atomic"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -60,8 +63,10 @@ type CtrlClient struct {
 	ApiSessionPrivateKey        *ecdsa.PrivateKey
 	ApiSessionCertInstance      string
 
-	PostureCache *posture.Cache
-	ConfigTypes  []string
+	PostureCache                     *posture.Cache
+	ConfigTypes                      []string
+	supportsConfigTypesOnServiceList atomic.Bool
+	capabilitiesLoaded               atomic.Bool
 }
 
 // GetCurrentApiSession returns the current cached ApiSession or nil
@@ -326,15 +331,18 @@ func (self *CtrlClient) GetServices() ([]*rest_model.ServiceDetail, error) {
 	params := service.NewListServicesParams()
 
 	pageOffset := int64(0)
+
 	pageLimit := int64(500)
+	params.Limit = &pageLimit
+
+	if self.supportsSetOfConfigTypesOnServiceList() {
+		params.ConfigTypes = self.ConfigTypes
+	}
 
 	var services []*rest_model.ServiceDetail
 
 	for {
-		params.Limit = &pageLimit
 		params.Offset = &pageOffset
-		params.ConfigTypes = self.ConfigTypes
-
 		resp, err := self.API.Service.ListServices(params, self.GetCurrentApiSession())
 
 		if err != nil {
@@ -476,4 +484,23 @@ func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
 		}
 		edgeRouter.SupportedProtocols = newUrls
 	}
+}
+
+func (self *CtrlClient) loadCtrlCapabilities() {
+	result, _ := self.API.Informational.ListVersion(informational.NewListVersionParams())
+	if result != nil && result.Payload != nil && result.Payload.Data != nil {
+		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
+			if sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.1.0")) >= 0 {
+				self.supportsConfigTypesOnServiceList.Store(true)
+			}
+		}
+	}
+	self.capabilitiesLoaded.Store(true)
+}
+
+func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
+	if !self.capabilitiesLoaded.Load() {
+		self.loadCtrlCapabilities()
+	}
+	return self.supportsConfigTypesOnServiceList.Load()
 }
