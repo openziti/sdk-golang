@@ -735,7 +735,7 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 			return nil, fmt.Errorf("remote op login response is expected to be HTTP status %d got %d with body: %s", http.StatusOK, resp.StatusCode(), resp.Body())
 		}
 
-		authRequestId := resp.Header().Get(AuthRequestIdHeader)
+		authRequestId := payload.AuthRequestId
 		totpRequiredHeader := resp.Header().Get(TotpRequiredHeader)
 		totpRequired := totpRequiredHeader != ""
 		totpCode := ""
@@ -775,11 +775,14 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 				}
 
 				return nil, apiErr
-
 			}
 		}
 
-		tokens := <-rpServer.TokenChan
+		var tokens *oidc.Tokens[*oidc.IDTokenClaims]
+		select {
+		case tokens = <-rpServer.TokenChan:
+		case <-time.After(30 * time.Minute):
+		}
 
 		if tokens == nil {
 			return nil, errors.New("authentication did not complete, received nil tokens")
