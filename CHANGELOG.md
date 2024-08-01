@@ -4,6 +4,7 @@
 
 * github.com/openziti/sdk-golang: [v0.23.39 -> v0.23.40](https://github.com/openziti/sdk-golang/compare/v0.23.39...v0.23.40)
     * [Issue #601](https://github.com/openziti/sdk-golang/issues/601) - Only send config types on service list if controller version supports it
+    * No Issue - Fixes a TOTP OIDC redirect
 
 * github.com/openziti/edge-api: [v0.26.21 -> v0.26.23](https://github.com/openziti/edge-api/compare/v0.26.21...v0.26.23)
     * [Issue #120](https://github.com/openziti/edge-api/issues/120) - Add API for retrieving services referencing a config
