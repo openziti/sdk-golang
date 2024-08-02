@@ -1397,7 +1397,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	options.ConnectTimeout = 15 * time.Second
 	ch, err := channel.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, edgeConn, options)
 	if err != nil {
-		logger.Error(err)
+		logger.WithError(err).WithField("url", ingressUrl).Error("failed to establish channel to router")
 		return &edgeRouterConnResult{
 			routerUrl:  ingressUrl,
 			routerName: routerName,

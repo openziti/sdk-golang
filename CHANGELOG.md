@@ -1,3 +1,10 @@
+# Release notes 0.23.41
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.40 -> v0.23.41](https://github.com/openziti/sdk-golang/compare/v0.23.40...v0.23.41)
+    * [Issue #607](https://github.com/openziti/sdk-golang/issues/607) - go-jose v2.6.0 CVE-2024-28180 resolution
+
 # Release notes 0.23.40
 
 ## Issues Fixed and Dependency Updates
