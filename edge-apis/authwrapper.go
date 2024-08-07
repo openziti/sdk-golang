@@ -29,13 +29,15 @@ import (
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	AuthRequestIdHeader = "auth-request-id"
-	TotpRequiredHeader  = "totp-required"
+	AuthRequestIdHeader   = "auth-request-id"
+	TotpRequiredHeader    = "totp-required"
+	ClaimClientIdOpenZiti = "openziti"
 )
 
 // AuthEnabledApi is used as a sentinel interface to detect APIs that support authentication and to work around a golang
@@ -573,7 +575,7 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 		issuer := "https://" + apiHost + "/oidc"
 		tokenEndpoint := "https://" + apiHost + "/oidc/oauth/token"
 
-		te, err := tokenexchange.NewTokenExchangerClientCredentials(issuer, "native", "", tokenexchange.WithHTTPClient(client), tokenexchange.WithStaticTokenEndpoint(issuer, tokenEndpoint))
+		te, err := tokenexchange.NewTokenExchangerClientCredentials(issuer, ClaimClientIdOpenZiti, "", tokenexchange.WithHTTPClient(client), tokenexchange.WithStaticTokenEndpoint(issuer, tokenEndpoint))
 
 		if err != nil {
 			return nil, err
@@ -752,7 +754,7 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 			case code := <-codeChan:
 				totpCode = code
 			case <-time.After(30 * time.Minute):
-				return nil, fmt.Errorf("timedout waiting for totpT callback")
+				return nil, fmt.Errorf("timedout waiting for totp callback")
 			}
 
 			resp, err = client.R().SetBody(&totpCodePayload{
@@ -767,15 +769,21 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 			}
 
 			if resp.StatusCode() != http.StatusOK {
-				apiErr := &errorz.ApiError{}
-				err = json.Unmarshal(resp.Body(), apiErr)
+				if contentType := resp.Header().Get("content-type"); strings.HasPrefix(contentType, "application/json") {
+					apiErr := &errorz.ApiError{}
+					err = json.Unmarshal(resp.Body(), apiErr)
 
-				if err != nil {
-					return nil, fmt.Errorf("could not verify TOTP MFA code recieved %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+					if err != nil {
+						return nil, fmt.Errorf("could not verify TOTP MFA code recieved response code %d - could not parse body: %s", resp.StatusCode(), string(resp.Body()))
+					}
+
+					return nil, apiErr
+				} else {
+					return nil, fmt.Errorf("could not verify TOTP MFA code recieved response code %d", resp.StatusCode())
 				}
-
-				return nil, apiErr
 			}
+
+			//fall through and wait for tokens from RP
 		}
 
 		var tokens *oidc.Tokens[*oidc.IDTokenClaims]

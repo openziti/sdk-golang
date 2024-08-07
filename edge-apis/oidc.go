@@ -148,7 +148,7 @@ func newLocalRpServer(apiHost string, authMethod string) (*localRpServer, error)
 
 	urlBase := "https://" + apiHost
 	issuer := urlBase + "/oidc"
-	clientID := "native"
+	clientID := ClaimClientIdOpenZiti
 	clientSecret := ""
 	scopes := []string{"openid", "offline_access"}
 	result.CallbackUri = "http://127.0.0.1:" + result.Port + result.CallbackPath
