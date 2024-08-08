@@ -10,7 +10,7 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
-	github.com/go-resty/resty/v2 v2.13.1
+	github.com/go-resty/resty/v2 v2.14.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -18,13 +18,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v2 v2.0.136
+	github.com/openziti/channel/v2 v2.0.137
 	github.com/openziti/edge-api v0.26.23
-	github.com/openziti/foundation/v2 v2.0.47
-	github.com/openziti/identity v1.0.81
-	github.com/openziti/metrics v1.2.56
+	github.com/openziti/foundation/v2 v2.0.48
+	github.com/openziti/identity v1.0.82
+	github.com/openziti/metrics v1.2.57
 	github.com/openziti/secretstream v0.1.21
-	github.com/openziti/transport/v2 v2.0.138
+	github.com/openziti/transport/v2 v2.0.139
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -34,8 +34,8 @@ require (
 	github.com/zitadel/oidc/v2 v2.12.0
 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
-	golang.org/x/oauth2 v0.21.0
-	golang.org/x/sys v0.22.0
+	golang.org/x/oauth2 v0.22.0
+	golang.org/x/sys v0.24.0
 	google.golang.org/protobuf v1.34.2
 )
 
