@@ -1,3 +1,39 @@
+# Release notes 0.23.41
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.40 -> v0.23.41](https://github.com/openziti/sdk-golang/compare/v0.23.40...v0.23.41)
+* github.com/openziti/channel/v3: [v2.0.136 -> v3.0.2](https://github.com/openziti/channel/compare/v2.0.136...v3.0.2)
+    * [Issue #138](https://github.com/openziti/channel/issues/138) - Allow custom message serialization. Add support for a 'raw' message type.
+    * [Issue #82](https://github.com/openziti/channel/issues/82) - Remove transport.Configuration from UnderlayFactory.Create
+    * [Issue #136](https://github.com/openziti/channel/issues/136) - Fix timeout on classic dialer 
+    * [Issue #134](https://github.com/openziti/channel/issues/134) - Support the dtls transport
+
+* github.com/openziti/edge-api: [v0.26.23 -> v0.26.30](https://github.com/openziti/edge-api/compare/v0.26.23...v0.26.30)
+* github.com/openziti/foundation/v2: [v2.0.47 -> v2.0.49](https://github.com/openziti/foundation/compare/v2.0.47...v2.0.49)
+* github.com/openziti/identity: [v1.0.81 -> v1.0.85](https://github.com/openziti/identity/compare/v1.0.81...v1.0.85)
+* github.com/openziti/metrics: [v1.2.56 -> v1.2.58](https://github.com/openziti/metrics/compare/v1.2.56...v1.2.58)
+* github.com/openziti/transport/v2: [v2.0.138 -> v2.0.146](https://github.com/openziti/transport/compare/v2.0.138...v2.0.146)
+    * [Issue #92](https://github.com/openziti/transport/issues/92) - Implement simple traffic traffic
+    * [Issue #85](https://github.com/openziti/transport/issues/85) - Update to latest dtls library
+
+* github.com/zitadel/oidc/v2: v2.12.0 -> v2.12.2
+* golang.org/x/sys: v0.22.0 -> v0.25.0
+* github.com/gorilla/schema: v1.2.0 -> v1.3.0
+* github.com/gorilla/securecookie: v1.1.1 -> v1.1.2
+* github.com/gorilla/websocket: v1.5.1 -> v1.5.3
+* go.mongodb.org/mongo-driver: v1.16.0 -> v1.16.1
+* go.opentelemetry.io/otel: v1.28.0 -> v1.29.0
+* go.opentelemetry.io/otel/metric: v1.28.0 -> v1.29.0
+* go.opentelemetry.io/otel/trace: v1.28.0 -> v1.29.0
+* golang.org/x/crypto: v0.25.0 -> v0.27.0
+* golang.org/x/net: v0.27.0 -> v0.29.0
+* golang.org/x/sync: v0.7.0 -> v0.8.0
+* golang.org/x/term: v0.22.0 -> v0.24.0
+* golang.org/x/text: v0.16.0 -> v0.18.0
+* gopkg.in/go-jose/go-jose.v2: v2.6.3 (new)
+* nhooyr.io/websocket: v1.8.11 -> v1.8.17
+
 # Release notes 0.23.40
 
 ## Issues Fixed and Dependency Updates
