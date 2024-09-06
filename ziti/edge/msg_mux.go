@@ -19,7 +19,7 @@ package edge
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v2"
+	"github.com/openziti/channel/v3"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"math"
