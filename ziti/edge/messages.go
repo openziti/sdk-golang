@@ -18,7 +18,7 @@ package edge
 
 import (
 	"encoding/binary"
-	"github.com/openziti/channel/v2"
+	"github.com/openziti/channel/v3"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"

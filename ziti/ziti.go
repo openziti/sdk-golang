@@ -43,8 +43,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v2"
-	"github.com/openziti/channel/v2/latency"
+	"github.com/openziti/channel/v3"
+	"github.com/openziti/channel/v3/latency"
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/versions"
@@ -1387,8 +1387,12 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 		}
 	}
 
-	dialer := channel.NewClassicDialer(identity.NewIdentity(id), ingAddr, map[int32][]byte{
-		edge.SessionTokenHeader: context.CtrlClt.GetCurrentApiSession().GetToken(),
+	dialer := channel.NewClassicDialer(channel.DialerConfig{
+		Identity: identity.NewIdentity(id),
+		Endpoint: ingAddr,
+		Headers: map[int32][]byte{
+			edge.SessionTokenHeader: context.CtrlClt.GetCurrentApiSession().GetToken(),
+		},
 	})
 
 	start := time.Now().UnixNano()
