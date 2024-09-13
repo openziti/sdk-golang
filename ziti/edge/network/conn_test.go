@@ -2,10 +2,12 @@ package network
 
 import (
 	"crypto/x509"
+	"encoding/binary"
 	"github.com/openziti/channel/v3"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -119,6 +121,55 @@ func BenchmarkSequencer(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		readQ.GetNext()
 	}
+}
+
+func TestReadMultipart(t *testing.T) {
+	req := require.New(t)
+	mux := edge.NewCowMapMsgMux()
+	testChannel := &NoopTestChannel{}
+
+	readQ := NewNoopSequencer[*channel.Message](4)
+	conn := &edgeConn{
+		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
+		readQ:       readQ,
+		msgMux:      mux,
+		serviceName: "test",
+	}
+
+	var stop atomic.Bool
+	defer stop.Store(true)
+
+	var multipart []byte
+	words := []string{"Hello", "World", "of", "ziti"}
+	for _, w := range words {
+		multipart = binary.LittleEndian.AppendUint16(multipart, uint16(len(w)))
+		multipart = append(multipart, []byte(w)...)
+	}
+	msg := edge.NewDataMsg(1, uint32(0), multipart)
+	msg.Headers.PutUint32Header(edge.FlagsHeader, uint32(edge.MULTIPART_MSG))
+	_ = readQ.PutSequenced(msg)
+	msg = edge.NewDataMsg(1, uint32(0), nil)
+	msg.Headers.PutUint32Header(edge.FlagsHeader, uint32(edge.FIN))
+	err := readQ.PutSequenced(msg)
+	if err != nil {
+		panic(err)
+	}
+
+	var read []string
+	for {
+		data := make([]byte, 1024)
+		req.NoError(conn.SetReadDeadline(time.Now().Add(1 * time.Second)))
+		n, e := conn.Read(data)
+		if e == io.EOF {
+			break
+		}
+
+		req.NoError(e)
+
+		read = append(read, string(data[:n]))
+	}
+
+	req.Equal(words, read)
 }
 
 type NoopTestChannel struct {

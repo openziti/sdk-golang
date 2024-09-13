@@ -153,13 +153,22 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	copyBuf := make([]byte, len(data))
 	copy(copyBuf, data)
 
-	msg := NewDataMsg(ec.id, ec.msgIdSeq.Next(), copyBuf)
+	seq := ec.msgIdSeq.Next()
+	msg := NewDataMsg(ec.id, seq, copyBuf)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
 	}
 
 	for k, v := range hdrs {
 		msg.Headers[k] = v
+	}
+
+	// indicate that we can accept multipart messages
+	// with the first message
+	if seq == 1 {
+		flags, _ := msg.GetUint32Header(FlagsHeader)
+		flags = flags | MULTIPART
+		msg.PutUint32Header(FlagsHeader, flags)
 	}
 	ec.TraceMsg("write", msg)
 	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(copyBuf))
