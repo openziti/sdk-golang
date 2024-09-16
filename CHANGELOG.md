@@ -1,3 +1,10 @@
+# Release notes 0.23.42
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.41 -> v0.23.42](https://github.com/openziti/sdk-golang/compare/v0.23.41...v0.23.42)
+  * [Issue #625](https://github.com/openziti/sdk-golang/issues/625) - traffic optimization: implement support for receiving multi-part edge payloads
+
 # Release notes 0.23.41
 
 ## Issues Fixed and Dependency Updates
