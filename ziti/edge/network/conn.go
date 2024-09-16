@@ -26,6 +26,7 @@ import (
 
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v3"
 	"github.com/openziti/edge-api/rest_model"
@@ -52,9 +53,10 @@ var _ edge.Conn = &edgeConn{}
 type edgeConn struct {
 	edge.MsgChannel
 	readQ                 *noopSeq[*channel.Message]
-	leftover              []byte
+	inBuffer              [][]byte
 	msgMux                edge.MsgMux
 	hosting               cmap.ConcurrentMap[string, *edgeListener]
+	flags                 uint32
 	closed                atomic.Bool
 	readFIN               atomic.Bool
 	sentFIN               atomic.Bool
@@ -458,10 +460,16 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 	}
 
 	log.Tracef("read buffer = %d bytes", len(p))
-	if len(conn.leftover) > 0 {
-		log.Tracef("found %d leftover bytes", len(conn.leftover))
-		n := copy(p, conn.leftover)
-		conn.leftover = conn.leftover[n:]
+	if len(conn.inBuffer) > 0 {
+		first := conn.inBuffer[0]
+		log.Tracef("found %d buffered bytes", len(first))
+		n := copy(p, first)
+		first = first[n:]
+		if len(first) == 0 {
+			conn.inBuffer = conn.inBuffer[1:]
+		} else {
+			conn.inBuffer[0] = first
+		}
 		return n, nil
 	}
 
@@ -471,7 +479,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		}
 
 		msg, err := conn.readQ.GetNext()
-		if err == ErrClosed {
+		if errors.Is(err, ErrClosed) {
 			log.Debug("sequencer closed, closing connection")
 			conn.closed.Store(true)
 			return 0, io.EOF
@@ -484,6 +492,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		if flags&edge.FIN != 0 {
 			conn.readFIN.Store(true)
 		}
+		conn.flags = conn.flags | (flags & (edge.STREAM | edge.MULTIPART))
 
 		switch msg.ContentType {
 
@@ -498,6 +507,8 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			if len(d) == 0 && conn.readFIN.Load() {
 				return 0, io.EOF
 			}
+
+			multipart := (flags & edge.MULTIPART_MSG) != 0
 
 			// first data message should contain crypto header
 			if conn.rxKey != nil {
@@ -519,11 +530,32 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 					return 0, err
 				}
 			}
-			n := copy(p, d)
-			conn.leftover = d[n:]
+			n := 0
+			if multipart && len(d) > 0 {
+				var parts [][]byte
+				for len(d) > 0 {
+					l := binary.LittleEndian.Uint16(d[0:2])
+					d = d[2:]
+					part := d[0:l]
+					d = d[l:]
+					parts = append(parts, part)
+				}
+				n = copy(p, parts[0])
+				parts[0] = parts[0][n:]
+				if len(parts[0]) == 0 {
+					parts = parts[1:]
+				}
+				conn.inBuffer = append(conn.inBuffer, parts...)
+			} else {
+				n = copy(p, d)
+				d = d[n:]
+				if len(d) > 0 {
+					conn.inBuffer = append(conn.inBuffer, d)
+				}
+			}
 
-			log.Tracef("saving %d bytes for leftover", len(conn.leftover))
-			log.Debugf("reading %v bytes", n)
+			log.Tracef("%d chunks in incoming buffer", len(conn.inBuffer))
+			log.Debugf("read %v bytes", n)
 			return n, nil
 
 		default:

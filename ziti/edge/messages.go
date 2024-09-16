@@ -106,6 +106,15 @@ const (
 
 	// FIN is an edge payload flag used to signal communication ends
 	FIN = 0x1
+	// TRACE_UUID indicates that peer will send data messages with specially constructed UUID headers
+	TRACE_UUID = 1 << 1
+	// MULTIPART indicates that peer can accept multipart data messages
+	MULTIPART = 1 << 2
+	// STREAM indicates connection with stream semantics
+	// this allows consolidation of payloads to lower overhead
+	STREAM = 1 << 3
+	// MULTIPART_MSG set on data message with multiple payloads
+	MULTIPART_MSG = 1 << 4
 )
 
 type CryptoMethod byte
