@@ -614,7 +614,7 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 				AccessToken:  tokenResponse.AccessToken,
 				TokenType:    tokenResponse.TokenType,
 				RefreshToken: tokenResponse.RefreshToken,
-				Expiry:       now.Add(time.Duration(tokenResponse.ExpiresIn)),
+				Expiry:       now.Add(time.Second * time.Duration(tokenResponse.ExpiresIn)),
 			},
 			IDTokenClaims: &idClaims.IDTokenClaims,
 			IDToken:       idResp.AccessToken, //access token field is used to hold id token per zitadel comments
