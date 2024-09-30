@@ -1,7 +1,8 @@
 module github.com/openziti/sdk-golang
 
 go 1.21
-toolchain go1.22.5
+
+toolchain go1.22.1
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -17,12 +18,12 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v3 v3.0.3
-	github.com/openziti/edge-api v0.26.31
+	github.com/openziti/channel/v3 v3.0.4
+	github.com/openziti/edge-api v0.26.32
 	github.com/openziti/foundation/v2 v2.0.49
 	github.com/openziti/identity v1.0.85
 	github.com/openziti/metrics v1.2.58
-	github.com/openziti/secretstream v0.1.24
+	github.com/openziti/secretstream v0.1.25
 	github.com/openziti/transport/v2 v2.0.146
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
@@ -77,9 +78,9 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mongodb.org/mongo-driver v1.17.0 // indirect
-	go.opentelemetry.io/otel v1.30.0 // indirect
-	go.opentelemetry.io/otel/metric v1.30.0 // indirect
-	go.opentelemetry.io/otel/trace v1.30.0 // indirect
+	go.opentelemetry.io/otel v1.29.0 // indirect
+	go.opentelemetry.io/otel/metric v1.29.0 // indirect
+	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
