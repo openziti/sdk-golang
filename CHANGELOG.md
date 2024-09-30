@@ -1,3 +1,20 @@
+# Release notes 0.23.43
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.42 -> v0.23.43](https://github.com/openziti/sdk-golang/compare/v0.23.42...v0.23.43)
+    * [Issue #629](https://github.com/openziti/sdk-golang/issues/629) - JWT session refresh interprets expiration date incorrectly
+
+* github.com/go-resty/resty/v2: v2.13.1 -> v2.15.3
+* github.com/openziti/channel/v3: [v3.0.2 -> v3.0.4](https://github.com/openziti/channel/compare/v3.0.2...v3.0.4)
+    * [Issue #144](https://github.com/openziti/channel/issues/144) - Add ReadAdapter utility
+
+* github.com/openziti/edge-api: [v0.26.30 -> v0.26.32](https://github.com/openziti/edge-api/compare/v0.26.30...v0.26.32)
+* github.com/openziti/secretstream: [v0.1.21 -> v0.1.25](https://github.com/openziti/secretstream/compare/v0.1.21...v0.1.25)
+* go.mozilla.org/pkcs7: v0.0.0-20200128120323-432b2356ecb1 -> v0.9.0
+* golang.org/x/oauth2: v0.21.0 -> v0.23.0
+* go.mongodb.org/mongo-driver: v1.16.1 -> v1.17.0
+
 # Release notes 0.23.42
 
 ## Issues Fixed and Dependency Updates
