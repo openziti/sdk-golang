@@ -1,3 +1,11 @@
+# Release notes 0.23.44
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.43 -> v0.23.44](https://github.com/openziti/sdk-golang/compare/v0.23.43...v0.23.44)
+* github.com/openziti/edge-api: [v0.26.32 -> v0.26.34](https://github.com/openziti/edge-api/compare/v0.26.32...v0.26.34)
+
+
 # Release notes 0.23.43
 
 ## Issues Fixed and Dependency Updates
