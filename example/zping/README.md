@@ -1,123 +1,128 @@
-# Intro:  
+# zping  
 
-What is zping?  zping replaces the function of icmp ping tool in a ziti network.
+`zping` provides equivalent functionality for an OpenZiti overlay network as the similarly named underlay function 
+`ping`. Being a zero trust overlay network, classic underlay tooling like `ping` won't function properly.
 
-It provides an end to end latency measurement between any two ziti identities in a ziti network and like icmp ping will provide the following metrics upon completion of the ping session:
+`zping` provides end to end latency measurements between any two identities in an OpenZiti network. Like `icmp`, `zping`
+will provide the following metrics upon completion of the ping session:
 
-min, max and mean latency and standard deviation.
+* min
+* max
+* mean latency
+* standard deviation.
 
-zping uses the addressable terminator function of ziti to direct ping requests to specific identities.
+`zping` uses addressable terminators to direct ping requests to specific identities.
 
-# Get the code :
+## Build the Example
+Refer to the [example README](../README.md) to build the SDK examples
 
-Compile from source:
+## Setup and Configure the Example
 
-Install golang for your platform follow instructions at https://golang.org
-and ensure you set you gopath properly for your platform. i.e
-Ubuntu linux:
-
-```
-export GOPATH=$HOME/go
-```
-```
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
-```
-
-Linux:
-
-   Create a dir
-```
-   mkdir zitiapps
-```
-```
-   $ cd zitiapps
-```   
-```   
-   $ git clone https://github.com/openziti/sdk-golang.git
-```
-```
-   $ cd sdk-golang/example/zping
-```
-```
-   $ go install zping
-```
-
-# Setup the Network and the Ziti Service :
+This README will use the `ziti edge quickstart` command for its example. You'll need the `ziti` CLI on your path to run
+the commands shown. If you have an OpenZiti overlay network already, some commands will not be necessary. The 
+commands all use bash and expect you're running on a version of *nix as `/tmp` is referenced. Adapt accordingly if 
+you're using Windows. The example expects the binary to be put into the build directory as specified by the "Build 
+the Example" section above.
 
 ![Diagram](network.png)
 
-1. Create or use an existing ziti network with at least one edge router.
+1. Create or use an existing ziti network with at least one edge router. This can be accomplished easily by running
 
-2. Create at least two ziti identities and give them a common identity role i.e. #ping 
+      ziti edge quickstart
 
-      e.g. zitiendpoint1, zitiendpoint2
+   after the quickstart runs, you'll have an ephemeral network usable for testing.
 
-3. Create a simple sdk service named “ziti-ping” this is the default service zping looks for but can be          
+1. Create at least two ziti identities and give them a common identity role i.e. #zping 
 
-   overridden  with the -s command line flag.
+      ziti edge create identity client -o client.jwt -a "zping"
+      ziti edge create identity server -o server.jwt -a "zping"
+      ziti edge enroll client.jwt
+      ziti edge enroll server.jwt
 
-4. Create a bind policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
+1. Create a simple sdk service named "ziti-ping". This is the default service name `zping` looks for. You can 
+   override the service by using the `-s` flag.
 
-5. Create a dial service policy with identityRoles set to [#ping] and serviceroles set to [@ziti-ping].
+      ziti edge create service ziti-ping
 
-6. Ensure that you have created appropriate edge-router and service-edge-router policies allowing the identities access
-   edge-router(s) and the edge-routers access to the service.
+1. Create a bind policy with identityRoles set to [#zping] and serviceroles set to [@ziti-ping].
 
-7. Create an AppWAN and enter @ziti-ping in the service attributes and #ping in the “Endpoint Attributes”
+      ziti edge create service-policy zping.bind Bind --identity-roles "#zping" --service-roles "@ziti-ping"
 
-8. Download the zpingendpoint1.jwt, zpingendpoint2.jwt
+1. Create a dial service policy with identityRoles set to [#zping] and serviceroles set to [@ziti-ping].
+   
+      ziti edge create service-policy zping.dial Dial --identity-roles "#zping" --service-roles "@ziti-ping"
 
-9. Distribute the zping binary to the endpoint(s) you wish to run on
+1. Ensure that you have created appropriate edge-router and service-edge-router policies allowing the identities access
+   edge-router(s) and the edge-routers access to the service. Verify by running policy-advisor. Both identities 
+   should be able to dial **and** bind zping:
 
-10. Enroll the endpoints with the zping binary i.e. 
+      $ ziti edge policy-advisor identities -q
+      ERROR: Default Admin
+        - Identity does not have access to any services. Adjust service policies.
+   
+      OKAY : client (1) -> ziti-ping (1) Common Routers: (1/1) Dial: Y Bind: N
+      
+      OKAY : server (1) -> ziti-ping (1) Common Routers: (1/1) Dial: Y Bind: N
+      
+      ERROR: quickstart-router
+        - Identity does not have access to any services. Adjust service policies.
+
+1. In one window run the server
 ```
-    $ zping enroll -j zitiendpoint1.jwt
-
-      INFO[0000] generating 4096 bit RSA key                  
-
-      INFO[0002] enrolled successfully. identity file written to: zpingendpoint1.json
-```    
+    build/zping server -c server.json
 ```
-    $ zping enroll -j zpingendpoint2.jwt
-
-      INFO[0000] generating 4096 bit RSA key                  
-
-      INFO[0002] enrolled successfully. identity file written to: zpingendpoint2.json
-```
-11. On each machine in run either in background or a separate window in server mode
-```
-    $ zping server -c zpingendpoint1.json &
-      [1] 4123
+      example:
+      ```
+      $ build/zping server -c server.json
       INFO[0000] binding service ziti-ping
+  
+      0xc00040d660 now serving
+  
+      INFO[0000] new service session                           session token=52e059d2-f166-4561-b5a4-b42056bcd787
+      INFO[0041] new connection
+      ```
+
+1. In another window run the client
+```
+    build/zping client -c client.json -i server
+```
       
-      zpingendpoint1 now serving
+      ```
+       $ build/zping client -c client.json -i server
+  
+      Sending 100 byte pings to server:
       
-      INFO[0000] connection to edge router using token 1de2f02e-62fe-44fb-bebb-e2d21a82d13f            
-```
-```
-    $ zping server -c zpingendpoint2.json &
-      [1] 5176
-      INFO[0000] binding service ziti-ping                    
+      100 bytes from server: ziti_seq=1 time=0.609ms
+      100 bytes from server: ziti_seq=2 time=0.670ms
+      100 bytes from server: ziti_seq=3 time=0.381ms
+      100 bytes from server: ziti_seq=4 time=0.387ms
+      100 bytes from server: ziti_seq=5 time=0.564ms
+      100 bytes from server: ziti_seq=6 time=0.455ms
+      100 bytes from server: ziti_seq=7 time=0.446ms
+      100 bytes from server: ziti_seq=8 time=0.377ms
+      100 bytes from server: ziti_seq=9 time=0.455ms
+      100 bytes from server: ziti_seq=10 time=0.502ms
+      100 bytes from server: ziti_seq=11 time=0.977ms
+      100 bytes from server: ziti_seq=12 time=0.487ms
+      ^C
+      --- server ping statistics ---
+      12 packets transmitted and 12 packets received, 0.00% packet loss
+      round-trip min/max/avg/stddev 0.377/0.977/0.526/0.162 ms
+      ```
 
-      zpingendpoint2 now serving
-
-      INFO[0000] connection to edge router using token d472f74c-97af-426a-a07f-7ecd907a2013 
+1. Send 5 zpings from the client to the server using `-n 5`
 ```
-12. Send 5 zpings from zpingclient2 to zpingclient1
-```
-      $ zping client -c zitiendpoint2.json -i zitiendpoint1 -n 5
-        INFO[0000] connection to edge router using token b78cab88-fa22-4d49-906f-ddf101b63b88 
-        INFO[0566] new connection                               
+$ build/zping client -c client.json -i server -n 5
 
-        Sending 100 byte pings to zpingendpoint1:
+Sending 100 byte pings to server:
 
-        100 bytes from zpingendpoint1: ziti_seq=1 time=76.558ms
-        100 bytes from zpingendpoint1: ziti_seq=2 time=75.597ms
-        100 bytes from zpingendpoint1: ziti_seq=3 time=76.209ms
-        100 bytes from zpingendpoint1: ziti_seq=4 time=76.332ms
-        100 bytes from zpingendpoint1: ziti_seq=5 time=76.849ms
-        
-        --- zpingendpoint1 ping statistics ---
-        5 packets transmitted and 5 packets received, 0.00% packet loss
-        round-trip min/max/avg/stddev 75.597/76.849/76.309/0.417 ms
+100 bytes from server: ziti_seq=1 time=0.349ms
+100 bytes from server: ziti_seq=2 time=0.690ms
+100 bytes from server: ziti_seq=3 time=0.590ms
+100 bytes from server: ziti_seq=4 time=0.429ms
+100 bytes from server: ziti_seq=5 time=0.480ms
+
+--- server ping statistics ---
+5 packets transmitted and 5 packets received, 0.00% packet loss
+round-trip min/max/avg/stddev 0.349/0.690/0.508/0.120 ms
 ```
