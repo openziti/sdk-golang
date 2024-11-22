@@ -52,6 +52,7 @@ to be aware of.
       from OIDC/oAuth/etc.) to authenticate with OpenZIti
     - [`reflect`](example/reflect) - a low level network "echo" client and server example
     - [`simple-server`](example/simple-server) - a bare-bones HTTP server side only example
+    - [`udp-offload`](example/udp-offload) - an example demonstrating how to work with an OpenZiti client and a UDP server
     - [`zcat`](example/zcat) - wrapping existing network tooling (netcat) to work over OpenZiti
     - [`zping`](example/zping) - wrapping existing network tooling (ping) to work over OpenZiti
 
