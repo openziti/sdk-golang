@@ -2,6 +2,8 @@
 
 As part of your PR, do the following:
 
+* Install `ziti-ci`
+    * `go install github.com/openziti/ziti-ci@v0.5.125` (or latest)
 * Make sure the buildinfo is up to date using:
     * `ziti-ci update-sdk-build-info`
     * This will update the version number in the code
