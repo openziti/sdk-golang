@@ -1,3 +1,31 @@
+# Release notes 0.23.45
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.44 -> v0.23.45](https://github.com/openziti/sdk-golang/compare/v0.23.44...v0.23.45)
+    * [Issue #659](https://github.com/openziti/sdk-golang/issues/659) - E2E encryption can encounter ordering issues with high-volume concurrent writes
+
+* github.com/openziti/channel/v3: [v3.0.4 -> v3.0.26](https://github.com/openziti/channel/compare/v3.0.4...v3.0.26)
+    * [Issue #146](https://github.com/openziti/channel/issues/146) - Transport options aren't being set in dialer
+
+* github.com/openziti/edge-api: [v0.26.34 -> v0.26.36](https://github.com/openziti/edge-api/compare/v0.26.34...v0.26.36)
+    * [Issue #138](https://github.com/openziti/edge-api/issues/138) - management api deletes were generally not mapping 404 properly
+
+* github.com/openziti/foundation/v2: [v2.0.49 -> v2.0.56](https://github.com/openziti/foundation/compare/v2.0.49...v2.0.56)
+* github.com/openziti/identity: [v1.0.85 -> v1.0.94](https://github.com/openziti/identity/compare/v1.0.85...v1.0.94)
+
+* github.com/openziti/metrics: [v1.2.58 -> v1.2.65](https://github.com/openziti/metrics/compare/v1.2.58...v1.2.65)
+* github.com/openziti/secretstream: [v0.1.25 -> v0.1.28](https://github.com/openziti/secretstream/compare/v0.1.25...v0.1.28)
+* github.com/openziti/transport/v2: [v2.0.146 -> v2.0.159](https://github.com/openziti/transport/compare/v2.0.146...v2.0.159)
+* github.com/stretchr/testify: v1.9.0 -> v1.10.0
+* golang.org/x/sys: v0.25.0 -> v0.29.0
+* google.golang.org/protobuf: v1.34.2 -> v1.36.2
+* golang.org/x/crypto: v0.27.0 -> v0.32.0
+* golang.org/x/net: v0.29.0 -> v0.34.0
+* golang.org/x/sync: v0.8.0 -> v0.10.0
+* golang.org/x/term: v0.24.0 -> v0.28.0
+* golang.org/x/text: v0.18.0 -> v0.21.0
+
 # Release notes 0.23.44
 
 ## Issues Fixed and Dependency Updates

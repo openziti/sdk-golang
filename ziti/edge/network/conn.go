@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -74,6 +75,7 @@ type edgeConn struct {
 	receiver secretstream.Decryptor
 	sender   secretstream.Encryptor
 	appData  []byte
+	sync.Mutex
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
@@ -82,6 +84,9 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 	}
 
 	if conn.sender != nil {
+		conn.Lock()
+		defer conn.Unlock()
+
 		cipherData, err := conn.sender.Push(data, secretstream.TagMessage)
 		if err != nil {
 			return 0, err
