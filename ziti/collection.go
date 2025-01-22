@@ -82,7 +82,7 @@ func NewSdkCollectionFromEnv(envVariable string, configTypes []string) *CtxColle
 			continue
 		}
 
-		cfg.ConfigTypes = append(configTypes)
+		cfg.ConfigTypes = append(cfg.ConfigTypes, configTypes...)
 
 		//collection.NewContext stores the new ctx in its internal collection
 		_, err = collection.NewContext(cfg)
