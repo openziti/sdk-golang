@@ -62,7 +62,7 @@ func NewSdkCollection() *CtxCollection {
 
 // NewSdkCollectionFromEnv will create an empty CtxCollection and then attempt to populate it from configuration files
 // provided in a semicolon separate list of file paths retrieved from an environment variable.
-func NewSdkCollectionFromEnv(envVariable string, configTypes []string) *CtxCollection {
+func NewSdkCollectionFromEnv(envVariable string, configTypes ...string) *CtxCollection {
 	collection := NewSdkCollection()
 
 	envValue := os.Getenv(envVariable)

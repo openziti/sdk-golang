@@ -26,7 +26,7 @@ var DefaultCollection *CtxCollection
 const IdentitiesEnv = "ZITI_IDENTITIES"
 
 func init() {
-	DefaultCollection = NewSdkCollectionFromEnv(IdentitiesEnv, []string{InterceptV1, ClientConfigV1})
+	DefaultCollection = NewSdkCollectionFromEnv(IdentitiesEnv, InterceptV1, ClientConfigV1)
 }
 
 // Deprecated: ForAllContexts iterates over all Context instances in the DefaultCollection and call the provided function `f`.
