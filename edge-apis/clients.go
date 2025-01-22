@@ -123,10 +123,12 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypesOver
 }
 
 // initializeComponents assembles the lower level components necessary for the go-swagger/openapi facilities.
-func (self *BaseClient[A]) initializeComponents(apiUrls []*url.URL, caPool *x509.CertPool) {
-	components := NewComponents()
-	components.HttpTransport.TLSClientConfig.RootCAs = caPool
-	components.CaPool = caPool
+func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
+	components := NewComponentsWithConfig(&ComponentsConfig{
+		Proxy: config.Proxy,
+	})
+	components.HttpTransport.TLSClientConfig.RootCAs = config.CaPool
+	components.CaPool = config.CaPool
 
 	self.Components = *components
 }
@@ -205,6 +207,13 @@ type ManagementApiClient struct {
 	BaseClient[ZitiEdgeManagement]
 }
 
+type ApiClientConfig struct {
+	ApiUrls      []*url.URL
+	CaPool       *x509.CertPool
+	TotpCallback func(chan string)
+	Proxy        func(r *http.Request) (*url.URL, error)
+}
+
 // NewManagementApiClient will assemble an ManagementApiClient. The apiUrl should be the full URL
 // to the Edge Management API (e.g. `https://example.com/edge/management/v1`).
 //
@@ -217,16 +226,25 @@ type ManagementApiClient struct {
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
 func NewManagementApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ManagementApiClient {
+	return NewManagementApiClientWithConfig(&ApiClientConfig{
+		ApiUrls:      apiUrls,
+		CaPool:       caPool,
+		TotpCallback: totpCallback,
+		Proxy:        http.ProxyFromEnvironment,
+	})
+}
+
+func NewManagementApiClientWithConfig(config *ApiClientConfig) *ManagementApiClient {
 	ret := &ManagementApiClient{}
 	ret.Schemes = rest_management_api_client.DefaultSchemes
 	ret.ApiBinding = "edge-management"
 	ret.ApiVersion = "v1"
-	ret.ApiUrls = apiUrls
-	ret.initializeComponents(apiUrls, caPool)
+	ret.ApiUrls = config.ApiUrls
+	ret.initializeComponents(config)
 
 	transportPool := NewClientTransportPoolRandom()
 
-	for _, apiUrl := range apiUrls {
+	for _, apiUrl := range config.ApiUrls {
 		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
 		newRuntime.DefaultAuthentication = ret
 		transportPool.Add(apiUrl, newRuntime)
@@ -235,7 +253,7 @@ func NewManagementApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallb
 	newApi := rest_management_api_client.New(transportPool, nil)
 	api := ZitiEdgeManagement{
 		ZitiEdgeManagement:  newApi,
-		TotpCallback:        totpCallback,
+		TotpCallback:        config.TotpCallback,
 		ClientTransportPool: transportPool,
 	}
 
@@ -261,17 +279,26 @@ type ClientApiClient struct {
 // to obtain and verify the target controllers CAs. Tools should allow users to verify and accept new controllers
 // that have not been verified from an outside secret (such as an enrollment token).
 func NewClientApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
+	return NewClientApiClientWithConfig(&ApiClientConfig{
+		ApiUrls:      apiUrls,
+		CaPool:       caPool,
+		TotpCallback: totpCallback,
+		Proxy:        http.ProxyFromEnvironment,
+	})
+}
+
+func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	ret := &ClientApiClient{}
 	ret.ApiBinding = "edge-client"
 	ret.ApiVersion = "v1"
 	ret.Schemes = rest_client_api_client.DefaultSchemes
-	ret.ApiUrls = apiUrls
+	ret.ApiUrls = config.ApiUrls
 
-	ret.initializeComponents(apiUrls, caPool)
+	ret.initializeComponents(config)
 
 	transportPool := NewClientTransportPoolRandom()
 
-	for _, apiUrl := range apiUrls {
+	for _, apiUrl := range config.ApiUrls {
 		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
 		newRuntime.DefaultAuthentication = ret
 		transportPool.Add(apiUrl, newRuntime)
@@ -280,7 +307,7 @@ func NewClientApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback 
 	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
 		ZitiEdgeClient:      newApi,
-		TotpCallback:        totpCallback,
+		TotpCallback:        config.TotpCallback,
 		ClientTransportPool: transportPool,
 	}
 	ret.API = &api

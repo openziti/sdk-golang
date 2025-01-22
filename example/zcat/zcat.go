@@ -21,9 +21,12 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/transport/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -36,12 +39,16 @@ var verbose bool
 var logFormatter string
 var retry bool
 var identityFile string
+var ctrlProxy string
+var routerProxy string
 
 func init() {
 	root.PersistentFlags().StringVarP(&identityFile, "identity", "i", "", "Identity file path")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	root.PersistentFlags().BoolVarP(&retry, "retry", "r", false, "Retry after i/o error")
 	root.PersistentFlags().StringVar(&logFormatter, "log-formatter", "", "Specify log formatter [json|pfxlog|text]")
+	root.PersistentFlags().StringVar(&ctrlProxy, "ctrl-proxy", "", "Specify a proxy to use for controller connections")
+	root.PersistentFlags().StringVar(&routerProxy, "router-proxy", "", "Specify a proxy to use for router connections")
 }
 
 var root = &cobra.Command{
@@ -81,6 +88,23 @@ func runFunc(_ *cobra.Command, args []string) {
 	cfg, err := ziti.NewConfigFromFile(identityFile)
 	if err != nil {
 		panic(err)
+	}
+
+	if ctrlProxy != "" {
+		fmt.Printf("using controller proxy: %s\n", ctrlProxy)
+		cfg.CtrlProxy = func(request *http.Request) (*url.URL, error) {
+			return url.Parse(ctrlProxy)
+		}
+	}
+
+	if routerProxy != "" {
+		fmt.Printf("using router proxy: %s\n", routerProxy)
+		cfg.RouterProxy = func(addr string) *transport.ProxyConfiguration {
+			return &transport.ProxyConfiguration{
+				Type:    transport.ProxyTypeHttpConnect,
+				Address: routerProxy,
+			}
+		}
 	}
 
 	context, err := ziti.NewContext(cfg)

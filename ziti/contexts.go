@@ -34,6 +34,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
+	"net/http"
 	"net/url"
 	"strconv"
 )
@@ -72,6 +73,10 @@ func NewContext(cfg *Config) (Context, error) {
 // NewContextWithOpts creates a Context from the supplied Config and Options. The configuration requires
 // either the `ID` field or the `Credentials` field to be populated. If both are supplied, the `ID` field is used.
 func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
+	if cfg == nil {
+		return nil, errors.New("a config is required")
+	}
+
 	if options == nil {
 		options = DefaultOptions
 	}
@@ -83,10 +88,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error{},
 		closeNotify:       make(chan struct{}),
 		EventEmmiter:      events.New(),
-	}
-
-	if cfg == nil {
-		return nil, errors.New("a config is required")
+		routerProxy:       cfg.RouterProxy,
 	}
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
@@ -115,8 +117,10 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		apiUrls = append(apiUrls, apiUrl)
 	}
 
-	newContext.CtrlClt = &CtrlClient{
-		ClientApiClient: edge_apis.NewClientApiClient(apiUrls, cfg.Credentials.GetCaPool(), func(codeCh chan string) {
+	apiClientConfig := &edge_apis.ApiClientConfig{
+		ApiUrls: apiUrls,
+		CaPool:  cfg.Credentials.GetCaPool(),
+		TotpCallback: func(codeCh chan string) {
 			provider := rest_model.MfaProvidersZiti
 
 			authQuery := &rest_model.AuthQueryDetail{
@@ -140,9 +144,18 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 					return nil
 				})
 			}
-		}),
-		Credentials: cfg.Credentials,
-		ConfigTypes: cfg.ConfigTypes,
+		},
+		Proxy: cfg.CtrlProxy,
+	}
+
+	if apiClientConfig.Proxy == nil {
+		apiClientConfig.Proxy = http.ProxyFromEnvironment
+	}
+
+	newContext.CtrlClt = &CtrlClient{
+		ClientApiClient: edge_apis.NewClientApiClientWithConfig(apiClientConfig),
+		Credentials:     cfg.Credentials,
+		ConfigTypes:     cfg.ConfigTypes,
 	}
 
 	newContext.CtrlClt.ClientApiClient.SetAllowOidcDynamicallyEnabled(cfg.EnableHa)
