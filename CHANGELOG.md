@@ -1,3 +1,17 @@
+# Release notes 0.24.0
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.23.45 -> v0.24.0](https://github.com/openziti/sdk-golang/compare/v0.23.45...v0.24.0)
+    * [Issue #663](https://github.com/openziti/sdk-golang/issues/663) - Add API to allow controlling proxying connections to controllers and routers.
+
+* github.com/go-resty/resty/v2: v2.15.3 -> v2.16.4
+* github.com/openziti/channel/v3: [v3.0.26 -> v3.0.27](https://github.com/openziti/channel/compare/v3.0.26...v3.0.27)
+* github.com/openziti/edge-api: [v0.26.36 -> v0.26.38](https://github.com/openziti/edge-api/compare/v0.26.36...v0.26.38)
+* github.com/openziti/transport/v2: [v2.0.159 -> v2.0.160](https://github.com/openziti/transport/compare/v2.0.159...v2.0.160)
+* golang.org/x/oauth2: v0.23.0 -> v0.25.0
+* google.golang.org/protobuf: v1.36.2 -> v1.36.3
+
 # Release notes 0.23.45
 
 ## Issues Fixed and Dependency Updates

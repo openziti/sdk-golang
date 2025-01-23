@@ -5,6 +5,7 @@ import (
 	"github.com/openziti/edge-api/rest_util"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"time"
 )
 
@@ -17,18 +18,32 @@ type Components struct {
 	CaPool        *x509.CertPool
 }
 
+type ComponentsConfig struct {
+	Proxy func(*http.Request) (*url.URL, error)
+}
+
 // NewComponents assembles a new set of components with reasonable production defaults.
 func NewComponents() *Components {
+	return NewComponentsWithConfig(&ComponentsConfig{
+		Proxy: http.ProxyFromEnvironment,
+	})
+}
+
+// NewComponentsWithConfig assembles a new set of components with reasonable production defaults.
+func NewComponentsWithConfig(cfg *ComponentsConfig) *Components {
 	tlsClientConfig, _ := rest_util.NewTlsConfig()
 
 	httpTransport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       tlsClientConfig,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,
 		IdleConnTimeout:       10 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	if cfg != nil && cfg.Proxy != nil {
+		httpTransport.Proxy = cfg.Proxy
 	}
 
 	jar, _ := cookiejar.New(nil)

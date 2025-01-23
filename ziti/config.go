@@ -22,7 +22,10 @@ import (
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
+	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -48,6 +51,15 @@ type Config struct {
 	//EnableHa will signal to the SDK to query and use OIDC authentication which is required for HA controller setups.
 	//This is a temporary feature flag that will be removed and "default to true" at a later date.
 	EnableHa bool `json:"enableHa"`
+
+	//Allows providing a function which controls how/where request to a controller are proxied.
+	//See [http.Transport.Proxy] for more information
+	//If this value is nil, [http.ProxyFromEnvironment] is used. If you never want a proxy to be used,
+	//set a function which always returns nil.
+	CtrlProxy func(*http.Request) (*url.URL, error)
+
+	//Allows providing a function which controls how/where connections to a router are proxied.
+	RouterProxy func(addr string) *transport.ProxyConfiguration
 }
 
 // NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.
@@ -90,7 +102,7 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 // GetControllerWellKnownCaPool will return a x509.CertPool. The target controller will not be verified via TLS and
 // must be verified by some other means (i.e. enrollment JWT token).
 //
-// WARNING: This call is unauthenticated and should only be used for example purposes or expliciltly when an unauthenticated
+// WARNING: This call is unauthenticated and should only be used for example purposes or explicitly when an unauthenticated
 // request is required.
 func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error) {
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
