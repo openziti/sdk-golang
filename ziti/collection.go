@@ -62,7 +62,7 @@ func NewSdkCollection() *CtxCollection {
 
 // NewSdkCollectionFromEnv will create an empty CtxCollection and then attempt to populate it from configuration files
 // provided in a semicolon separate list of file paths retrieved from an environment variable.
-func NewSdkCollectionFromEnv(envVariable string) *CtxCollection {
+func NewSdkCollectionFromEnv(envVariable string, configTypes ...string) *CtxCollection {
 	collection := NewSdkCollection()
 
 	envValue := os.Getenv(envVariable)
@@ -74,12 +74,15 @@ func NewSdkCollectionFromEnv(envVariable string) *CtxCollection {
 		if identityFile == "" {
 			continue
 		}
+
 		cfg, err := NewConfigFromFile(identityFile)
 
 		if err != nil {
 			pfxlog.Logger().Errorf("failed to load config from file '%s'", identityFile)
 			continue
 		}
+
+		cfg.ConfigTypes = append(cfg.ConfigTypes, configTypes...)
 
 		//collection.NewContext stores the new ctx in its internal collection
 		_, err = collection.NewContext(cfg)

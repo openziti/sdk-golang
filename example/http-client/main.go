@@ -10,9 +10,12 @@ import (
 )
 
 func newZitiClient() *http.Client {
+	ziti.DefaultCollection.ForAll(func(ctx ziti.Context) {
+		ctx.Authenticate()
+	})
 	zitiTransport := http.DefaultTransport.(*http.Transport).Clone() // copy default transport
 	zitiTransport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		dialer := ziti.NewDialerWithFallback(ctx, nil)
+		dialer := ziti.DefaultCollection.NewDialer()
 		return dialer.Dial(network, addr)
 	}
 	zitiTransport.TLSClientConfig.InsecureSkipVerify = true
