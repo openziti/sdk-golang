@@ -42,79 +42,89 @@ const (
 	ContentTypeTraceRoute         = int32(edge_client_pb.ContentType_TraceRouteType)
 	ContentTypeTraceRouteResponse = int32(edge_client_pb.ContentType_TraceRouteResponseType)
 
+	ContentTypeConnInspectRequest  = int32(edge_client_pb.ContentType_ConnInspectRequest)
+	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_ConnInspectResponse)
+	ContentTypeBindSuccess         = int32(edge_client_pb.ContentType_BindSuccess)
+
 	ContentTypeUpdateToken        = int32(edge_client_pb.ContentType_UpdateTokenType)
 	ContentTypeUpdateTokenSuccess = int32(edge_client_pb.ContentType_UpdateTokenSuccessType)
 	ContentTypeUpdateTokenFailure = int32(edge_client_pb.ContentType_UpdateTokenFailureType)
 
 	ContentTypePostureResponse = int32(edge_client_pb.ContentType_PostureResponseType)
+)
 
-	ContentTypeConnInspectRequest  = 60798
-	ContentTypeConnInspectResponse = 60799
-	ContentTypeBindSuccess         = 60800
-
-	ConnIdHeader                   = 1000
-	SeqHeader                      = 1001
-	SessionTokenHeader             = 1002
-	PublicKeyHeader                = 1003
-	CostHeader                     = 1004
-	PrecedenceHeader               = 1005
-	TerminatorIdentityHeader       = 1006
-	TerminatorIdentitySecretHeader = 1007
-	CallerIdHeader                 = 1008
-	CryptoMethodHeader             = 1009
-	FlagsHeader                    = 1010
-	AppDataHeader                  = 1011
-	RouterProvidedConnId           = 1012
-	HealthStatusHeader             = 1013
-	ErrorCodeHeader                = 1014
-	TimestampHeader                = 1015
-	TraceHopCountHeader            = 1016
-	TraceHopTypeHeader             = 1017
-	TraceHopIdHeader               = 1018
-	TraceSourceRequestIdHeader     = 1019
-	TraceError                     = 1020
-	ListenerId                     = 1021
-	ConnTypeHeader                 = 1022
-	SupportsInspectHeader          = 1023
-	SupportsBindSuccessHeader      = 1024
-	ConnectionMarkerHeader         = 1025
-	CircuitIdHeader                = 1026
-	StickinessTokenHeader          = 1027
-
-	ErrorCodeInternal                    = 1
-	ErrorCodeInvalidApiSession           = 2
-	ErrorCodeInvalidSession              = 3
-	ErrorCodeWrongSessionType            = 4
-	ErrorCodeInvalidEdgeRouterForSession = 5
-	ErrorCodeInvalidService              = 6
-	ErrorCodeTunnelingNotEnabled         = 7
-	ErrorCodeInvalidTerminator           = 8
-	ErrorCodeInvalidPrecedence           = 9
-	ErrorCodeInvalidCost                 = 10
-	ErrorCodeEncryptionDataMissing       = 11
-
-	PrecedenceDefault  Precedence = 0
-	PrecedenceRequired Precedence = 1
-	PrecedenceFailed   Precedence = 2
-
+const (
 	// UUIDHeader is put in the reflected range so replies will share the same UUID
-	UUIDHeader = 128
+	UUIDHeader = int32(edge_client_pb.HeaderId_UUID)
 
+	ConnIdHeader                   = int32(edge_client_pb.HeaderId_ConnId)
+	SeqHeader                      = int32(edge_client_pb.HeaderId_Seq)
+	SessionTokenHeader             = int32(edge_client_pb.HeaderId_SessionToken)
+	PublicKeyHeader                = int32(edge_client_pb.HeaderId_PublicKey)
+	CostHeader                     = int32(edge_client_pb.HeaderId_Cost)
+	PrecedenceHeader               = int32(edge_client_pb.HeaderId_Precedence)
+	TerminatorIdentityHeader       = int32(edge_client_pb.HeaderId_TerminatorIdentity)
+	TerminatorIdentitySecretHeader = int32(edge_client_pb.HeaderId_TerminatorIdentitySecret)
+	CallerIdHeader                 = int32(edge_client_pb.HeaderId_CallerId)
+	CryptoMethodHeader             = int32(edge_client_pb.HeaderId_CryptoMethod)
+	FlagsHeader                    = int32(edge_client_pb.HeaderId_Flags)
+	AppDataHeader                  = int32(edge_client_pb.HeaderId_AppData)
+	RouterProvidedConnId           = int32(edge_client_pb.HeaderId_RouterProvidedConnId)
+	HealthStatusHeader             = int32(edge_client_pb.HeaderId_HealthStatus)
+	ErrorCodeHeader                = int32(edge_client_pb.HeaderId_ErrorCode)
+	TimestampHeader                = int32(edge_client_pb.HeaderId_Timestamp)
+	TraceHopCountHeader            = int32(edge_client_pb.HeaderId_TraceHopCount)
+	TraceHopTypeHeader             = int32(edge_client_pb.HeaderId_TraceHopType)
+	TraceHopIdHeader               = int32(edge_client_pb.HeaderId_TraceHopId)
+	TraceSourceRequestIdHeader     = int32(edge_client_pb.HeaderId_TraceSourceRequestId)
+	TraceError                     = int32(edge_client_pb.HeaderId_TraceError)
+	ListenerId                     = int32(edge_client_pb.HeaderId_ListenerId)
+	ConnTypeHeader                 = int32(edge_client_pb.HeaderId_ConnType)
+	SupportsInspectHeader          = int32(edge_client_pb.HeaderId_SupportsInspect)
+	SupportsBindSuccessHeader      = int32(edge_client_pb.HeaderId_SupportsBindSuccess)
+	ConnectionMarkerHeader         = int32(edge_client_pb.HeaderId_ConnectionMarker)
+	CircuitIdHeader                = int32(edge_client_pb.HeaderId_CircuitId)
+	StickinessTokenHeader          = int32(edge_client_pb.HeaderId_StickinessToken)
+)
+
+const (
+	ErrorCodeInternal                    = int32(edge_client_pb.Error_Internal)
+	ErrorCodeInvalidApiSession           = int32(edge_client_pb.Error_InvalidApiSession)
+	ErrorCodeInvalidSession              = int32(edge_client_pb.Error_InvalidSession)
+	ErrorCodeWrongSessionType            = int32(edge_client_pb.Error_WrongSessionType)
+	ErrorCodeInvalidEdgeRouterForSession = int32(edge_client_pb.Error_InvalidEdgeRouterForSession)
+	ErrorCodeInvalidService              = int32(edge_client_pb.Error_InvalidService)
+	ErrorCodeTunnelingNotEnabled         = int32(edge_client_pb.Error_TunnelingNotEnabled)
+	ErrorCodeInvalidTerminator           = int32(edge_client_pb.Error_InvalidTerminator)
+	ErrorCodeInvalidPrecedence           = int32(edge_client_pb.Error_InvalidPrecedence)
+	ErrorCodeInvalidCost                 = int32(edge_client_pb.Error_InvalidCost)
+	ErrorCodeEncryptionDataMissing       = int32(edge_client_pb.Error_EncryptionDataMissing)
+)
+
+const (
+	PrecedenceDefault  = Precedence(edge_client_pb.PrecedenceValue_Default)
+	PrecedenceRequired = Precedence(edge_client_pb.PrecedenceValue_Required)
+	PrecedenceFailed   = Precedence(edge_client_pb.PrecedenceValue_Failed)
+)
+
+const (
 	// CryptoMethodLibsodium are used to indicate the crypto engine in use
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
 	CryptoMethodSSL       CryptoMethod = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
+)
 
+const (
 	// FIN is an edge payload flag used to signal communication ends
-	FIN = 0x1
+	FIN = uint32(edge_client_pb.Flag_FIN)
 	// TRACE_UUID indicates that peer will send data messages with specially constructed UUID headers
-	TRACE_UUID = 1 << 1
+	TRACE_UUID = uint32(edge_client_pb.Flag_TRACE_UUID)
 	// MULTIPART indicates that peer can accept multipart data messages
-	MULTIPART = 1 << 2
+	MULTIPART = uint32(edge_client_pb.Flag_MULTIPART)
 	// STREAM indicates connection with stream semantics
 	// this allows consolidation of payloads to lower overhead
-	STREAM = 1 << 3
+	STREAM = uint32(edge_client_pb.Flag_STREAM)
 	// MULTIPART_MSG set on data message with multiple payloads
-	MULTIPART_MSG = 1 << 4
+	MULTIPART_MSG = uint32(edge_client_pb.Flag_MULTIPART_MSG)
 )
 
 type CryptoMethod byte
