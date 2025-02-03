@@ -10,7 +10,7 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
-	github.com/go-resty/resty/v2 v2.16.4
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -19,7 +19,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v3 v3.0.27
-	github.com/openziti/edge-api v0.26.38
+	github.com/openziti/edge-api v0.26.39
 	github.com/openziti/foundation/v2 v2.0.56
 	github.com/openziti/identity v1.0.94
 	github.com/openziti/metrics v1.2.65
@@ -36,7 +36,7 @@ require (
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/sys v0.29.0
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/protobuf v1.36.4
 )
 
 require (
