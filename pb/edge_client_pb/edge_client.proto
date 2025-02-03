@@ -5,6 +5,7 @@ package ziti.edge_client.pb;
 import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/openziti/sdk-golang/pb/edge_client_pb";
+option java_package = "org.openziti.edge.proto";
 
 enum ContentType {
   Zero = 0;
