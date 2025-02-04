@@ -56,10 +56,10 @@ type Config struct {
 	//See [http.Transport.Proxy] for more information
 	//If this value is nil, [http.ProxyFromEnvironment] is used. If you never want a proxy to be used,
 	//set a function which always returns nil.
-	CtrlProxy func(*http.Request) (*url.URL, error)
+	CtrlProxy func(*http.Request) (*url.URL, error) `json:"-"`
 
 	//Allows providing a function which controls how/where connections to a router are proxied.
-	RouterProxy func(addr string) *transport.ProxyConfiguration
+	RouterProxy func(addr string) *transport.ProxyConfiguration `json:"-"`
 }
 
 // NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.
