@@ -99,13 +99,11 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 	}
 }
 
-var finHeaders = map[int32][]byte{
-	edge.FlagsHeader: {edge.FIN, 0, 0, 0},
-}
-
 func (conn *edgeConn) CloseWrite() error {
 	if conn.sentFIN.CompareAndSwap(false, true) {
-		_, err := conn.MsgChannel.WriteTraced(nil, nil, finHeaders)
+		headers := channel.Headers{}
+		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
+		_, err := conn.MsgChannel.WriteTraced(nil, nil, headers)
 		return err
 	}
 
