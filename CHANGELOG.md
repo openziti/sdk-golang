@@ -1,3 +1,10 @@
+# Release notes 0.24.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.24.0 -> v0.24.1](https://github.com/openziti/sdk-golang/compare/v0.24.0...v0.24.1)
+    * [Issue #673](https://github.com/openziti/sdk-golang/issues/673) - Add license check to GH workflow
+
 # Release notes 0.24.0
 
 ## Issues Fixed and Dependency Updates
