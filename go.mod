@@ -10,19 +10,18 @@ require (
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
-	github.com/go-resty/resty/v2 v2.16.4
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v3 v3.0.27
-	github.com/openziti/edge-api v0.26.38
-	github.com/openziti/foundation/v2 v2.0.56
-	github.com/openziti/identity v1.0.94
-	github.com/openziti/metrics v1.2.65
+	github.com/openziti/channel/v3 v3.0.28
+	github.com/openziti/edge-api v0.26.39
+	github.com/openziti/foundation/v2 v2.0.57
+	github.com/openziti/identity v1.0.96
+	github.com/openziti/metrics v1.2.66
 	github.com/openziti/secretstream v0.1.28
 	github.com/openziti/transport/v2 v2.0.160
 	github.com/orcaman/concurrent-map/v2 v2.0.1
@@ -34,9 +33,9 @@ require (
 	github.com/zitadel/oidc/v2 v2.12.2
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
-	golang.org/x/oauth2 v0.25.0
-	golang.org/x/sys v0.29.0
-	google.golang.org/protobuf v1.36.3
+	golang.org/x/oauth2 v0.26.0
+	golang.org/x/sys v0.30.0
+	google.golang.org/protobuf v1.36.5
 )
 
 require (
@@ -84,7 +83,7 @@ require (
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
