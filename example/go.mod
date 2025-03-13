@@ -1,8 +1,7 @@
 module github.com/openziti/sdk-golang/example
 
 go 1.21
-
-toolchain go1.22.1
+toolchain go1.23.7
 
 replace github.com/openziti/sdk-golang => ../
 
@@ -20,7 +19,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.17.0
 	github.com/zitadel/oidc v1.13.5
-	golang.org/x/text v0.21.0
+	golang.org/x/text v0.22.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/grpc/examples v0.0.0-20231107231549-482de2224942
 	gopkg.in/resty.v1 v1.12.0
@@ -114,14 +113,14 @@ require (
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/image v0.18.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/oauth2 v0.25.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231106174013-bbf56f31fb17 // indirect
 	google.golang.org/protobuf v1.36.3 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
