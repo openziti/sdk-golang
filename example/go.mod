@@ -1,8 +1,8 @@
 module github.com/openziti/sdk-golang/example
 
-go 1.21
+go 1.23.0
 
-toolchain go1.22.1
+toolchain go1.23.1
 
 replace github.com/openziti/sdk-golang => ../
 
@@ -11,16 +11,16 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
-	github.com/openziti/foundation/v2 v2.0.56
+	github.com/openziti/foundation/v2 v2.0.59
 	github.com/openziti/runzmd v1.0.33
 	github.com/openziti/sdk-golang v0.0.0
-	github.com/openziti/transport/v2 v2.0.160
+	github.com/openziti/transport/v2 v2.0.167
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.17.0
 	github.com/zitadel/oidc v1.13.5
-	golang.org/x/text v0.21.0
+	golang.org/x/text v0.23.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/grpc/examples v0.0.0-20231107231549-482de2224942
 	gopkg.in/resty.v1 v1.12.0
@@ -38,7 +38,7 @@ require (
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/eliukblau/pixterm/pkg/ansimage v0.0.0-20191210081756-9fb6cf8c2f75 // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20231016141302-07b5767bb0ed // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
@@ -79,11 +79,11 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v3 v3.0.27 // indirect
-	github.com/openziti/edge-api v0.26.38 // indirect
-	github.com/openziti/identity v1.0.94 // indirect
-	github.com/openziti/metrics v1.2.65 // indirect
-	github.com/openziti/secretstream v0.1.28 // indirect
+	github.com/openziti/channel/v3 v3.0.39 // indirect
+	github.com/openziti/edge-api v0.26.42 // indirect
+	github.com/openziti/identity v1.0.100 // indirect
+	github.com/openziti/metrics v1.3.0 // indirect
+	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -99,7 +99,7 @@ require (
 	github.com/speps/go-hashids v2.0.0+incompatible // indirect
 	github.com/spf13/afero v1.10.0 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
@@ -114,16 +114,16 @@ require (
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/image v0.18.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
-	golang.org/x/oauth2 v0.25.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
+	golang.org/x/net v0.37.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/term v0.30.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231106174013-bbf56f31fb17 // indirect
-	google.golang.org/protobuf v1.36.3 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

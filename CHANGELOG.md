@@ -1,3 +1,37 @@
+# Release notes 0.25.0
+
+## Go Version Update
+
+The oldest supported Go version, as per the [Go Release Policy](https://go.dev/doc/devel/release#policy) 
+is now 1.23. The OpenZiti Go SDK now requires Go v1.23.0 as its minimum version.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.24.1 -> v0.25.0](https://github.com/openziti/sdk-golang/compare/v0.24.1...v0.25.0)
+* github.com/go-resty/resty/v2: v2.16.4 -> v2.16.5
+* github.com/openziti/channel/v3: [v3.0.27 -> v3.0.39](https://github.com/openziti/channel/compare/v3.0.27...v3.0.39)
+    * [Issue #168](https://github.com/openziti/channel/issues/168) - Add DisconnectHandler to reconnecting channel
+
+* github.com/openziti/edge-api: [v0.26.38 -> v0.26.42](https://github.com/openziti/edge-api/compare/v0.26.38...v0.26.42)
+* github.com/openziti/foundation/v2: [v2.0.56 -> v2.0.59](https://github.com/openziti/foundation/compare/v2.0.56...v2.0.59)
+* github.com/openziti/identity: [v1.0.94 -> v1.0.100](https://github.com/openziti/identity/compare/v1.0.94...v1.0.100)
+* github.com/openziti/metrics: [v1.2.65 -> v1.3.0](https://github.com/openziti/metrics/compare/v1.2.65...v1.3.0)
+    * [Issue #49](https://github.com/openziti/metrics/issues/49) - Make usage registry event queue size configurable
+    * [Issue #50](https://github.com/openziti/metrics/issues/50) - Do metrics message construction in msg sender goroutine rather than usage/interval event goroutine
+
+* github.com/openziti/secretstream: [v0.1.28 -> v0.1.32](https://github.com/openziti/secretstream/compare/v0.1.28...v0.1.32)
+* github.com/openziti/transport/v2: [v2.0.160 -> v2.0.167](https://github.com/openziti/transport/compare/v2.0.160...v2.0.167)
+* golang.org/x/oauth2: v0.25.0 -> v0.28.0
+* golang.org/x/sys: v0.29.0 -> v0.31.0
+* google.golang.org/protobuf: v1.36.3 -> v1.36.5
+* github.com/fsnotify/fsnotify: v1.7.0 -> v1.8.0
+* github.com/mattn/go-colorable: v0.1.13 -> v0.1.14
+* golang.org/x/crypto: v0.32.0 -> v0.36.0
+* golang.org/x/net: v0.34.0 -> v0.37.0
+* golang.org/x/sync: v0.10.0 -> v0.12.0
+* golang.org/x/term: v0.28.0 -> v0.30.0
+* golang.org/x/text: v0.21.0 -> v0.23.0
+
 # Release notes 0.24.1
 
 ## Issues Fixed and Dependency Updates
