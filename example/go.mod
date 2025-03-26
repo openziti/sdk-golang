@@ -10,7 +10,7 @@ require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/michaelquigley/pfxlog v1.0.0
+	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/openziti/foundation/v2 v2.0.59
 	github.com/openziti/runzmd v1.0.33
 	github.com/openziti/sdk-golang v0.0.0
