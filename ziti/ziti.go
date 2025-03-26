@@ -194,6 +194,8 @@ type ContextImpl struct {
 	events.EventEmmiter
 	lastSuccessfulApiSessionRefresh time.Time
 	routerProxy                     func(addr string) *transport.ProxyConfiguration
+
+	enableCtrlPlaneConnection bool
 }
 
 func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
@@ -1408,7 +1410,13 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	edgeConn := network.NewEdgeConnFactory(routerName, ingressUrl, context)
 	options := channel.DefaultOptions()
 	options.ConnectTimeout = 15 * time.Second
-	ch, err := channel.NewChannel(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), dialer, edgeConn, options)
+
+	headers := channel.Headers{}
+	if context.enableCtrlPlaneConnection {
+		headers.PutBoolHeader(channel.IsGroupedHeader, true)
+		headers.PutStringHeader(channel.TypeHeader, edge.ChannelTypeDefault)
+	}
+	underlay, err := dialer.CreateWithHeaders(options.ConnectTimeout, headers)
 	if err != nil {
 		logger.Error(err)
 		return &edgeRouterConnResult{
@@ -1417,10 +1425,36 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 			err:        err,
 		}
 	}
+
+	var ch channel.Channel
+
+	if isGrouped, _ := channel.Headers(underlay.Headers()).GetBoolHeader(channel.IsGroupedHeader); isGrouped {
+		var dialSdkChannel = edge.NewDialSdkChannel(dialer, underlay)
+		multiChannelConfig := &channel.MultiChannelConfig{
+			LogicalName:     fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl),
+			Options:         options,
+			UnderlayHandler: dialSdkChannel,
+			BindHandler:     edgeConn,
+			Underlay:        underlay,
+		}
+		ch, err = channel.NewMultiChannel(multiChannelConfig)
+	} else {
+		ch, err = channel.NewChannelWithUnderlay(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), underlay, edgeConn, options)
+	}
+
+	if err != nil {
+		logger.Error(err)
+		return &edgeRouterConnResult{
+			routerUrl:  ingressUrl,
+			routerName: routerName,
+			err:        err,
+		}
+	}
+
 	connectTime := time.Duration(time.Now().UnixNano() - start)
 	logger.Debugf("routerConn[%s@%s] connected in %d ms", routerName, ingressUrl, connectTime.Milliseconds())
 
-	if versionHeader, found := ch.Underlay().Headers()[channel.HelloVersionHeader]; found {
+	if versionHeader, found := ch.Headers()[channel.HelloVersionHeader]; found {
 		versionInfo, err := versions.StdVersionEncDec.Decode(versionHeader)
 		if err != nil {
 			pfxlog.Logger().Errorf("could not parse hello version header: %v", err)
