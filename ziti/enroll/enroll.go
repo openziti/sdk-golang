@@ -132,11 +132,13 @@ func ValidateToken(token *jwt.Token) (interface{}, error) {
 	return cert.PublicKey, nil
 }
 
-func EnrollUpdb(enFlags EnrollmentFlags) error {
+func EnrollUpdb(enFlags EnrollmentFlags) (string, error) {
 	caPool, allowedCerts := enFlags.GetCertPool()
 	ztApiRoot := enFlags.Token.Issuer
 
-	if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
+	resultUsername := ""
+	var err error
+	if resultUsername, err = enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
 		pfxlog.Logger().Debug("fetching certificates from server")
 		rootCaPool := x509.NewCertPool()
 		rootCaPool.AddCert(enFlags.Token.SignatureCert)
@@ -146,14 +148,14 @@ func EnrollUpdb(enFlags EnrollmentFlags) error {
 			caPool.AddCert(xcert)
 		}
 
-		if err := enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
-			return fmt.Errorf("unable to enroll after fetching server certs: %v", err)
+		if resultUsername, err = enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool); err != nil {
+			return "", fmt.Errorf("unable to enroll after fetching server certs: %v", err)
 		} else {
-			return nil
+			return resultUsername, nil
 		}
 	}
 
-	return nil
+	return resultUsername, nil
 }
 
 func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
@@ -164,47 +166,49 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 		ZtAPI: edge_apis.ClientUrl(enFlags.Token.Issuer),
 	}
 
-	if strings.TrimSpace(enFlags.KeyFile) != "" {
-		stat, err := os.Stat(enFlags.KeyFile)
+	if enFlags.Token.EnrollmentMethod != "updb" {
+		if strings.TrimSpace(enFlags.KeyFile) != "" {
+			stat, err := os.Stat(enFlags.KeyFile)
 
-		if stat != nil && !os.IsNotExist(err) {
-			if stat.IsDir() {
-				return nil, errors.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
-			}
+			if stat != nil && !os.IsNotExist(err) {
+				if stat.IsDir() {
+					return nil, errors.Errorf("specified key is a directory (%s)", enFlags.KeyFile)
+				}
 
-			if absPath, fileErr := filepath.Abs(enFlags.KeyFile); fileErr != nil {
-				return nil, fileErr
+				if absPath, fileErr := filepath.Abs(enFlags.KeyFile); fileErr != nil {
+					return nil, fileErr
+				} else {
+					cfg.ID.Key = "file://" + absPath
+				}
+
 			} else {
-				cfg.ID.Key = "file://" + absPath
+				cfg.ID.Key = enFlags.KeyFile
+				pfxlog.Logger().Infof("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
 			}
-
 		} else {
-			cfg.ID.Key = enFlags.KeyFile
-			pfxlog.Logger().Infof("using engine : %s\n", strings.Split(enFlags.KeyFile, ":")[0])
+			var asnBytes []byte
+			var keyPem []byte
+			if enFlags.KeyAlg.EC() {
+				key, err = generateECKey()
+				asnBytes, _ := x509.MarshalECPrivateKey(key.(*ecdsa.PrivateKey))
+				keyPem = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: asnBytes})
+			} else if enFlags.KeyAlg.RSA() {
+				key, err = generateRSAKey()
+				asnBytes = x509.MarshalPKCS1PrivateKey(key.(*rsa.PrivateKey))
+				keyPem = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: asnBytes})
+			} else {
+				panic(fmt.Sprintf("invalid KeyAlg specified: %s", enFlags.KeyAlg.Get()))
+			}
+			cfg.ID.Key = "pem:" + string(keyPem)
+			if err != nil {
+				return nil, err
+			}
 		}
-	} else {
-		var asnBytes []byte
-		var keyPem []byte
-		if enFlags.KeyAlg.EC() {
-			key, err = generateECKey()
-			asnBytes, _ := x509.MarshalECPrivateKey(key.(*ecdsa.PrivateKey))
-			keyPem = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: asnBytes})
-		} else if enFlags.KeyAlg.RSA() {
-			key, err = generateRSAKey()
-			asnBytes = x509.MarshalPKCS1PrivateKey(key.(*rsa.PrivateKey))
-			keyPem = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: asnBytes})
-		} else {
-			panic(fmt.Sprintf("invalid KeyAlg specified: %s", enFlags.KeyAlg.Get()))
-		}
-		cfg.ID.Key = "pem:" + string(keyPem)
-		if err != nil {
-			return nil, err
-		}
-	}
 
-	if enFlags.CertFile != "" {
-		enFlags.CertFile, _ = filepath.Abs(enFlags.CertFile)
-		cfg.ID.Cert = "file://" + enFlags.CertFile
+		if enFlags.CertFile != "" {
+			enFlags.CertFile, _ = filepath.Abs(enFlags.CertFile)
+			cfg.ID.Cert = "file://" + enFlags.CertFile
+		}
 	}
 
 	caPool, allowedCerts := enFlags.GetCertPool()
@@ -225,6 +229,8 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 		caPool.AddCert(cert)
 	}
 
+	resultUsername := ""
+
 	var enrollErr error
 	switch enFlags.Token.EnrollmentMethod {
 	case "ott":
@@ -233,6 +239,8 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 		enrollErr = enrollCA(enFlags.Token, cfg, caPool)
 	case "ca":
 		enrollErr = enrollCAAuto(enFlags, cfg, caPool)
+	case "updb":
+		resultUsername, enrollErr = enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool)
 	default:
 		enrollErr = errors.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
 	}
@@ -253,7 +261,17 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 		cfg.ID.CA = "pem:" + buf.String()
 	}
 
-	cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+	if enFlags.Token.EnrollmentMethod == "updb" {
+		cfg.Credentials = &edge_apis.UpdbCredentials{
+			BaseCredentials: edge_apis.BaseCredentials{
+				CaPool: caPool,
+			},
+			Username: resultUsername,
+			Password: enFlags.Password,
+		}
+	} else {
+		cfg.Credentials = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+	}
 
 	return cfg, nil
 }
@@ -281,7 +299,7 @@ func useSystemCasIfEmpty(caPool *x509.CertPool) *x509.CertPool {
 	}
 }
 
-func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool *x509.CertPool) error {
+func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool *x509.CertPool) (string, error) {
 	caPool = useSystemCasIfEmpty(caPool)
 	client := http.Client{
 		Transport: &http.Transport{
@@ -301,11 +319,15 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 
 	resp, err := client.Post(token.EnrolmentUrl(), "application/json", bytes.NewBuffer(body.EncodeJSON()))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		return nil
+		respBody, _ := io.ReadAll(resp.Body)
+		if respContainer, err := gabs.ParseJSON(respBody); err == nil {
+			username = respContainer.Path("data.username").Data().(string)
+		}
+		return username, nil
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
@@ -313,9 +335,9 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 	if respContainer, err := gabs.ParseJSON(respBody); err == nil {
 		code := respContainer.Path("error.code").Data().(string)
 		message := respContainer.Path("error.message").Data().(string)
-		return errors.Errorf("enroll error: %s: %s: %s", resp.Status, code, message)
+		return "", errors.Errorf("enroll error: %s: %s: %s", resp.Status, code, message)
 	} else {
-		return errors.Errorf("enroll error: %s: %s", resp.Status, body)
+		return "", errors.Errorf("enroll error: %s: %s", resp.Status, body)
 	}
 }
 
