@@ -1,3 +1,34 @@
+# Release notes 1.0.0
+
+## What's New
+
+* Multi-connection support to edge routers
+* Major version set to 1, to indicate compatibility with OpenZiti v1+
+
+## Multi-connection support to edge router
+
+If the `EnableSeparateControlPlaneConnection` is set to true in `ziti.Config`, 
+the SDK will attempt to use a separate connection to each ER for control messaging.
+If the router does not support this feature, then the SDK will fallback to using
+a single connection.
+
+Using a separate connection for control messaging will ensure that control messages
+such as dials do not get stuck behind data messages. This is mostly important for
+SDKs which are being used to host services or client side applications which are
+multiplexing multiple connections, for example proxies and tunnelers.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.25.2 -> v1.0.0](https://github.com/openziti/sdk-golang/compare/v0.25.2...v1.0.0)
+    * [Issue #701](https://github.com/openziti/sdk-golang/issues/701) - Support multi-underlay channels for edge router connections
+
+* github.com/openziti/channel/v4: [v4.0.1 -> v4.0.3](https://github.com/openziti/channel/compare/v4.0.1...v4.0.3)
+    * [Issue #176](https://github.com/openziti/channel/issues/176) - Multi-channel need a mechanism to notify the txer that the underlay has closed
+
+* github.com/openziti/metrics: [v1.3.0 -> v1.4.0](https://github.com/openziti/metrics/compare/v1.3.0...v1.4.0)
+* github.com/openziti/transport/v2: [v2.0.167 -> v2.0.168](https://github.com/openziti/transport/compare/v2.0.167...v2.0.168)
+* golang.org/x/net: v0.37.0 -> v0.38.0
+
 # Release notes 0.25.2
 
 ## What's New

@@ -60,6 +60,15 @@ type Config struct {
 
 	//Allows providing a function which controls how/where connections to a router are proxied.
 	RouterProxy func(addr string) *transport.ProxyConfiguration `json:"-"`
+
+	// If set to true, the sdk will attempt to create a separate connection to edge routers for control plane data,
+	// such as dials. This flag should not be considered part of the stable API yet. It may default to true at
+	// some point in the future or be removed.
+	EnableSeparateControlPlaneConnection bool `json:"-"`
+}
+
+func (cfg *Config) SetSeparateControlPlaneConnectionEnabled(enabled bool) {
+	cfg.EnableSeparateControlPlaneConnection = enabled
 }
 
 // NewConfig will create a new Config object from a provided Ziti Edge Client API URL and identity configuration.

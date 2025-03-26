@@ -148,7 +148,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
 		resp := edge.NewConnInspectResponse(0, edge.ConnType(conn.connType), conn.Inspect())
-		if err := resp.ReplyTo(msg).Send(conn.Channel); err != nil {
+		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("failed to send inspect response")
 		}
@@ -179,7 +179,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 				resp.Headers[edge.UUIDHeader] = msgUUID
 			}
 
-			if err := conn.Send(resp); err != nil {
+			if err := conn.GetControlSender().Send(resp); err != nil {
 				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 					Error("failed to send trace route response")
 			}
@@ -289,7 +289,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
 	connectRequest.Headers[edge.ConnectionMarkerHeader] = []byte(conn.marker)
 	conn.TraceMsg("connect", connectRequest)
-	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.Channel)
+	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.GetControlSender())
 	if err != nil {
 		logger.Error(err)
 		return nil, err
@@ -386,7 +386,7 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 }
 
 func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (*edgeListener, error) {
-	logger := pfxlog.ContextLogger(conn.Channel.Label()).
+	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
 		WithField("sessionId", *session.ID)
@@ -420,7 +420,7 @@ func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_mo
 	}
 	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)
 	conn.TraceMsg("listen", bindRequest)
-	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.Channel)
+	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.GetControlSender())
 	if err != nil {
 		logger.WithError(err).Error("failed to bind")
 		return nil, err
@@ -449,7 +449,7 @@ func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
 	conn.hosting.Remove(token)
 
 	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
-	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 		logger.WithError(err).Error("unable to send unbind msg for conn")
 	} else {
 		logger.Debug("unbind message sent successfully")
@@ -624,7 +624,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		logger.Warn("listener not found")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -644,7 +644,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
 	edgeCh := &edgeConn{
-		MsgChannel:     *edge.NewEdgeMsgChannel(conn.Channel, id),
+		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
 		readQ:          NewNoopSequencer[*channel.Message](4),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
@@ -667,7 +667,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -692,7 +692,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		newConnLogger.WithError(err).Error("failed to establish connection")
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.Channel); err != nil {
+		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -739,7 +739,7 @@ func (conn *edgeConn) CompleteAcceptFailed(err error) {
 
 func (conn *edgeConn) TraceRoute(hops uint32, timeout time.Duration) (*edge.TraceRouteResult, error) {
 	msg := edge.NewTraceRouteMsg(conn.Id(), hops, uint64(info.NowInMilliseconds()))
-	resp, err := msg.WithTimeout(timeout).SendForReply(conn.Channel)
+	resp, err := msg.WithTimeout(timeout).SendForReply(conn.GetDefaultSender())
 	if err != nil {
 		return nil, err
 	}
@@ -787,7 +787,7 @@ func (self *newConnHandler) dialFailed(err error) {
 	newConnLogger.WithError(err).Error("Failed to establish connection")
 	reply := edge.NewDialFailedMsg(self.conn.Id(), err.Error())
 	reply.ReplyTo(self.message)
-	if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(self.conn.Channel); err != nil {
+	if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
 		logger.WithError(err).Error("Failed to send reply to dial request")
 	}
 }
@@ -807,7 +807,7 @@ func (self *newConnHandler) dialSucceeded() error {
 	reply.ReplyTo(self.message)
 
 	if !self.routerProvidedConnId {
-		startMsg, err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendForReply(self.conn.Channel)
+		startMsg, err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendForReply(self.conn.GetControlSender())
 		if err != nil {
 			logger.WithError(err).Error("Failed to send reply to dial request")
 			return err
@@ -817,7 +817,7 @@ func (self *newConnHandler) dialSucceeded() error {
 			logger.Errorf("failed to receive start after dial. got %v", startMsg)
 			return errors.Errorf("failed to receive start after dial. got %v", startMsg)
 		}
-	} else if err := reply.WithPriority(channel.Highest).WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.Channel); err != nil {
+	} else if err := reply.WithPriority(channel.Highest).WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
 		logger.WithError(err).Error("Failed to send reply to dial request")
 		return err
 	}

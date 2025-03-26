@@ -14,7 +14,7 @@ require (
 	github.com/openziti/foundation/v2 v2.0.59
 	github.com/openziti/runzmd v1.0.33
 	github.com/openziti/sdk-golang v0.0.0
-	github.com/openziti/transport/v2 v2.0.167
+	github.com/openziti/transport/v2 v2.0.168
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
@@ -79,10 +79,10 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.0.1 // indirect
+	github.com/openziti/channel/v4 v4.0.3 // indirect
 	github.com/openziti/edge-api v0.26.42 // indirect
 	github.com/openziti/identity v1.0.100 // indirect
-	github.com/openziti/metrics v1.3.0 // indirect
+	github.com/openziti/metrics v1.4.0 // indirect
 	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
@@ -117,7 +117,7 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/image v0.18.0 // indirect
-	golang.org/x/net v0.37.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect

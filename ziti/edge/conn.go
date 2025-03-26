@@ -103,7 +103,7 @@ type Conn interface {
 const forever = time.Hour * 24 * 365 * 100
 
 type MsgChannel struct {
-	channel.Channel
+	SdkChannel
 	id            uint32
 	msgIdSeq      *sequence.Sequence
 	writeDeadline time.Time
@@ -118,17 +118,17 @@ type TraceRouteResult struct {
 	Error   string
 }
 
-func NewEdgeMsgChannel(ch channel.Channel, connId uint32) *MsgChannel {
+func NewEdgeMsgChannel(ch SdkChannel, connId uint32) *MsgChannel {
 	traceEnabled := strings.EqualFold("true", os.Getenv("ZITI_TRACE_ENABLED"))
 	if traceEnabled {
 		pfxlog.Logger().Info("Ziti message tracing ENABLED")
 	}
 
 	return &MsgChannel{
-		Channel:  ch,
-		id:       connId,
-		msgIdSeq: sequence.NewSequence(),
-		trace:    traceEnabled,
+		SdkChannel: ch,
+		id:         connId,
+		msgIdSeq:   sequence.NewSequence(),
+		trace:      traceEnabled,
 	}
 }
 
@@ -178,9 +178,9 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	//       it is retained, and we can cause data corruption
 	var err error
 	if ec.writeDeadline.IsZero() {
-		err = msg.WithTimeout(forever).SendAndWaitForWire(ec.Channel)
+		err = msg.WithTimeout(forever).SendAndWaitForWire(ec.GetDefaultSender())
 	} else {
-		err = msg.WithTimeout(time.Until(ec.writeDeadline)).SendAndWaitForWire(ec.Channel)
+		err = msg.WithTimeout(time.Until(ec.writeDeadline)).SendAndWaitForWire(ec.GetDefaultSender())
 	}
 
 	if err != nil {
@@ -193,7 +193,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 func (ec *MsgChannel) SendState(msg *channel.Message) error {
 	msg.PutUint32Header(SeqHeader, ec.msgIdSeq.Next())
 	ec.TraceMsg("SendState", msg)
-	return msg.WithTimeout(5 * time.Second).SendAndWaitForWire(ec.Channel)
+	return msg.WithTimeout(5 * time.Second).SendAndWaitForWire(ec.GetDefaultSender())
 }
 
 func (ec *MsgChannel) TraceMsg(source string, msg *channel.Message) {
