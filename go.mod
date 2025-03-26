@@ -14,16 +14,16 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
-	github.com/michaelquigley/pfxlog v0.6.10
+	github.com/michaelquigley/pfxlog v1.0.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v3 v3.0.37
+	github.com/openziti/channel/v3 v3.0.39
 	github.com/openziti/edge-api v0.26.42
 	github.com/openziti/foundation/v2 v2.0.59
 	github.com/openziti/identity v1.0.100
 	github.com/openziti/metrics v1.3.0
 	github.com/openziti/secretstream v0.1.32
-	github.com/openziti/transport/v2 v2.0.165
+	github.com/openziti/transport/v2 v2.0.167
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -35,7 +35,7 @@ require (
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 	golang.org/x/oauth2 v0.28.0
 	golang.org/x/sys v0.31.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
