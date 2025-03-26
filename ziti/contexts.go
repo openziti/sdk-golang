@@ -82,13 +82,14 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	newContext := &ContextImpl{
-		Id:                NewId(),
-		routerConnections: cmap.New[edge.RouterConn](),
-		options:           options,
-		authQueryHandlers: map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error{},
-		closeNotify:       make(chan struct{}),
-		EventEmmiter:      events.New(),
-		routerProxy:       cfg.RouterProxy,
+		Id:                        NewId(),
+		routerConnections:         cmap.New[edge.RouterConn](),
+		options:                   options,
+		authQueryHandlers:         map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error{},
+		closeNotify:               make(chan struct{}),
+		EventEmmiter:              events.New(),
+		routerProxy:               cfg.RouterProxy,
+		enableCtrlPlaneConnection: cfg.EnableSeparateControlPlaneConnection,
 	}
 
 	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
