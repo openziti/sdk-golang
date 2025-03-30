@@ -21,7 +21,7 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	errors "github.com/pkg/errors"
-	"golang.org/x/exp/rand"
+	"math/rand/v2"
 	"net"
 	"net/url"
 	"sync/atomic"
@@ -223,7 +223,6 @@ func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport
 }
 
 func (c *ClientTransportPoolRandom) AnyTransport() *ApiClientTransport {
-	rand.Seed(uint64(time.Now().UnixNano()))
 	transportBuffer := c.pool.Items()
 	var keys []string
 
@@ -234,7 +233,9 @@ func (c *ClientTransportPoolRandom) AnyTransport() *ApiClientTransport {
 	if len(keys) == 0 {
 		return nil
 	}
-	index := rand.Intn(len(keys))
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewPCG(seed, seed))
+	index := rng.IntN(len(keys))
 	return transportBuffer[keys[index]]
 }
 
@@ -257,11 +258,12 @@ func errorIndicatesControllerSwap(err error) bool {
 }
 
 func selectAndRemoveRandom[T any](slice []T, zero T) (selected T, modifiedSlice []T) {
-	rand.Seed(uint64(time.Now().UnixNano()))
 	if len(slice) == 0 {
 		return zero, slice
 	}
-	index := rand.Intn(len(slice))
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewPCG(seed, seed))
+	index := rng.IntN(len(slice))
 	selected = slice[index]
 	modifiedSlice = append(slice[:index], slice[index+1:]...)
 	return selected, modifiedSlice

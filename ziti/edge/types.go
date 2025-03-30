@@ -6,8 +6,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/pkg/errors"
-	"golang.org/x/exp/slices"
 	"net"
+	"slices"
 	"strings"
 )
 
