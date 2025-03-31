@@ -1,3 +1,16 @@
+# Release notes 0.25.2
+
+## What's New
+
+* Update to channel/v4
+* Thank you to @Juneezee for contributing some libary tidying
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.25.1 -> v0.25.2](https://github.com/openziti/sdk-golang/compare/v0.25.1...v0.25.2)
+* github.com/openziti/channel/v4: [v3.0.39 -> v4.0.1](https://github.com/openziti/channel/compare/v3.0.39...v4.0.1)
+    * [Issue #172](https://github.com/openziti/channel/issues/172) - Support multi-underlay channels
+
 # Release notes 0.25.0
 
 ## Go Version Update

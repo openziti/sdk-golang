@@ -3,7 +3,7 @@ package network
 import (
 	"crypto/x509"
 	"encoding/binary"
-	"github.com/openziti/channel/v3"
+	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
@@ -175,13 +175,15 @@ func TestReadMultipart(t *testing.T) {
 type NoopTestChannel struct {
 }
 
+func (ch *NoopTestChannel) Headers() map[int32][]byte {
+	panic("implement me")
+}
+
 func (ch *NoopTestChannel) TrySend(s channel.Sendable) (bool, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ch *NoopTestChannel) Underlay() channel.Underlay {
-	//TODO implement me
 	panic("implement me")
 }
 
