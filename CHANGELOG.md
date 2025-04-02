@@ -1,3 +1,19 @@
+# Release notes 1.0.0
+
+## What's New
+
+* Multi-connection support to edge-routers
+* Major version set to 1, to indicate compatibility with OpenZiti v1+
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v0.25.2 -> v1.0.0](https://github.com/openziti/sdk-golang/compare/v0.25.2...v1.0.0)
+    * [Issue #701](https://github.com/openziti/sdk-golang/issues/701) - Support multi-underlay channels for edge router connections
+
+* github.com/openziti/channel/v4: [v4.0.1 -> v4.0.2](https://github.com/openziti/channel/compare/v4.0.1...v4.0.2)
+* github.com/openziti/transport/v2: [v2.0.167 -> v2.0.168](https://github.com/openziti/transport/compare/v2.0.167...v2.0.168)
+* golang.org/x/net: v0.37.0 -> v0.38.0
+
 # Release notes 0.25.2
 
 ## What's New
