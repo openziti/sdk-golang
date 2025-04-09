@@ -30,7 +30,7 @@ func BenchmarkConnWriteBaseLine(b *testing.B) {
 
 func BenchmarkConnWrite(b *testing.B) {
 	mux := edge.NewCowMapMsgMux()
-	testChannel := &NoopTestChannel{}
+	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       NewNoopSequencer[*channel.Message](4),
@@ -53,7 +53,7 @@ func BenchmarkConnWrite(b *testing.B) {
 
 func BenchmarkConnRead(b *testing.B) {
 	mux := edge.NewCowMapMsgMux()
-	testChannel := &NoopTestChannel{}
+	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](4)
 	conn := &edgeConn{
@@ -126,7 +126,7 @@ func BenchmarkSequencer(b *testing.B) {
 func TestReadMultipart(t *testing.T) {
 	req := require.New(t)
 	mux := edge.NewCowMapMsgMux()
-	testChannel := &NoopTestChannel{}
+	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](4)
 	conn := &edgeConn{
@@ -176,7 +176,7 @@ type NoopTestChannel struct {
 }
 
 func (ch *NoopTestChannel) Headers() map[int32][]byte {
-	panic("implement me")
+	return nil
 }
 
 func (ch *NoopTestChannel) TrySend(s channel.Sendable) (bool, error) {

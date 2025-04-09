@@ -36,13 +36,13 @@ type RouterConnOwner interface {
 type routerConn struct {
 	routerName string
 	key        string
-	ch         channel.Channel
+	ch         edge.SdkChannel
 	msgMux     edge.MsgMux
 	owner      RouterConnOwner
 }
 
 func (conn *routerConn) GetBoolHeader(key int32) bool {
-	val := conn.ch.Underlay().Headers()[key]
+	val := conn.ch.GetChannel().Headers()[key]
 	return len(val) == 1 && val[0] == 1
 }
 
@@ -72,7 +72,12 @@ func NewEdgeConnFactory(routerName, key string, owner RouterConnOwner) edge.Rout
 }
 
 func (conn *routerConn) BindChannel(binding channel.Binding) error {
-	conn.ch = binding.GetChannel()
+	if multiChannel, ok := binding.GetChannel().(channel.MultiChannel); ok {
+		conn.ch = multiChannel.GetUnderlayHandler().(edge.SdkChannel)
+		conn.ch.InitChannel(multiChannel)
+	} else {
+		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
+	}
 
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
@@ -118,7 +123,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 
 func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 	msg := edge.NewUpdateTokenMsg(token)
-	resp, err := msg.WithTimeout(timeout).SendForReply(conn.ch)
+	resp, err := msg.WithTimeout(timeout).SendForReply(conn.ch.GetControlSender())
 
 	if err != nil {
 		return err
@@ -201,13 +206,9 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 }
 
 func (conn *routerConn) Close() error {
-	if !conn.ch.IsClosed() {
-		return conn.ch.Close()
-	}
-
-	return nil
+	return conn.ch.GetChannel().Close()
 }
 
 func (conn *routerConn) IsClosed() bool {
-	return conn.ch.IsClosed()
+	return conn.ch.GetChannel().IsClosed()
 }
