@@ -1,3 +1,12 @@
+# Release notes 1.0.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.0.0 -> v1.0.1](https://github.com/openziti/sdk-golang/compare/v1.0.0...v1.0.1)
+* github.com/openziti/channel/v4: [v4.0.3 -> v4.0.4](https://github.com/openziti/channel/compare/v4.0.3...v4.0.4)
+* golang.org/x/oauth2: v0.28.0 -> v0.29.0
+* golang.org/x/sys: v0.31.0 -> v0.32.0
+
 # Release notes 1.0.0
 
 ## What's New
