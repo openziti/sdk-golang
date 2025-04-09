@@ -7,7 +7,6 @@ toolchain go1.23.1
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/emirpasic/gods v1.18.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
@@ -33,14 +32,15 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/zitadel/oidc/v2 v2.12.2
 	go.mozilla.org/pkcs7 v0.9.0
-	golang.org/x/oauth2 v0.28.0
-	golang.org/x/sys v0.31.0
+	golang.org/x/oauth2 v0.29.0
+	golang.org/x/sys v0.32.0
 	google.golang.org/protobuf v1.36.6
 )
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
