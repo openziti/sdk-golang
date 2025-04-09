@@ -29,6 +29,7 @@ import (
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 	"math"
 	"math/rand"
@@ -196,6 +197,9 @@ type ContextImpl struct {
 	routerProxy                     func(addr string) *transport.ProxyConfiguration
 
 	enableCtrlPlaneConnection bool
+
+	lock      sync.Mutex
+	xgressEnv xgress.Env
 }
 
 func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
@@ -1097,7 +1101,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session")
-	conn, err := context.dialSession(svc, session, edgeDialOptions)
+	conn, err := context.dialSession(svc, session, edgeDialOptions, context.getXgressEnv)
 	if err == nil {
 		return conn, nil
 	}
@@ -1115,7 +1119,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	// retry with new session
-	conn, err = context.dialSession(svc, session, edgeDialOptions)
+	conn, err = context.dialSession(svc, session, edgeDialOptions, context.getXgressEnv)
 	if err == nil {
 		return conn, nil
 	}
@@ -1198,12 +1202,12 @@ func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, er
 	return context.dialServiceFromAddr(*svc.Name, network, host, uint16(port))
 }
 
-func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
+func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
 	if err != nil {
 		return nil, err
 	}
-	return edgeConnFactory.Connect(service, session, options)
+	return edgeConnFactory.Connect(service, session, options, envF)
 }
 
 func (context *ContextImpl) ensureApiSession() error {
@@ -1729,8 +1733,18 @@ func (context *ContextImpl) EnrollZitiMfa() (*rest_model.DetailMfa, error) {
 func (context *ContextImpl) VerifyZitiMfa(code string) error {
 	return context.CtrlClt.VerifyMfa(code)
 }
+
 func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.CtrlClt.RemoveMfa(code)
+}
+
+func (context *ContextImpl) getXgressEnv() xgress.Env {
+	context.lock.Lock()
+	defer context.lock.Unlock()
+	if context.xgressEnv == nil {
+		context.xgressEnv = NewXgressEnv(context.closeNotify, context.metrics)
+	}
+	return context.xgressEnv
 }
 
 type waitForNHelper struct {

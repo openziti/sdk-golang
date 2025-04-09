@@ -19,6 +19,7 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/openziti/sdk-golang/xgress"
 	"io"
 	"net"
 	"sync"
@@ -59,6 +60,7 @@ type edgeConn struct {
 	hosting               cmap.ConcurrentMap[string, *edgeListener]
 	flags                 uint32
 	closed                atomic.Bool
+	closeNotify           chan struct{}
 	readFIN               atomic.Bool
 	sentFIN               atomic.Bool
 	serviceName           string
@@ -76,6 +78,9 @@ type edgeConn struct {
 	sender   secretstream.Encryptor
 	appData  []byte
 	sync.Mutex
+
+	dataSink  io.Writer
+	xgCircuit *XgAdapter
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
@@ -92,10 +97,13 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 			return 0, err
 		}
 
-		_, err = conn.MsgChannel.Write(cipherData)
+		_, err = conn.dataSink.Write(cipherData)
 		return len(data), err
 	} else {
-		return conn.MsgChannel.Write(data)
+		copyBuf := make([]byte, len(data))
+		copy(copyBuf, data)
+
+		return conn.dataSink.Write(copyBuf)
 	}
 }
 
@@ -152,6 +160,15 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("failed to send inspect response")
 		}
+		return
+	}
+
+	if msg.ContentType == edge.ContentTypeXgPayload {
+		conn.HandleXgPayload(msg)
+		return
+	}
+	if msg.ContentType == edge.ContentTypeXgAcknowledgement {
+		conn.HandleXgAcknowledgement(msg)
 		return
 	}
 
@@ -218,6 +235,42 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 	}
 }
 
+func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
+	adapter := conn.xgCircuit
+	if adapter == nil {
+		// TODO: handle
+		return
+	}
+
+	payload, err := xgress.UnmarshallPayload(msg)
+	if err != nil {
+		adapter.xg.Close()
+		return
+	}
+
+	if err = adapter.xg.SendPayload(payload, 0, 0); err != nil {
+		adapter.xg.Close()
+	}
+}
+
+func (conn *edgeConn) HandleXgAcknowledgement(msg *channel.Message) {
+	adapter := conn.xgCircuit
+	if adapter == nil {
+		// TODO: handle
+		return
+	}
+
+	ack, err := xgress.UnmarshallAcknowledgement(msg)
+	if err != nil {
+		adapter.xg.Close()
+		return
+	}
+
+	if err = adapter.xg.SendAcknowledgement(ack); err != nil {
+		adapter.xg.Close()
+	}
+}
+
 func (conn *edgeConn) IsClosed() bool {
 	return conn.closed.Load()
 }
@@ -270,13 +323,14 @@ func (conn *edgeConn) GetStickinessToken() []byte {
 func (conn *edgeConn) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
-	conn.readQ.Close()
-	conn.closed.Store(true)
+	if conn.closed.CompareAndSwap(false, true) {
+		close(conn.closeNotify)
+	}
 	conn.sentFIN.Store(true)
 	conn.readFIN.Store(true)
 }
 
-func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
+func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	logger := pfxlog.Logger().
 		WithField("marker", conn.marker).
 		WithField("connId", conn.Id()).
@@ -287,7 +341,9 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 		pub = conn.keyPair.Public()
 	}
 	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
-	connectRequest.Headers[edge.ConnectionMarkerHeader] = []byte(conn.marker)
+	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, conn.marker)
+	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, true)
+
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.GetControlSender())
 	if err != nil {
@@ -301,6 +357,45 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+	}
+
+	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
+		if conn.customState == nil {
+			conn.customState = map[int32][]byte{}
+		}
+		conn.customState[edge.StickinessTokenHeader] = stickinessToken
+	}
+
+	if useXg, _ := replyMsg.GetBoolHeader(edge.UseXgressToSdkHeader); useXg {
+		ctrlId, ok := replyMsg.GetStringHeader(edge.XgressCtrlIdHeader)
+		if !ok {
+			_ = conn.Close()
+			return nil, fmt.Errorf("xgress conn id header not found for circuit %s", conn.circuitId)
+		}
+		addr, ok := replyMsg.GetStringHeader(edge.XgressAddressHeader)
+		if !ok {
+			_ = conn.Close()
+			return nil, fmt.Errorf("xgress address header not found for circuit %s", conn.circuitId)
+		}
+
+		xgAdapter := &XgAdapter{
+			conn:        conn,
+			readC:       make(chan []byte),
+			closeNotify: conn.closeNotify,
+			env:         envF(),
+		}
+		conn.xgCircuit = xgAdapter
+		xg := xgress.NewXgress(conn.circuitId, ctrlId, xgress.Address(addr), xgAdapter, xgress.Initiator, xgress.DefaultOptions(), nil)
+		xgAdapter.xg = xg
+		conn.dataSink = xgAdapter
+
+		xg.SetDataPlaneAdapter(xgAdapter)
+		xg.AddCloseHandler(xgAdapter)
+
+		xg.Start()
+	} else {
+		conn.dataSink = &conn.MsgChannel
 	}
 
 	if conn.crypto {
@@ -322,13 +417,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 			logger.Warn("connection is not end-to-end-encrypted")
 		}
 	}
-	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
-	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
-		if conn.customState == nil {
-			conn.customState = map[int32][]byte{}
-		}
-		conn.customState[edge.StickinessTokenHeader] = stickinessToken
-	}
+
 	logger.Debug("connected")
 
 	return conn, nil
@@ -353,7 +442,7 @@ func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte,
 
 	conn.rxKey = rx
 
-	if _, err = conn.MsgChannel.Write(txHeader); err != nil {
+	if _, err = conn.dataSink.Write(txHeader); err != nil {
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
@@ -578,6 +667,8 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	if !conn.closed.CompareAndSwap(false, true) {
 		return
 	}
+	close(conn.closeNotify)
+
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
 
@@ -592,7 +683,6 @@ func (conn *edgeConn) close(closedByRemote bool) {
 		}
 	}
 
-	conn.readQ.Close()
 	conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 
 	if conn.connType == ConnTypeBind {
@@ -643,9 +733,11 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
+	closeNotify := make(chan struct{})
 	edgeCh := &edgeConn{
+		closeNotify:    closeNotify,
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](4),
+		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,
@@ -654,6 +746,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		marker:         marker,
 		circuitId:      circuitId,
 	}
+	edgeCh.dataSink = &edgeCh.MsgChannel
 
 	newConnLogger := pfxlog.Logger().
 		WithField("marker", marker).
