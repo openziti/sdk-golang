@@ -37,6 +37,7 @@ require (
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/eliukblau/pixterm/pkg/ansimage v0.0.0-20191210081756-9fb6cf8c2f75 // indirect
+	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa // indirect
@@ -79,10 +80,10 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.0.4 // indirect
+	github.com/openziti/channel/v4 v4.0.6 // indirect
 	github.com/openziti/edge-api v0.26.42 // indirect
-	github.com/openziti/identity v1.0.100 // indirect
-	github.com/openziti/metrics v1.4.0 // indirect
+	github.com/openziti/identity v1.0.101 // indirect
+	github.com/openziti/metrics v1.4.1-0.20250428140813-8f25360e7e83 // indirect
 	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect

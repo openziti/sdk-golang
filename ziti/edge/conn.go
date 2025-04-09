@@ -19,6 +19,8 @@ package edge
 import (
 	"fmt"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 	"io"
 	"net"
@@ -32,13 +34,17 @@ import (
 	"github.com/openziti/foundation/v2/sequence"
 )
 
+const (
+	ConnFlagIdxFirstMsgSent = 0
+)
+
 func init() {
 	AddAddressParsers()
 }
 
 type RouterClient interface {
-	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions) (Conn, error)
-	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions) (Listener, error)
+	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (Listener, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
@@ -108,6 +114,7 @@ type MsgChannel struct {
 	msgIdSeq      *sequence.Sequence
 	writeDeadline time.Time
 	trace         bool
+	flags         concurrenz.AtomicBitSet
 }
 
 type TraceRouteResult struct {
@@ -150,11 +157,7 @@ func (ec *MsgChannel) Write(data []byte) (n int, err error) {
 }
 
 func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte) (int, error) {
-	copyBuf := make([]byte, len(data))
-	copy(copyBuf, data)
-
-	seq := ec.msgIdSeq.Next()
-	msg := NewDataMsg(ec.id, seq, copyBuf)
+	msg := NewDataMsg(ec.id, data)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
 	}
@@ -165,13 +168,13 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 
 	// indicate that we can accept multipart messages
 	// with the first message
-	if seq == 1 {
+	if ec.flags.CompareAndSet(ConnFlagIdxFirstMsgSent, false, true) {
 		flags, _ := msg.GetUint32Header(FlagsHeader)
 		flags = flags | MULTIPART
 		msg.PutUint32Header(FlagsHeader, flags)
 	}
 	ec.TraceMsg("write", msg)
-	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(copyBuf))
+	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(data))
 
 	// NOTE: We need to wait for the buffer to be on the wire before returning. The Writer contract
 	//       states that buffers are not allowed be retained, and if we have it queued asynchronously
@@ -223,6 +226,7 @@ type DialOptions struct {
 	CallerId        string
 	AppData         []byte
 	StickinessToken []byte
+	SdkFlowControl  bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -244,6 +248,7 @@ type ListenOptions struct {
 	IdentitySecret        string
 	BindUsingEdgeIdentity bool
 	ManualStart           bool
+	SdkFlowControl        bool
 	ListenerId            string
 	KeyPair               *kx.KeyPair
 	eventC                chan *ListenerEvent

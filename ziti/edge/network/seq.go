@@ -23,20 +23,19 @@ func (r ReadTimout) Temporary() bool {
 	return true
 }
 
-func NewNoopSequencer[T any](channelDepth int) *noopSeq[T] {
+func NewNoopSequencer[T any](closeNotify <-chan struct{}, channelDepth int) *noopSeq[T] {
 	return &noopSeq[T]{
+		closeNotify:    closeNotify,
 		ch:             make(chan T, channelDepth),
-		closeNotify:    make(chan struct{}),
 		deadlineNotify: make(chan struct{}),
 	}
 }
 
 type noopSeq[T any] struct {
 	ch             chan T
-	closeNotify    chan struct{}
+	closeNotify    <-chan struct{}
 	deadlineNotify chan struct{}
 	deadline       concurrenz.AtomicValue[time.Time]
-	closed         atomic.Bool
 	readInProgress atomic.Bool
 }
 
@@ -101,11 +100,5 @@ func (seq *noopSeq[T]) GetNext() (T, error) {
 				return val, &ReadTimout{}
 			}
 		}
-	}
-}
-
-func (seq *noopSeq[T]) Close() {
-	if seq.closed.CompareAndSwap(false, true) {
-		close(seq.closeNotify)
 	}
 }

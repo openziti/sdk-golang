@@ -27,6 +27,7 @@ require (
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
 	github.com/chenzhuoyu/iasm v0.9.0 // indirect
 	github.com/deepmap/oapi-codegen v1.15.0 // indirect
+	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/flosch/pongo2/v4 v4.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
@@ -93,11 +94,11 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.0.4 // indirect
+	github.com/openziti/channel/v4 v4.0.6 // indirect
 	github.com/openziti/edge-api v0.26.42 // indirect
 	github.com/openziti/foundation/v2 v2.0.59 // indirect
-	github.com/openziti/identity v1.0.100 // indirect
-	github.com/openziti/metrics v1.4.0 // indirect
+	github.com/openziti/identity v1.0.101 // indirect
+	github.com/openziti/metrics v1.4.1-0.20250428140813-8f25360e7e83 // indirect
 	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/openziti/transport/v2 v2.0.168 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect

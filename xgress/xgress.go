@@ -64,6 +64,12 @@ type ControlReceiver interface {
 	HandleControlReceive(controlType ControlType, headers channel.Headers)
 }
 
+type Env interface {
+	GetRetransmitter() *Retransmitter
+	GetPayloadIngester() *PayloadIngester
+	GetMetrics() Metrics
+}
+
 // DataPlaneAdapter is invoked by an xgress whenever messages need to be sent to the data plane. Generally a DataPlaneAdapter
 // is implemented to connect the xgress to a data plane data transmission system.
 type DataPlaneAdapter interface {
@@ -78,9 +84,8 @@ type DataPlaneAdapter interface {
 
 	// ForwardAcknowledgement is used to forward acks onto the data-plane from an xgress
 	ForwardAcknowledgement(ack *Acknowledgement, address Address)
-	GetRetransmitter() *Retransmitter
-	GetPayloadIngester() *PayloadIngester
-	GetMetrics() Metrics
+
+	Env
 }
 
 // CloseHandler is invoked by an xgress when the connected peer terminates the communication.
@@ -260,7 +265,7 @@ func (self *Xgress) GetEndCircuit() *Payload {
 
 func (self *Xgress) ForwardEndOfCircuit(sendF func(payload *Payload) bool) {
 	// for now always send end of circuit. too many is better than not enough
-	if !self.IsEndOfCircuitSent() {
+	if self.flags.CompareAndSet(endOfCircuitSentFlag, false, true) {
 		sendF(self.GetEndCircuit())
 		self.flags.Set(endOfCircuitSentFlag, true)
 	}
@@ -321,6 +326,10 @@ func (self *Xgress) Close() {
 	}
 }
 
+func (self *Xgress) CloseSendBuffer() {
+	self.payloadBuffer.Close()
+}
+
 func (self *Xgress) Closed() bool {
 	return self.flags.IsSet(closedFlag)
 }
@@ -358,7 +367,7 @@ func (self *Xgress) HandleControlReceive(controlType ControlType, headers channe
 	self.dataPlane.ForwardControlMessage(control, self)
 }
 
-func (self *Xgress) payloadIngester(payload *Payload) {
+func (self *Xgress) acceptPayload(payload *Payload) {
 	if payload.IsCircuitStartFlagSet() && self.firstCircuitStartReceived() {
 		go self.rx()
 	}
@@ -838,6 +847,10 @@ func (self *Xgress) GetSequence() uint64 {
 }
 
 func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
+	detail.AddXgressDetail(self.GetInspectDetail(detail.includeGoroutines))
+}
+
+func (self *Xgress) GetInspectDetail(includeGoroutines bool) *InspectDetail {
 	timeSinceLastRxFromLink := time.Duration(time.Now().UnixMilli()-atomic.LoadInt64(&self.timeOfLastRxFromLink)) * time.Millisecond
 	xgressDetail := &InspectDetail{
 		Address:               string(self.address),
@@ -851,11 +864,11 @@ func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
 		Flags:                 strconv.FormatUint(uint64(self.flags.Load()), 2),
 	}
 
-	if detail.IncludeGoroutines() {
+	if includeGoroutines {
 		xgressDetail.Goroutines = self.getRelatedGoroutines(xgressDetail.XgressPointer, xgressDetail.LinkSendBufferPointer)
 	}
 
-	detail.AddXgressDetail(xgressDetail)
+	return xgressDetail
 }
 
 func (self *Xgress) getRelatedGoroutines(contains ...string) []string {

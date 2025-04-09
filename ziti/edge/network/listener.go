@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 	"math"
@@ -94,6 +95,7 @@ type edgeListener struct {
 	manualStart bool
 	established atomic.Bool
 	eventC      chan *edge.ListenerEvent
+	envF        func() xgress.Env
 }
 
 func (listener *edgeListener) Id() uint32 {

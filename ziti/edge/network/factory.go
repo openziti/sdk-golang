@@ -18,6 +18,7 @@ package network
 
 import (
 	"fmt"
+	"github.com/openziti/sdk-golang/xgress"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
@@ -84,6 +85,10 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeBindSuccess, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgPayload, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.msgMux)
@@ -96,9 +101,11 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
+	closeNotify := make(chan struct{})
 	edgeCh := &edgeConn{
+		closeNotify: closeNotify,
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:      conn.msgMux,
 		serviceName: *service.Name,
 		connType:    ConnTypeDial,
@@ -145,9 +152,11 @@ func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeConn {
 	id := conn.msgMux.GetNextId()
 
+	closeNotify := make(chan struct{})
 	edgeCh := &edgeConn{
+		closeNotify: closeNotify,
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:      conn.msgMux,
 		serviceName: *service.Name,
 		connType:    ConnTypeBind,
@@ -155,6 +164,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair
 		crypto:      keyPair != nil,
 		hosting:     cmap.New[*edgeListener](),
 	}
+	edgeCh.dataSink = &edgeCh.MsgChannel
 
 	// duplicate errors only happen on the server side, since client controls ids
 	if err := conn.msgMux.AddMsgSink(edgeCh); err != nil {
@@ -168,9 +178,9 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair
 	return edgeCh
 }
 
-func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
+func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	ec := conn.NewDialConn(service)
-	dialConn, err := ec.Connect(session, options)
+	dialConn, err := ec.Connect(session, options, envF)
 	if err != nil {
 		if err2 := ec.Close(); err2 != nil {
 			pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
@@ -179,7 +189,7 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 	return dialConn, err
 }
 
-func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.Listener, error) {
 	ec := conn.NewListenConn(service, options.KeyPair)
 
 	log := pfxlog.Logger().
@@ -188,7 +198,7 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 		WithField("serviceId", *service.ID).
 		WithField("serviceName", *service.Name)
 
-	listener, err := ec.listen(session, service, options)
+	listener, err := ec.listen(session, service, options, envF)
 	if err != nil {
 		log.WithError(err).Error("failed to establish listener")
 

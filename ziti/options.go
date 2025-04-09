@@ -55,6 +55,21 @@ type DialOptions struct {
 	Identity        string
 	AppData         []byte
 	StickinessToken []byte
+
+	// WARNING: Experimental setting, may be removed and/or defaults may change
+	//
+	// If set to true, flow-control will be managed from the SDK instead of the router. This prevents
+	// multiplexed circuits from interfering with each other. If the embedding application is only
+	// opening one circuit at a time, then it should not make much difference. Setting this to true
+	// may affect memory use and network traffic.
+	//
+	// NOTES:
+	// 1. Currently defaults to false, but may change to true in the future.
+	// 2. Requires router side support
+	// 3. Note that if config.MaxDefaultConnects is set to a value greater than one, the SDK will
+	//    always use sdk flow-control, as otherwise multiple data channels can lead to out-of-order
+	//    data corruption.
+	SdkFlowControl *bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -95,6 +110,17 @@ type ListenOptions struct {
 
 	// If set to true, requires that AcceptEdge is called on the edge.Listener
 	ManualStart bool
+
+	// NOTE: Experimental setting, may be removed and/or defaults may change
+	//
+	// If set to true, flow-control will be managed from the SDK instead of the router. This prevents
+	// multiplexed circuits from interfering with each other. If the embedding application is only
+	// opening one circuit at a time, then it should not make much difference. Setting this to true
+	// may affect memory use and network traffic.
+	//
+	// Currently defaults to false, but may change to true in the future.
+	// Requires router side support
+	SdkFlowControl *bool
 
 	// Wait for N listeners before returning from the Listen call. By default it will return
 	// before any listeners have been established.

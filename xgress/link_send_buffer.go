@@ -103,7 +103,7 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		x:                 x,
 		buffer:            make(map[int32]*txPayload),
 		newlyBuffered:     make(chan *txPayload),
-		newlyReceivedAcks: make(chan *Acknowledgement, 2),
+		newlyReceivedAcks: make(chan *Acknowledgement, 4),
 		closeNotify:       make(chan struct{}),
 		windowsSize:       x.Options.TxPortalStartSize,
 		retxThreshold:     x.Options.RetxStartMs,
@@ -245,9 +245,7 @@ func (buffer *LinkSendBuffer) run() {
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
 			buffer.retransmit()
-			if buffer.closeWhenEmpty.Load() && len(buffer.buffer) == 0 && !buffer.x.Closed() && buffer.x.IsEndOfCircuitSent() {
-				go buffer.x.Close()
-			}
+			buffer.checkForCloseOnEmpty()
 
 		case txPayload := <-buffered:
 			buffer.buffer[txPayload.payload.GetSequence()] = txPayload
@@ -259,11 +257,18 @@ func (buffer *LinkSendBuffer) run() {
 
 		case <-retransmitTicker.C:
 			buffer.retransmit()
+			buffer.checkForCloseOnEmpty()
 
 		case <-buffer.closeNotify:
 			buffer.close()
 			return
 		}
+	}
+}
+
+func (buffer *LinkSendBuffer) checkForCloseOnEmpty() {
+	if buffer.closeWhenEmpty.Load() && len(buffer.buffer) == 0 && !buffer.x.Closed() && buffer.x.IsEndOfCircuitSent() {
+		go buffer.x.Close()
 	}
 }
 

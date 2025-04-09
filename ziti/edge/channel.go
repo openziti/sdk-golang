@@ -16,7 +16,7 @@ const (
 func NewBaseSdkChannel(underlay channel.Underlay) *BaseSdkChannel {
 	senderContext := channel.NewSenderContext()
 
-	defaultMsgChan := make(chan channel.Sendable, 4)
+	defaultMsgChan := make(chan channel.Sendable, 64)
 	controlMsgChan := make(chan channel.Sendable, 4)
 	retryMsgChan := make(chan channel.Sendable, 4)
 
@@ -134,14 +134,14 @@ func (self *BaseSdkChannel) UpdateCtrlChannelAvailable(ch channel.MultiChannel) 
 	self.controlChannelAvailable.Store(ch.GetUnderlayCountsByType()[ChannelTypeControl] > 0)
 }
 
-func NewDialSdkChannel(dialer channel.DialUnderlayFactory, underlay channel.Underlay) UnderlayHandlerSdkChannel {
+func NewDialSdkChannel(dialer channel.DialUnderlayFactory, underlay channel.Underlay, maxDefaultChannels, maxControlChannel int) UnderlayHandlerSdkChannel {
 	result := &DialSdkChannel{
 		BaseSdkChannel: *NewBaseSdkChannel(underlay),
 		dialer:         dialer,
 	}
 
-	result.constraints.AddConstraint(ChannelTypeDefault, 1, 1)
-	result.constraints.AddConstraint(ChannelTypeControl, 1, 0)
+	result.constraints.AddConstraint(ChannelTypeDefault, maxDefaultChannels, 1)
+	result.constraints.AddConstraint(ChannelTypeControl, maxControlChannel, 0)
 
 	return result
 }

@@ -20,11 +20,15 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type MsgSink interface {
@@ -85,6 +89,10 @@ func (mux *CowMapMsgMux) ContentType() int32 {
 func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel) {
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
+		if msg.ContentType == ContentTypeInspectRequest {
+			mux.HandleInspect(msg, ch)
+			return
+		}
 		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
 		return
 	}
@@ -101,6 +109,63 @@ func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel)
 		}
 	} else {
 		pfxlog.Logger().Debugf("unable to dispatch msg received for unknown edge conn id: %v", connId)
+	}
+}
+
+func (mux *CowMapMsgMux) HandleInspect(msg *channel.Message, ch channel.Channel) {
+	resp := &inspect.SdkInspectResponse{
+		Success: true,
+		Values:  make(map[string]any),
+	}
+	requestedValues, _, err := msg.GetStringSliceHeader(InspectRequestValuesHeader)
+	if err != nil {
+		resp.Errors = append(resp.Errors, err.Error())
+		resp.Success = false
+		mux.returnInspectResponse(msg, ch, resp)
+		return
+	}
+
+	for _, requested := range requestedValues {
+		lc := strings.ToLower(requested)
+		if lc == "circuits" {
+			circuitsDetail := &xgress.CircuitsDetail{
+				Circuits: make(map[string]*xgress.CircuitDetail),
+			}
+
+			for _, sink := range mux.getSinks() {
+				if circuitInfoSrc, ok := sink.(interface {
+					GetCircuitDetail() *xgress.CircuitDetail
+				}); ok {
+					circuitDetail := circuitInfoSrc.GetCircuitDetail()
+					if circuitDetail != nil {
+						circuitsDetail.Circuits[circuitDetail.CircuitId] = circuitDetail
+					}
+				}
+			}
+			resp.Values[requested] = circuitsDetail
+		}
+	}
+
+	mux.returnInspectResponse(msg, ch, resp)
+}
+
+func (mux *CowMapMsgMux) returnInspectResponse(msg *channel.Message, ch channel.Channel, resp *inspect.SdkInspectResponse) {
+	var sender channel.Sender = ch
+	if mc, ok := ch.(channel.MultiChannel); ok {
+		if sdkChan, ok := mc.GetUnderlayHandler().(SdkChannel); ok {
+			sender = sdkChan.GetControlSender()
+		}
+	}
+
+	reply, err := NewInspectResponse(0, resp)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to create inspect response")
+		return
+	}
+	reply.ReplyTo(msg)
+
+	if err = reply.WithTimeout(5 * time.Second).Send(sender); err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to send inspect response")
 	}
 }
 

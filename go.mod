@@ -7,6 +7,7 @@ toolchain go1.23.1
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/emirpasic/gods v1.18.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
@@ -17,11 +18,11 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.0.4
+	github.com/openziti/channel/v4 v4.0.6
 	github.com/openziti/edge-api v0.26.42
 	github.com/openziti/foundation/v2 v2.0.59
-	github.com/openziti/identity v1.0.100
-	github.com/openziti/metrics v1.4.0
+	github.com/openziti/identity v1.0.101
+	github.com/openziti/metrics v1.4.1-0.20250428140813-8f25360e7e83
 	github.com/openziti/secretstream v0.1.32
 	github.com/openziti/transport/v2 v2.0.168
 	github.com/orcaman/concurrent-map/v2 v2.0.1
@@ -40,7 +41,6 @@ require (
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
