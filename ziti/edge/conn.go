@@ -44,7 +44,7 @@ func init() {
 
 type RouterClient interface {
 	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
-	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions) (Listener, error)
+	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (Listener, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
@@ -226,6 +226,7 @@ type DialOptions struct {
 	CallerId        string
 	AppData         []byte
 	StickinessToken []byte
+	SdkFlowControl  bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -247,6 +248,7 @@ type ListenOptions struct {
 	IdentitySecret        string
 	BindUsingEdgeIdentity bool
 	ManualStart           bool
+	SdkFlowControl        bool
 	ListenerId            string
 	KeyPair               *kx.KeyPair
 	eventC                chan *ListenerEvent

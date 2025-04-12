@@ -342,7 +342,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	}
 	connectRequest := edge.NewConnectMsg(conn.Id(), *session.Token, pub, options)
 	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, conn.marker)
-	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, true)
+	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, options.SdkFlowControl)
 
 	conn.TraceMsg("connect", connectRequest)
 	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.GetControlSender())
@@ -367,35 +367,8 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 		conn.customState[edge.StickinessTokenHeader] = stickinessToken
 	}
 
-	if useXg, _ := replyMsg.GetBoolHeader(edge.UseXgressToSdkHeader); useXg {
-		ctrlId, ok := replyMsg.GetStringHeader(edge.XgressCtrlIdHeader)
-		if !ok {
-			_ = conn.Close()
-			return nil, fmt.Errorf("xgress conn id header not found for circuit %s", conn.circuitId)
-		}
-		addr, ok := replyMsg.GetStringHeader(edge.XgressAddressHeader)
-		if !ok {
-			_ = conn.Close()
-			return nil, fmt.Errorf("xgress address header not found for circuit %s", conn.circuitId)
-		}
-
-		xgAdapter := &XgAdapter{
-			conn:        conn,
-			readC:       make(chan []byte),
-			closeNotify: conn.closeNotify,
-			env:         envF(),
-		}
-		conn.xgCircuit = xgAdapter
-		xg := xgress.NewXgress(conn.circuitId, ctrlId, xgress.Address(addr), xgAdapter, xgress.Initiator, xgress.DefaultOptions(), nil)
-		xgAdapter.xg = xg
-		conn.dataSink = xgAdapter
-
-		xg.SetDataPlaneAdapter(xgAdapter)
-		xg.AddCloseHandler(xgAdapter)
-
-		xg.Start()
-	} else {
-		conn.dataSink = &conn.MsgChannel
+	if err = conn.setupFlowControl(replyMsg, xgress.Initiator, envF); err != nil {
+		return nil, err
 	}
 
 	if conn.crypto {
@@ -421,6 +394,41 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	logger.Debug("connected")
 
 	return conn, nil
+}
+
+func (conn *edgeConn) setupFlowControl(msg *channel.Message, originator xgress.Originator, envF func() xgress.Env) error {
+	if useXg, _ := msg.GetBoolHeader(edge.UseXgressToSdkHeader); useXg {
+		ctrlId, ok := msg.GetStringHeader(edge.XgressCtrlIdHeader)
+		if !ok {
+			_ = conn.Close()
+			return fmt.Errorf("xgress conn id header not found for circuit %s", conn.circuitId)
+		}
+		addr, ok := msg.GetStringHeader(edge.XgressAddressHeader)
+		if !ok {
+			_ = conn.Close()
+			return fmt.Errorf("xgress address header not found for circuit %s", conn.circuitId)
+		}
+
+		xgAdapter := &XgAdapter{
+			conn:        conn,
+			readC:       make(chan []byte),
+			closeNotify: conn.closeNotify,
+			env:         envF(),
+		}
+		conn.xgCircuit = xgAdapter
+		xg := xgress.NewXgress(conn.circuitId, ctrlId, xgress.Address(addr), xgAdapter, originator, xgress.DefaultOptions(), nil)
+		xgAdapter.xg = xg
+		conn.dataSink = xgAdapter
+
+		xg.SetDataPlaneAdapter(xgAdapter)
+		xg.AddCloseHandler(xgAdapter)
+
+		xg.Start()
+	} else {
+		conn.dataSink = &conn.MsgChannel
+	}
+
+	return nil
 }
 
 func (conn *edgeConn) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
@@ -474,7 +482,7 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
-func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) (*edgeListener, error) {
+func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions, envF func() xgress.Env) (*edgeListener, error) {
 	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
@@ -490,6 +498,7 @@ func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_mo
 		edgeChan:    conn,
 		manualStart: options.ManualStart,
 		eventC:      options.GetEventChannel(),
+		envF:        envF,
 	}
 	logger.Debug("adding listener for session")
 	conn.hosting.Set(*session.Token, listener)
@@ -746,7 +755,6 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 		marker:         marker,
 		circuitId:      circuitId,
 	}
-	edgeCh.dataSink = &edgeCh.MsgChannel
 
 	newConnLogger := pfxlog.Logger().
 		WithField("marker", marker).
@@ -757,8 +765,20 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 
 	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
+		conn.close(true)
+
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
+		reply.ReplyTo(message)
+		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+			logger.WithError(err).Error("failed to send reply to dial request")
+		}
+		return
+	}
+
+	if err = edgeCh.setupFlowControl(message, xgress.Terminator, listener.envF); err != nil {
+		logger.WithError(err).Error("failed to start flow control")
+		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("failed to start flow control (%s)", err.Error()))
 		reply.ReplyTo(message)
 		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
@@ -782,6 +802,7 @@ func (conn *edgeConn) newChildConnection(message *channel.Message) {
 	}
 
 	if err != nil {
+		conn.close(true)
 		newConnLogger.WithError(err).Error("failed to establish connection")
 		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 		reply.ReplyTo(message)
@@ -917,7 +938,7 @@ func (self *newConnHandler) dialSucceeded() error {
 
 	if self.txHeader != nil {
 		newConnLogger.Debug("sending crypto header")
-		if _, err := self.edgeCh.MsgChannel.Write(self.txHeader); err != nil {
+		if _, err := self.edgeCh.dataSink.Write(self.txHeader); err != nil {
 			newConnLogger.WithError(err).Error("failed to write crypto header")
 			return err
 		}

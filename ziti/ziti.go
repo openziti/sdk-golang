@@ -1074,6 +1074,9 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 		Identity:        options.Identity,
 		AppData:         options.AppData,
 		StickinessToken: options.StickinessToken,
+		// TODO: uncomment
+		// SdkFlowControl:  options.SdkFlowControl != nil && *options.SdkFlowControl,
+		SdkFlowControl: true,
 	}
 	if edgeDialOptions.GetConnectTimeout() == 0 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second
@@ -1101,7 +1104,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session")
-	conn, err := context.dialSession(svc, session, edgeDialOptions, context.getXgressEnv)
+	conn, err := context.dialSession(svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
@@ -1119,7 +1122,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	// retry with new session
-	conn, err = context.dialSession(svc, session, edgeDialOptions, context.getXgressEnv)
+	conn, err = context.dialSession(svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
@@ -1202,12 +1205,12 @@ func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, er
 	return context.dialServiceFromAddr(*svc.Name, network, host, uint16(port))
 }
 
-func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
 	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
 	if err != nil {
 		return nil, err
 	}
-	return edgeConnFactory.Connect(service, session, options, envF)
+	return edgeConnFactory.Connect(service, session, options, context.getXgressEnv)
 }
 
 func (context *ContextImpl) ensureApiSession() error {
@@ -1255,6 +1258,10 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	if edgeListenOptions.MaxTerminators < 1 {
 		edgeListenOptions.MaxTerminators = 1
 	}
+
+	// TODO: uncomment
+	//edgeListenOptions.SdkFlowControl = options.SdkFlowControl != nil && *options.SdkFlowControl
+	edgeListenOptions.SdkFlowControl = true
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
 		return nil, err
@@ -2007,7 +2014,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	logger := pfxlog.Logger().WithField("serviceName", *mgr.service.Name).
 		WithField("router", routerConnection.GetRouterName())
 	svc := mgr.listener.GetService()
-	listener, err := routerConnection.Listen(svc, session, mgr.options)
+	listener, err := routerConnection.Listen(svc, session, mgr.options, mgr.context.getXgressEnv)
 	elapsed := time.Since(start)
 	if err == nil {
 		logger = logger.WithField("connId", listener.Id())

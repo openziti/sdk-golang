@@ -259,6 +259,7 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 	msg := newMsg(ContentTypeBind, connId, []byte(token))
 	msg.PutBoolHeader(SupportsInspectHeader, true)
 	msg.PutBoolHeader(SupportsBindSuccessHeader, true)
+	msg.PutBoolHeader(UseXgressToSdkHeader, options.SdkFlowControl)
 
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey

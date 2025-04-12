@@ -188,7 +188,7 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 	return dialConn, err
 }
 
-func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions) (edge.Listener, error) {
+func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.Listener, error) {
 	ec := conn.NewListenConn(service, options.KeyPair)
 
 	log := pfxlog.Logger().
@@ -197,7 +197,7 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 		WithField("serviceId", *service.ID).
 		WithField("serviceName", *service.Name)
 
-	listener, err := ec.listen(session, service, options)
+	listener, err := ec.listen(session, service, options, envF)
 	if err != nil {
 		log.WithError(err).Error("failed to establish listener")
 
