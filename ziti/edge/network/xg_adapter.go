@@ -29,6 +29,7 @@ func (self *XgAdapter) HandleXgressClose(x *xgress.Xgress) {
 
 func (self *XgAdapter) ForwardPayload(payload *xgress.Payload, x *xgress.Xgress) {
 	msg := payload.Marshall()
+	msg.PutUint32Header(edge.ConnIdHeader, self.conn.Id())
 	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send payload")
 	}

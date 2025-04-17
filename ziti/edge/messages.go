@@ -18,8 +18,10 @@ package edge
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/uuidz"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -45,8 +47,11 @@ const (
 	ContentTypeTraceRouteResponse = int32(edge_client_pb.ContentType_TraceRouteResponseType)
 
 	ContentTypeConnInspectRequest  = int32(edge_client_pb.ContentType_ConnInspectRequest)
-	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_ConnInspectResponse)
-	ContentTypeBindSuccess         = int32(edge_client_pb.ContentType_BindSuccess)
+	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_InspectResponse)
+	ContentTypeInspectRequest      = int32(edge_client_pb.ContentType_InspectRequest)
+	ContentTypeInspectResponse     = int32(edge_client_pb.ContentType_ConnInspectResponse)
+
+	ContentTypeBindSuccess = int32(edge_client_pb.ContentType_BindSuccess)
 
 	ContentTypeUpdateToken        = int32(edge_client_pb.ContentType_UpdateTokenType)
 	ContentTypeUpdateTokenSuccess = int32(edge_client_pb.ContentType_UpdateTokenSuccessType)
@@ -94,6 +99,7 @@ const (
 	UseXgressToSdkHeader           = int32(edge_client_pb.HeaderId_UseXgressToSdk)
 	XgressCtrlIdHeader             = int32(edge_client_pb.HeaderId_XgressCtrlId)
 	XgressAddressHeader            = int32(edge_client_pb.HeaderId_XgressAddress)
+	InspectRequestValuesHeader     = int32(edge_client_pb.HeaderId_InspectRequestedValues)
 )
 
 const (
@@ -217,6 +223,26 @@ func NewConnInspectResponse(connId uint32, connType ConnType, state string) *cha
 	msg.PutUint32Header(ConnIdHeader, connId)
 	msg.PutByteHeader(ConnTypeHeader, byte(connType))
 	return msg
+}
+
+func NewInspectRequest(connId *uint32, requestedValues ...string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeInspectRequest, nil)
+	if connId != nil {
+		msg.PutUint32Header(ConnIdHeader, *connId)
+	}
+	msg.PutStringSliceHeader(InspectRequestValuesHeader, requestedValues)
+	return msg
+}
+
+func NewInspectResponse(connId uint32, resp *inspect.SdkInspectResponse) (*channel.Message, error) {
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := channel.NewMessage(ContentTypeInspectResponse, b)
+	msg.PutUint32Header(ConnIdHeader, connId)
+	return msg, nil
 }
 
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel.Message {

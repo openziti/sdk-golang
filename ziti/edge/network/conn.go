@@ -19,9 +19,11 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -163,22 +165,25 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		return
 	}
 
-	if msg.ContentType == edge.ContentTypeXgPayload {
-		conn.HandleXgPayload(msg)
-		return
-	}
-	if msg.ContentType == edge.ContentTypeXgAcknowledgement {
-		conn.HandleXgAcknowledgement(msg)
-		return
-	}
-
 	switch conn.connType {
 	case ConnTypeDial:
-		if msg.ContentType == edge.ContentTypeStateClosed {
-			conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
-		}
+		switch msg.ContentType {
+		case edge.ContentTypeXgPayload:
+			conn.HandleXgPayload(msg)
+			return
 
-		if msg.ContentType == edge.ContentTypeTraceRoute {
+		case edge.ContentTypeXgAcknowledgement:
+			conn.HandleXgAcknowledgement(msg)
+			return
+
+		case edge.ContentTypeStateClosed:
+			conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+
+		case edge.ContentTypeInspectRequest:
+			conn.HandleInspect(msg)
+			return
+
+		case edge.ContentTypeTraceRoute:
 			hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
 			if hops > 0 {
 				hops--
@@ -271,6 +276,71 @@ func (conn *edgeConn) HandleXgAcknowledgement(msg *channel.Message) {
 	}
 }
 
+func (conn *edgeConn) HandleInspect(msg *channel.Message) {
+	resp := &inspect.SdkInspectResponse{
+		Success: true,
+		Values:  make(map[string]any),
+	}
+	requestedValues, _, err := msg.GetStringSliceHeader(edge.InspectRequestValuesHeader)
+	if err != nil {
+		resp.Errors = append(resp.Errors, err.Error())
+		resp.Success = false
+		conn.returnInspectResponse(msg, resp)
+		return
+	}
+
+	for _, requested := range requestedValues {
+		lc := strings.ToLower(requested)
+		if strings.HasPrefix(lc, "circuit:") {
+			circuitId := requested[len("circuit:"):]
+			if conn.xgCircuit != nil && conn.circuitId == circuitId {
+				detail := conn.xgCircuit.xg.GetInspectDetail(false)
+				resp.Values[requested] = detail
+			}
+		} else if strings.HasPrefix(lc, "circuitandstacks:") {
+			circuitId := requested[len("circuitAndStacks:"):]
+			if conn.xgCircuit != nil && conn.circuitId == circuitId {
+				detail := conn.xgCircuit.xg.GetInspectDetail(true)
+				resp.Values[requested] = detail
+			}
+		}
+	}
+
+	conn.returnInspectResponse(msg, resp)
+}
+
+func (conn *edgeConn) GetCircuitDetail() *xgress.CircuitDetail {
+	if conn.connType == ConnTypeDial {
+		detail := &xgress.CircuitDetail{
+			CircuitId: conn.circuitId,
+			ConnId:    conn.Id(),
+		}
+
+		if conn.xgCircuit != nil {
+			detail.IsXgress = true
+			detail.Originator = conn.xgCircuit.xg.Originator().String()
+			detail.Address = string(conn.xgCircuit.xg.Address())
+		}
+
+		return detail
+	}
+
+	return nil
+}
+
+func (conn *edgeConn) returnInspectResponse(msg *channel.Message, resp *inspect.SdkInspectResponse) {
+	reply, err := edge.NewInspectResponse(conn.Id(), resp)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to create inspect response")
+		return
+	}
+	reply.ReplyTo(msg)
+
+	if err = reply.WithTimeout(5 * time.Second).Send(conn.GetControlSender()); err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to send inspect response")
+	}
+}
+
 func (conn *edgeConn) IsClosed() bool {
 	return conn.closed.Load()
 }
@@ -309,6 +379,11 @@ func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 
 func (conn *edgeConn) HandleMuxClose() error {
 	conn.close(true)
+
+	// If the channel is closed, stop the send buffer as we can't rtx anything anyway
+	if xgCircuit := conn.xgCircuit; xgCircuit != nil {
+		xgCircuit.xg.Close()
+	}
 	return nil
 }
 

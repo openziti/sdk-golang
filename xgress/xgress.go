@@ -326,6 +326,10 @@ func (self *Xgress) Close() {
 	}
 }
 
+func (self *Xgress) CloseSendBuffer() {
+	self.payloadBuffer.Close()
+}
+
 func (self *Xgress) Closed() bool {
 	return self.flags.IsSet(closedFlag)
 }
@@ -843,6 +847,10 @@ func (self *Xgress) GetSequence() uint64 {
 }
 
 func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
+	detail.AddXgressDetail(self.GetInspectDetail(detail.includeGoroutines))
+}
+
+func (self *Xgress) GetInspectDetail(includeGoroutines bool) *InspectDetail {
 	timeSinceLastRxFromLink := time.Duration(time.Now().UnixMilli()-atomic.LoadInt64(&self.timeOfLastRxFromLink)) * time.Millisecond
 	xgressDetail := &InspectDetail{
 		Address:               string(self.address),
@@ -856,11 +864,11 @@ func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
 		Flags:                 strconv.FormatUint(uint64(self.flags.Load()), 2),
 	}
 
-	if detail.IncludeGoroutines() {
+	if includeGoroutines {
 		xgressDetail.Goroutines = self.getRelatedGoroutines(xgressDetail.XgressPointer, xgressDetail.LinkSendBufferPointer)
 	}
 
-	detail.AddXgressDetail(xgressDetail)
+	return xgressDetail
 }
 
 func (self *Xgress) getRelatedGoroutines(contains ...string) []string {

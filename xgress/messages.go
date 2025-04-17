@@ -63,6 +63,13 @@ func (o Originator) String() string {
 	return "Terminator"
 }
 
+func (o Originator) Invert() Originator {
+	if o == Initiator {
+		return Terminator
+	}
+	return Initiator
+}
+
 type Flag uint32
 
 const (

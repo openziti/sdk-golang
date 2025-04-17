@@ -17,10 +17,11 @@
 package xgress
 
 type CircuitInspectDetail struct {
-	CircuitId         string                        `json:"circuitId"`
-	Forwards          map[string]string             `json:"forwards"`
-	XgressDetails     map[string]*InspectDetail     `json:"xgressDetails"`
-	LinkDetails       map[string]*LinkInspectDetail `json:"linkDetails"`
+	CircuitId         string                    `json:"circuitId"`
+	Forwards          map[string]string         `json:"forwards"`
+	XgressDetails     map[string]*InspectDetail `json:"xgressDetails"`
+	RelatedEntities   map[string]map[string]any `json:"relatedEntities"`
+	Errors            []string                  `json:"errors"`
 	includeGoroutines bool
 }
 
@@ -36,8 +37,18 @@ func (self *CircuitInspectDetail) AddXgressDetail(xgressDetail *InspectDetail) {
 	self.XgressDetails[xgressDetail.Address] = xgressDetail
 }
 
-func (self *CircuitInspectDetail) AddLinkDetail(linkDetail *LinkInspectDetail) {
-	self.LinkDetails[linkDetail.Id] = linkDetail
+func (self *CircuitInspectDetail) AddRelatedEntity(entityType string, id string, detail any) {
+	if self.RelatedEntities == nil {
+		self.RelatedEntities = make(map[string]map[string]any)
+	}
+	if self.RelatedEntities[entityType] == nil {
+		self.RelatedEntities[entityType] = make(map[string]any)
+	}
+	self.RelatedEntities[entityType][id] = detail
+}
+
+func (self *CircuitInspectDetail) AddError(err error) {
+	self.Errors = append(self.Errors, err.Error())
 }
 
 type InspectDetail struct {
@@ -81,14 +92,14 @@ type RecvBufferDetail struct {
 	AcquiredSafely bool   `json:"acquiredSafely"`
 }
 
-type LinkInspectDetail struct {
-	Id          string `json:"id"`
-	Iteration   uint32 `json:"iteration"`
-	Key         string `json:"key"`
-	Split       bool   `json:"split"`
-	Protocol    string `json:"protocol"`
-	DialAddress string `json:"dialAddress"`
-	Dest        string `json:"dest"`
-	DestVersion string `json:"destVersion"`
-	Dialed      bool   `json:"dialed"`
+type CircuitsDetail struct {
+	Circuits map[string]*CircuitDetail `json:"circuits"`
+}
+
+type CircuitDetail struct {
+	CircuitId  string `json:"circuitId"`
+	ConnId     uint32 `json:"connId"`
+	Address    string `json:"address"`
+	Originator string `json:"originator"`
+	IsXgress   bool   `json:"isXgress"`
 }

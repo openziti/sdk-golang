@@ -40,6 +40,9 @@ enum ContentType {
   UpdateTokenFailureType = 60802;
   UpdateTokenType = 60803;
 
+  InspectRequest = 60804;
+  InspectResponse = 60805;
+
   PostureResponseType = 10800;
   PostureResponseSuccessType = 10801;
 }
@@ -78,6 +81,7 @@ enum HeaderId {
   UseXgressToSdk = 1028;
   XgressCtrlId = 1029;
   XgressAddress = 1030;
+  InspectRequestedValues = 1031;
 }
 
 enum Error {

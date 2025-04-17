@@ -88,6 +88,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeXgPayload, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.msgMux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.msgMux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.msgMux)
