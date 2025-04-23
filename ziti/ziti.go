@@ -1285,9 +1285,7 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 	var bestER edge.RouterConn
 	var unconnected []*rest_model.SessionEdgeRouter
 	for _, edgeRouter := range session.EdgeRouters {
-		for proto, addr := range edgeRouter.SupportedProtocols {
-			addr = strings.Replace(addr, "://", ":", 1)
-			edgeRouter.SupportedProtocols[proto] = addr
+		for _, addr := range edgeRouter.SupportedProtocols {
 			if er, found := context.routerConnections.Get(addr); found {
 				h := context.metrics.Histogram("latency." + addr).(metrics2.Histogram)
 				if h.Mean() < float64(bestLatency) {
