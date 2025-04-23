@@ -486,8 +486,13 @@ func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
 
 func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
 	logrus.Debugf("connection to router [%s] was closed", routerConn.Key())
-	context.Emit(EventRouterDisconnected, routerConn.GetRouterName(), routerConn.Key())
-	context.routerConnections.Remove(routerConn.Key())
+	removed := context.routerConnections.RemoveCb(routerConn.Key(), func(key string, v edge.RouterConn, exists bool) bool {
+		return exists && v == routerConn
+	})
+
+	if removed {
+		context.Emit(EventRouterDisconnected, routerConn.GetRouterName(), routerConn.Key())
+	}
 }
 
 func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
@@ -1469,8 +1474,6 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 
 	logger.Debugf("connected to %s", ingressUrl)
 
-	context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
-
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
 			if exist { // use the routerConnection already in the map, close new one
@@ -1510,6 +1513,10 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 			go latency.ProbeLatencyConfigurable(latencyProbeConfig)
 			return newV
 		})
+
+	if useConn == edgeConn {
+		context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
+	}
 
 	return &edgeRouterConnResult{
 		routerUrl:        ingressUrl,
