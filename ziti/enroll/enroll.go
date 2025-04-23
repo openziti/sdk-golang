@@ -241,6 +241,11 @@ func Enroll(enFlags EnrollmentFlags) (*ziti.Config, error) {
 		enrollErr = enrollCAAuto(enFlags, cfg, caPool)
 	case "updb":
 		resultUsername, enrollErr = enrollUpdb(enFlags.Username, enFlags.Password, enFlags.Token, caPool)
+
+		//v1.5.0 and earlier controllers do not confirm the username in their response (e.g. if set by admin and an override isn't provided)
+		if resultUsername == "" {
+			resultUsername = enFlags.Username
+		}
 	default:
 		enrollErr = errors.Errorf("enrollment method '%s' is not supported", enFlags.Token.EnrollmentMethod)
 	}
@@ -325,7 +330,7 @@ func enrollUpdb(username, password string, token *ziti.EnrollmentClaims, caPool 
 	if resp.StatusCode == http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		if respContainer, err := gabs.ParseJSON(respBody); err == nil {
-			username = respContainer.Path("data.username").Data().(string)
+			username, _ = respContainer.Path("data.username").Data().(string)
 		}
 		return username, nil
 	}
