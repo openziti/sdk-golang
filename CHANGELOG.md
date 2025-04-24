@@ -1,3 +1,11 @@
+# Release notes 1.0.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.0.1 -> v1.0.2](https://github.com/openziti/sdk-golang/compare/v1.0.1...v1.0.2)
+  * [Issue #717](https://github.com/openziti/sdk-golang/issues/717) - ER connection race condition can leak connections
+  * [Issue #689](https://github.com/openziti/sdk-golang/issues/689) - Concurrent map iteration and modification in getEdgeRouterConn causes panic
+
 # Release notes 1.0.1
 
 ## Issues Fixed and Dependency Updates
