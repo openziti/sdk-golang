@@ -8,13 +8,13 @@
 ## SDK Flow Control
 
 If the router being connected to supports it, the sdk can now manage flow control 
-instead of delegating that to the router. This is mostly importing when running
+instead of delegating that to the router. This is mostly important when running
 multiple simultaneous circuits throught the SDK. When running multiple circuits,
 a slow circuit can get stalled at the router because of flow control back-pressure.
 This then back-pressures all circuits from the SDK to that router. 
 
-By moving the flow-control to the SDK, a slow circuit will not negatively other 
-circuits to the same router. This is currently enabled in the `DialOptions`.
+By moving the flow-control to the SDK, a slow circuit will not negatively impact
+other circuits to the same router. This is currently enabled in the `DialOptions`.
 
 ```
 t := true
