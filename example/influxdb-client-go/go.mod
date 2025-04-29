@@ -98,7 +98,7 @@ require (
 	github.com/openziti/edge-api v0.26.42 // indirect
 	github.com/openziti/foundation/v2 v2.0.59 // indirect
 	github.com/openziti/identity v1.0.101 // indirect
-	github.com/openziti/metrics v1.4.1-0.20250428140813-8f25360e7e83 // indirect
+	github.com/openziti/metrics v1.4.1 // indirect
 	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/openziti/transport/v2 v2.0.168 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect

@@ -245,7 +245,9 @@ func (buffer *LinkSendBuffer) run() {
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
 			buffer.retransmit()
-			buffer.checkForCloseOnEmpty()
+			if buffer.closeWhenEmpty.Load() && len(buffer.buffer) == 0 && !buffer.x.Closed() && buffer.x.IsEndOfCircuitSent() {
+				go buffer.x.Close()
+			}
 
 		case txPayload := <-buffered:
 			buffer.buffer[txPayload.payload.GetSequence()] = txPayload
@@ -257,18 +259,11 @@ func (buffer *LinkSendBuffer) run() {
 
 		case <-retransmitTicker.C:
 			buffer.retransmit()
-			buffer.checkForCloseOnEmpty()
 
 		case <-buffer.closeNotify:
 			buffer.close()
 			return
 		}
-	}
-}
-
-func (buffer *LinkSendBuffer) checkForCloseOnEmpty() {
-	if buffer.closeWhenEmpty.Load() && len(buffer.buffer) == 0 && !buffer.x.Closed() && buffer.x.IsEndOfCircuitSent() {
-		go buffer.x.Close()
 	}
 }
 

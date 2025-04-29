@@ -1263,9 +1263,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.MaxTerminators = 1
 	}
 
-	// TODO: uncomment
-	//edgeListenOptions.SdkFlowControl = options.SdkFlowControl != nil && *options.SdkFlowControl
-	edgeListenOptions.SdkFlowControl = true
+	edgeListenOptions.SdkFlowControl = options.SdkFlowControl != nil && *options.SdkFlowControl
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
 		return nil, err

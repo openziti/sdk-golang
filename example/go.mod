@@ -83,7 +83,7 @@ require (
 	github.com/openziti/channel/v4 v4.0.6 // indirect
 	github.com/openziti/edge-api v0.26.42 // indirect
 	github.com/openziti/identity v1.0.101 // indirect
-	github.com/openziti/metrics v1.4.1-0.20250428140813-8f25360e7e83 // indirect
+	github.com/openziti/metrics v1.4.1 // indirect
 	github.com/openziti/secretstream v0.1.32 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect

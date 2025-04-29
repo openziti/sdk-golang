@@ -14,7 +14,8 @@ a slow circuit can get stalled at the router because of flow control back-pressu
 This then back-pressures all circuits from the SDK to that router. 
 
 By moving the flow-control to the SDK, a slow circuit will not negatively impact
-other circuits to the same router. This is currently enabled in the `DialOptions`.
+other circuits to the same router. This is currently enabled in the `DialOptions`
+and `ListenOptions` for the dial and hosting sides respectively.
 
 ```
 t := true
@@ -22,6 +23,9 @@ dialOptions := &ziti.DialOptions{
     ConnectTimeout: wf.ConnectTimeout,
     SdkFlowControl: &t,
 }
+
+listenOptions := ziti.DefaultListenOptions()
+listenOptions.SdkFlowControl = &t
 ```
 
 As this is an experimental feature, the configuration may change or be removed
