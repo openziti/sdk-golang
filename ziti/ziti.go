@@ -29,6 +29,7 @@ import (
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 	"math"
 	"math/rand"
@@ -195,7 +196,11 @@ type ContextImpl struct {
 	lastSuccessfulApiSessionRefresh time.Time
 	routerProxy                     func(addr string) *transport.ProxyConfiguration
 
-	enableCtrlPlaneConnection bool
+	maxControlConnections int
+	maxDefaultConnections int
+
+	lock      sync.Mutex
+	xgressEnv xgress.Env
 }
 
 func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
@@ -1075,6 +1080,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 		Identity:        options.Identity,
 		AppData:         options.AppData,
 		StickinessToken: options.StickinessToken,
+		SdkFlowControl:  (options.SdkFlowControl != nil && *options.SdkFlowControl) || context.maxDefaultConnections > 1,
 	}
 	if edgeDialOptions.GetConnectTimeout() == 0 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second
@@ -1208,7 +1214,7 @@ func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, sessi
 	if err != nil {
 		return nil, err
 	}
-	return edgeConnFactory.Connect(service, session, options)
+	return edgeConnFactory.Connect(service, session, options, context.getXgressEnv)
 }
 
 func (context *ContextImpl) ensureApiSession() error {
@@ -1256,6 +1262,8 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	if edgeListenOptions.MaxTerminators < 1 {
 		edgeListenOptions.MaxTerminators = 1
 	}
+
+	edgeListenOptions.SdkFlowControl = options.SdkFlowControl != nil && *options.SdkFlowControl
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
 		return nil, err
@@ -1415,7 +1423,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	options.ConnectTimeout = 15 * time.Second
 
 	headers := channel.Headers{}
-	if context.enableCtrlPlaneConnection {
+	if context.maxControlConnections > 0 || context.maxDefaultConnections > 1 {
 		headers.PutBoolHeader(channel.IsGroupedHeader, true)
 		headers.PutStringHeader(channel.TypeHeader, edge.ChannelTypeDefault)
 	}
@@ -1432,7 +1440,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	var ch channel.Channel
 
 	if isGrouped, _ := channel.Headers(underlay.Headers()).GetBoolHeader(channel.IsGroupedHeader); isGrouped {
-		var dialSdkChannel = edge.NewDialSdkChannel(dialer, underlay)
+		var dialSdkChannel = edge.NewDialSdkChannel(dialer, underlay, context.maxDefaultConnections, context.maxControlConnections)
 		multiChannelConfig := &channel.MultiChannelConfig{
 			LogicalName:     fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl),
 			Options:         options,
@@ -1478,6 +1486,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
 			if exist { // use the routerConnection already in the map, close new one
 				pfxlog.Logger().Infof("connection to %s already established, closing duplicate connection", ingressUrl)
+
 				go func() {
 					if err := newV.Close(); err != nil {
 						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
@@ -1724,6 +1733,9 @@ func (context *ContextImpl) Close() {
 }
 
 func (context *ContextImpl) Metrics() metrics.Registry {
+	if context.metrics == nil {
+		_ = context.Authenticate()
+	}
 	return context.metrics
 }
 
@@ -1734,8 +1746,18 @@ func (context *ContextImpl) EnrollZitiMfa() (*rest_model.DetailMfa, error) {
 func (context *ContextImpl) VerifyZitiMfa(code string) error {
 	return context.CtrlClt.VerifyMfa(code)
 }
+
 func (context *ContextImpl) RemoveZitiMfa(code string) error {
 	return context.CtrlClt.RemoveMfa(code)
+}
+
+func (context *ContextImpl) getXgressEnv() xgress.Env {
+	context.lock.Lock()
+	defer context.lock.Unlock()
+	if context.xgressEnv == nil {
+		context.xgressEnv = NewXgressEnv(context.closeNotify, context.metrics)
+	}
+	return context.xgressEnv
 }
 
 type waitForNHelper struct {
@@ -1998,7 +2020,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	logger := pfxlog.Logger().WithField("serviceName", *mgr.service.Name).
 		WithField("router", routerConnection.GetRouterName())
 	svc := mgr.listener.GetService()
-	listener, err := routerConnection.Listen(svc, session, mgr.options)
+	listener, err := routerConnection.Listen(svc, session, mgr.options, mgr.context.getXgressEnv)
 	elapsed := time.Since(start)
 	if err == nil {
 		logger = logger.WithField("connId", listener.Id())

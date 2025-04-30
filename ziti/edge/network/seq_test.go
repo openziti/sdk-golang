@@ -9,7 +9,10 @@ import (
 )
 
 func Test_SeqNormalReadDeadline(t *testing.T) {
-	readQ := NewNoopSequencer[*channel.Message](4)
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	start := time.Now()
 	readQ.SetReadDeadline(start.Add(10 * time.Millisecond))
 
@@ -28,14 +31,17 @@ func Test_SeqNormalReadDeadline(t *testing.T) {
 }
 
 func Test_SeqNormalReadWithDeadline(t *testing.T) {
-	readQ := NewNoopSequencer[*channel.Message](4)
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	start := time.Now()
 	readQ.SetReadDeadline(start.Add(10 * time.Millisecond))
 
 	req := require.New(t)
 
 	data := make([]byte, 877)
-	msg := edge.NewDataMsg(1, 1, data)
+	msg := edge.NewDataMsg(1, data)
 	req.NoError(readQ.PutSequenced(msg))
 
 	val, err := readQ.GetNext()
@@ -44,11 +50,14 @@ func Test_SeqNormalReadWithDeadline(t *testing.T) {
 }
 
 func Test_SeqNormalReadWithNoDeadline(t *testing.T) {
-	readQ := NewNoopSequencer[*channel.Message](4)
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	req := require.New(t)
 
 	data := make([]byte, 877)
-	msg := edge.NewDataMsg(1, 1, data)
+	msg := edge.NewDataMsg(1, data)
 	req.NoError(readQ.PutSequenced(msg))
 
 	val, err := readQ.GetNext()
@@ -57,7 +66,10 @@ func Test_SeqNormalReadWithNoDeadline(t *testing.T) {
 }
 
 func Test_SeqReadWithInterrupt(t *testing.T) {
-	readQ := NewNoopSequencer[*channel.Message](4)
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	start := time.Now()
 
 	req := require.New(t)

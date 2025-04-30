@@ -63,6 +63,13 @@ func (o Originator) String() string {
 	return "Terminator"
 }
 
+func (o Originator) Invert() Originator {
+	if o == Initiator {
+		return Terminator
+	}
+	return Initiator
+}
+
 type Flag uint32
 
 const (
@@ -70,6 +77,7 @@ const (
 	PayloadFlagOriginator   Flag = 2
 	PayloadFlagCircuitStart Flag = 4
 	PayloadFlagChunk        Flag = 8
+	PayloadFlagRetransmit   Flag = 16
 )
 
 func NewAcknowledgement(circuitId string, originator Originator) *Acknowledgement {
@@ -302,6 +310,14 @@ func (payload *Payload) IsCircuitEndFlagSet() bool {
 
 func (payload *Payload) IsCircuitStartFlagSet() bool {
 	return isFlagSet(payload.Flags, PayloadFlagCircuitStart)
+}
+
+func (payload *Payload) IsRetransmitFlagSet() bool {
+	return isFlagSet(payload.Flags, PayloadFlagRetransmit)
+}
+
+func (payload *Payload) MarkAsRetransmit() {
+	payload.Flags = setPayloadFlag(payload.Flags, PayloadFlagRetransmit)
 }
 
 func (payload *Payload) GetOriginator() Originator {

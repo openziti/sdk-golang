@@ -48,7 +48,7 @@ func (self *PayloadIngester) run() {
 	for {
 		select {
 		case payloadEntry := <-self.payloadIngest:
-			payloadEntry.x.payloadIngester(payloadEntry.payload)
+			payloadEntry.x.acceptPayload(payloadEntry.payload)
 		case x := <-self.payloadSendReq:
 			x.queueSends()
 		case evt := <-self.receiveBufferInspects:

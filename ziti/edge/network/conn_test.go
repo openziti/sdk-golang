@@ -22,18 +22,21 @@ func BenchmarkConnWriteBaseLine(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		msg := edge.NewDataMsg(1, uint32(i), data)
+		msg := edge.NewDataMsg(1, data)
 		err := testChannel.Send(msg)
 		req.NoError(err)
 	}
 }
 
 func BenchmarkConnWrite(b *testing.B) {
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
 	mux := edge.NewCowMapMsgMux()
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:      mux,
 		serviceName: "test",
 	}
@@ -52,10 +55,13 @@ func BenchmarkConnWrite(b *testing.B) {
 }
 
 func BenchmarkConnRead(b *testing.B) {
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
 	mux := edge.NewCowMapMsgMux()
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,
@@ -71,7 +77,7 @@ func BenchmarkConnRead(b *testing.B) {
 		for !stop.Load() {
 			counter += 1
 			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, counter, data)
+			msg := edge.NewDataMsg(1, data)
 			err := readQ.PutSequenced(msg)
 			if err != nil {
 				panic(err)
@@ -104,7 +110,7 @@ func BenchmarkSequencer(b *testing.B) {
 		for !stop.Load() {
 			counter += 1
 			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, counter, data)
+			msg := edge.NewDataMsg(1, data)
 			event := &edge.MsgEvent{
 				ConnId: 1,
 				Seq:    counter,
@@ -125,10 +131,14 @@ func BenchmarkSequencer(b *testing.B) {
 
 func TestReadMultipart(t *testing.T) {
 	req := require.New(t)
+
+	closeNotify := make(chan struct{})
+	defer close(closeNotify)
+
 	mux := edge.NewCowMapMsgMux()
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,
@@ -145,10 +155,10 @@ func TestReadMultipart(t *testing.T) {
 		multipart = binary.LittleEndian.AppendUint16(multipart, uint16(len(w)))
 		multipart = append(multipart, []byte(w)...)
 	}
-	msg := edge.NewDataMsg(1, uint32(0), multipart)
+	msg := edge.NewDataMsg(1, multipart)
 	msg.Headers.PutUint32Header(edge.FlagsHeader, uint32(edge.MULTIPART_MSG))
 	_ = readQ.PutSequenced(msg)
-	msg = edge.NewDataMsg(1, uint32(0), nil)
+	msg = edge.NewDataMsg(1, nil)
 	msg.Headers.PutUint32Header(edge.FlagsHeader, uint32(edge.FIN))
 	err := readQ.PutSequenced(msg)
 	if err != nil {
@@ -173,6 +183,10 @@ func TestReadMultipart(t *testing.T) {
 }
 
 type NoopTestChannel struct {
+}
+
+func (ch *NoopTestChannel) GetUserData() interface{} {
+	return nil
 }
 
 func (ch *NoopTestChannel) Headers() map[int32][]byte {

@@ -1,3 +1,72 @@
+# Release notes 1.1.0
+
+## What's New
+
+* Experimental support for sdk based flow-control
+* Config change for multiple underlays
+
+## SDK Flow Control
+
+If the router being connected to supports it, the sdk can now manage flow control 
+instead of delegating that to the router. This is mostly important when running
+multiple simultaneous circuits throught the SDK. When running multiple circuits,
+a slow circuit can get stalled at the router because of flow control back-pressure.
+This then back-pressures all circuits from the SDK to that router. 
+
+By moving the flow-control to the SDK, a slow circuit will not negatively impact
+other circuits to the same router. This is currently enabled in the `DialOptions`
+and `ListenOptions` for the dial and hosting sides respectively.
+
+```
+t := true
+dialOptions := &ziti.DialOptions{
+    ConnectTimeout: wf.ConnectTimeout,
+    SdkFlowControl: &t,
+}
+
+listenOptions := ziti.DefaultListenOptions()
+listenOptions.SdkFlowControl = &t
+```
+
+As this is an experimental feature, the configuration may change or be removed
+in the future.
+
+## Config Changes
+
+The multi-underlay configuration has changed. There are now two settings.
+
+```
+// If set to a number greater than one, the sdk will attempt to create multiple connections to edge routers.
+// This configuration value should not be considered part of the stable API yet. It currently defaults to one,
+// but it may default to a larger number at some point in the future or be removed. If set to zero, it will
+// be reset to one.
+MaxDefaultConnections uint32 `json:"-"`
+
+// If set to a number greater than zero, the sdk will attempt to create one or more separate connection to
+// each edge routers for control plane data, such as dials. This configuration value should not be considered
+// part of the stable API yet. It currently defaults to zero, but it may default to 1 at some point in the future
+// or be removed.
+MaxControlConnections uint32 `json:"-"`
+```
+
+The old `EnableSeparateControlPlaneConnection` setting is gone. Set `MaxControlConnections` to 1 to enable 
+separation of control plane data.
+
+Note that while present, the `MaxDefaultConnections` should not be used yet.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.0.2 -> v1.1.0](https://github.com/openziti/sdk-golang/compare/v1.0.2...v1.1.0)
+    * [Issue #702](https://github.com/openziti/sdk-golang/issues/702) - [Go SDK] Support xgress flow control from the SDK
+
+* github.com/openziti/channel/v4: [v4.0.4 -> v4.0.6](https://github.com/openziti/channel/compare/v4.0.4...v4.0.6)
+    * [Issue #182](https://github.com/openziti/channel/issues/182) - MultiListener can deadlock
+    * [Issue #180](https://github.com/openziti/channel/issues/180) - Add GetUserData to Channel interface
+
+* github.com/openziti/identity: [v1.0.100 -> v1.0.101](https://github.com/openziti/identity/compare/v1.0.100...v1.0.101)
+    * [Issue #64](https://github.com/openziti/identity/issues/64) - Support a way to check if a cert/serverCert can be saved
+
+
 # Release notes 1.0.2
 
 ## Issues Fixed and Dependency Updates

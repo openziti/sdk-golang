@@ -18,24 +18,28 @@ package edge
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/uuidz"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	ContentTypeConnect            = int32(edge_client_pb.ContentType_ConnectType)
-	ContentTypeStateConnected     = int32(edge_client_pb.ContentType_StateConnectedType)
-	ContentTypeStateClosed        = int32(edge_client_pb.ContentType_StateClosedType)
-	ContentTypeData               = int32(edge_client_pb.ContentType_DataType)
-	ContentTypeDial               = int32(edge_client_pb.ContentType_DialType)
-	ContentTypeDialSuccess        = int32(edge_client_pb.ContentType_DialSuccessType)
-	ContentTypeDialFailed         = int32(edge_client_pb.ContentType_DialFailedType)
-	ContentTypeBind               = int32(edge_client_pb.ContentType_BindType)
-	ContentTypeUnbind             = int32(edge_client_pb.ContentType_UnbindType)
-	ContentTypeStateSessionEnded  = int32(edge_client_pb.ContentType_StateSessionEndedType)
+	ContentTypeConnect        = int32(edge_client_pb.ContentType_ConnectType)
+	ContentTypeStateConnected = int32(edge_client_pb.ContentType_StateConnectedType)
+	ContentTypeStateClosed    = int32(edge_client_pb.ContentType_StateClosedType)
+	ContentTypeData           = int32(edge_client_pb.ContentType_DataType)
+	ContentTypeDial           = int32(edge_client_pb.ContentType_DialType)
+	ContentTypeDialSuccess    = int32(edge_client_pb.ContentType_DialSuccessType)
+	ContentTypeDialFailed     = int32(edge_client_pb.ContentType_DialFailedType)
+	ContentTypeBind           = int32(edge_client_pb.ContentType_BindType)
+	ContentTypeUnbind         = int32(edge_client_pb.ContentType_UnbindType)
+
+	// ContentTypeStateSessionEnded  = int32(edge_client_pb.ContentType_StateSessionEndedType)
+
 	ContentTypeProbe              = int32(edge_client_pb.ContentType_ProbeType)
 	ContentTypeUpdateBind         = int32(edge_client_pb.ContentType_UpdateBindType)
 	ContentTypeHealthEvent        = int32(edge_client_pb.ContentType_HealthEventType)
@@ -43,14 +47,22 @@ const (
 	ContentTypeTraceRouteResponse = int32(edge_client_pb.ContentType_TraceRouteResponseType)
 
 	ContentTypeConnInspectRequest  = int32(edge_client_pb.ContentType_ConnInspectRequest)
-	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_ConnInspectResponse)
-	ContentTypeBindSuccess         = int32(edge_client_pb.ContentType_BindSuccess)
+	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_InspectResponse)
+	ContentTypeInspectRequest      = int32(edge_client_pb.ContentType_InspectRequest)
+	ContentTypeInspectResponse     = int32(edge_client_pb.ContentType_ConnInspectResponse)
+
+	ContentTypeBindSuccess = int32(edge_client_pb.ContentType_BindSuccess)
 
 	ContentTypeUpdateToken        = int32(edge_client_pb.ContentType_UpdateTokenType)
 	ContentTypeUpdateTokenSuccess = int32(edge_client_pb.ContentType_UpdateTokenSuccessType)
 	ContentTypeUpdateTokenFailure = int32(edge_client_pb.ContentType_UpdateTokenFailureType)
 
 	ContentTypePostureResponse = int32(edge_client_pb.ContentType_PostureResponseType)
+
+	ContentTypeXgPayload         = int32(edge_client_pb.ContentType_XgPayloadType)
+	ContentTypeXgAcknowledgement = int32(edge_client_pb.ContentType_XgAcknowledgementType)
+	ContentTypeXgControl         = int32(edge_client_pb.ContentType_XgControlType)
+	ContentTypeXgClose           = int32(edge_client_pb.ContentType_XgCloseType)
 )
 
 const (
@@ -85,6 +97,10 @@ const (
 	ConnectionMarkerHeader         = int32(edge_client_pb.HeaderId_ConnectionMarker)
 	CircuitIdHeader                = int32(edge_client_pb.HeaderId_CircuitId)
 	StickinessTokenHeader          = int32(edge_client_pb.HeaderId_StickinessToken)
+	UseXgressToSdkHeader           = int32(edge_client_pb.HeaderId_UseXgressToSdk)
+	XgressCtrlIdHeader             = int32(edge_client_pb.HeaderId_XgressCtrlId)
+	XgressAddressHeader            = int32(edge_client_pb.HeaderId_XgressAddress)
+	InspectRequestValuesHeader     = int32(edge_client_pb.HeaderId_InspectRequestedValues)
 )
 
 const (
@@ -170,15 +186,14 @@ type MsgEvent struct {
 	Msg     *channel.Message
 }
 
-func newMsg(contentType int32, connId uint32, seq uint32, data []byte) *channel.Message {
+func newMsg(contentType int32, connId uint32, data []byte) *channel.Message {
 	msg := channel.NewMessage(contentType, data)
 	msg.PutUint32Header(ConnIdHeader, connId)
-	msg.PutUint32Header(SeqHeader, seq)
 	return msg
 }
 
-func NewDataMsg(connId uint32, seq uint32, data []byte) *channel.Message {
-	return newMsg(ContentTypeData, connId, seq, data)
+func NewDataMsg(connId uint32, data []byte) *channel.Message {
+	return newMsg(ContentTypeData, connId, data)
 }
 
 func NewProbeMsg() *channel.Message {
@@ -211,8 +226,28 @@ func NewConnInspectResponse(connId uint32, connType ConnType, state string) *cha
 	return msg
 }
 
+func NewInspectRequest(connId *uint32, requestedValues ...string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeInspectRequest, nil)
+	if connId != nil {
+		msg.PutUint32Header(ConnIdHeader, *connId)
+	}
+	msg.PutStringSliceHeader(InspectRequestValuesHeader, requestedValues)
+	return msg
+}
+
+func NewInspectResponse(connId uint32, resp *inspect.SdkInspectResponse) (*channel.Message, error) {
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := channel.NewMessage(ContentTypeInspectResponse, b)
+	msg.PutUint32Header(ConnIdHeader, connId)
+	return msg, nil
+}
+
 func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOptions) *channel.Message {
-	msg := newMsg(ContentTypeConnect, connId, 0, []byte(token))
+	msg := newMsg(ContentTypeConnect, connId, []byte(token))
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
 		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
@@ -234,23 +269,24 @@ func NewConnectMsg(connId uint32, token string, pubKey []byte, options *DialOpti
 }
 
 func NewStateConnectedMsg(connId uint32) *channel.Message {
-	return newMsg(ContentTypeStateConnected, connId, 0, nil)
+	return newMsg(ContentTypeStateConnected, connId, nil)
 }
 
 func NewStateClosedMsg(connId uint32, message string) *channel.Message {
-	return newMsg(ContentTypeStateClosed, connId, 0, []byte(message))
+	return newMsg(ContentTypeStateClosed, connId, []byte(message))
 }
 
 func NewDialMsg(connId uint32, token string, callerId string) *channel.Message {
-	msg := newMsg(ContentTypeDial, connId, 0, []byte(token))
+	msg := newMsg(ContentTypeDial, connId, []byte(token))
 	msg.Headers[CallerIdHeader] = []byte(callerId)
 	return msg
 }
 
 func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptions) *channel.Message {
-	msg := newMsg(ContentTypeBind, connId, 0, []byte(token))
+	msg := newMsg(ContentTypeBind, connId, []byte(token))
 	msg.PutBoolHeader(SupportsInspectHeader, true)
 	msg.PutBoolHeader(SupportsBindSuccessHeader, true)
+	msg.PutBoolHeader(UseXgressToSdkHeader, options.SdkFlowControl)
 
 	if pubKey != nil {
 		msg.Headers[PublicKeyHeader] = pubKey
@@ -283,11 +319,11 @@ func NewBindMsg(connId uint32, token string, pubKey []byte, options *ListenOptio
 }
 
 func NewUnbindMsg(connId uint32, token string) *channel.Message {
-	return newMsg(ContentTypeUnbind, connId, 0, []byte(token))
+	return newMsg(ContentTypeUnbind, connId, []byte(token))
 }
 
 func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Precedence) *channel.Message {
-	msg := newMsg(ContentTypeUpdateBind, connId, 0, []byte(token))
+	msg := newMsg(ContentTypeUpdateBind, connId, []byte(token))
 	if cost != nil {
 		msg.PutUint16Header(CostHeader, *cost)
 	}
@@ -298,7 +334,7 @@ func NewUpdateBindMsg(connId uint32, token string, cost *uint16, precedence *Pre
 }
 
 func NewHealthEventMsg(connId uint32, token string, pass bool) *channel.Message {
-	msg := newMsg(ContentTypeHealthEvent, connId, 0, []byte(token))
+	msg := newMsg(ContentTypeHealthEvent, connId, []byte(token))
 	msg.PutBoolHeader(HealthStatusHeader, pass)
 	return msg
 }
@@ -306,16 +342,12 @@ func NewHealthEventMsg(connId uint32, token string, pass bool) *channel.Message 
 func NewDialSuccessMsg(connId uint32, newConnId uint32) *channel.Message {
 	newConnIdBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(newConnIdBytes, newConnId)
-	msg := newMsg(ContentTypeDialSuccess, connId, 0, newConnIdBytes)
+	msg := newMsg(ContentTypeDialSuccess, connId, newConnIdBytes)
 	return msg
 }
 
 func NewDialFailedMsg(connId uint32, message string) *channel.Message {
-	return newMsg(ContentTypeDialFailed, connId, 0, []byte(message))
-}
-
-func NewStateSessionEndedMsg(reason string) *channel.Message {
-	return newMsg(ContentTypeStateSessionEnded, 0, 0, []byte(reason))
+	return newMsg(ContentTypeDialFailed, connId, []byte(message))
 }
 
 // NewUpdateTokenMsg creates a message sent to edge routers to update the token that
