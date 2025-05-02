@@ -18,13 +18,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.0.6
-	github.com/openziti/edge-api v0.26.42
-	github.com/openziti/foundation/v2 v2.0.59
+	github.com/openziti/channel/v4 v4.1.1
+	github.com/openziti/edge-api v0.26.43
+	github.com/openziti/foundation/v2 v2.0.60
 	github.com/openziti/identity v1.0.101
 	github.com/openziti/metrics v1.4.1
-	github.com/openziti/secretstream v0.1.32
-	github.com/openziti/transport/v2 v2.0.168
+	github.com/openziti/secretstream v0.1.33
+	github.com/openziti/transport/v2 v2.0.170
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -79,11 +79,11 @@ require (
 	go.opentelemetry.io/otel v1.29.0 // indirect
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/term v0.31.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect

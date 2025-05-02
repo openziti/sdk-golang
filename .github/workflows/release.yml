@@ -1,0 +1,44 @@
+# builds on vX.X.X PUSH to main only. Generates versioned binaries, vX.X.X tags, and GitHub releases
+name: release-builds
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Install Ziti CI
+        uses: openziti/ziti-ci@v1
+
+      - name: Test
+        run: |
+          go test ./...
+
+      - name: Create Release Notes
+        run: |
+          $(go env GOPATH)/bin/ziti-ci get-release-notes CHANGELOG.md > changelog.tmp
+
+      - name: Create Release w/ Notes
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body_path: changelog.tmp

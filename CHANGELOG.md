@@ -1,3 +1,23 @@
+# Release notes 1.1.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.1.0 -> v1.1.1](https://github.com/openziti/sdk-golang/compare/v1.1.0...v1.1.1)
+    * [Issue #702](https://github.com/openziti/sdk-golang/issues/702) - [Go SDK] Support xgress flow control from the SDK
+
+* github.com/openziti/channel/v4: [v4.0.6 -> v4.1.1](https://github.com/openziti/channel/compare/v4.0.6...v4.1.1)
+    * [Issue #185](https://github.com/openziti/channel/issues/185) - Add group secret for multi-underlay channels
+
+* github.com/openziti/edge-api: [v0.26.42 -> v0.26.43](https://github.com/openziti/edge-api/compare/v0.26.42...v0.26.43)
+* github.com/openziti/foundation/v2: [v2.0.59 -> v2.0.60](https://github.com/openziti/foundation/compare/v2.0.59...v2.0.60)
+* github.com/openziti/secretstream: [v0.1.32 -> v0.1.33](https://github.com/openziti/secretstream/compare/v0.1.32...v0.1.33)
+* github.com/openziti/transport/v2: [v2.0.168 -> v2.0.170](https://github.com/openziti/transport/compare/v2.0.168...v2.0.170)
+* golang.org/x/crypto: v0.36.0 -> v0.37.0
+* golang.org/x/net: v0.38.0 -> v0.39.0
+* golang.org/x/sync: v0.12.0 -> v0.13.0
+* golang.org/x/term: v0.30.0 -> v0.31.0
+* golang.org/x/text: v0.23.0 -> v0.24.0
+
 # Release notes 1.1.0
 
 ## What's New
