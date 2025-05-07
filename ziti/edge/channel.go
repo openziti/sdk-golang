@@ -186,10 +186,11 @@ func (self *DialSdkChannel) DialFailed(_ channel.MultiChannel, _ string, attempt
 	time.Sleep(delay)
 }
 
-func (self *DialSdkChannel) CreateGroupedUnderlay(groupId string, underlayType string, timeout time.Duration) (channel.Underlay, error) {
+func (self *DialSdkChannel) CreateGroupedUnderlay(groupId string, groupSecret []byte, underlayType string, timeout time.Duration) (channel.Underlay, error) {
 	return self.dialer.CreateWithHeaders(timeout, map[int32][]byte{
 		channel.TypeHeader:         []byte(underlayType),
 		channel.ConnectionIdHeader: []byte(groupId),
+		channel.GroupSecretHeader:  groupSecret,
 		channel.IsGroupedHeader:    {1},
 	})
 }
