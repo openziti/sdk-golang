@@ -193,6 +193,7 @@ type ContextImpl struct {
 	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
 
 	events.EventEmmiter
+	authAttemptLock                 sync.Mutex
 	lastSuccessfulApiSessionRefresh time.Time
 	routerProxy                     func(addr string) *transport.ProxyConfiguration
 
@@ -664,12 +665,14 @@ func (context *ContextImpl) refreshSessions() {
 }
 
 func (context *ContextImpl) RefreshServices() error {
-	return context.refreshServices(true)
+	return context.refreshServices(true, false)
 }
 
-func (context *ContextImpl) refreshServices(forceCheck bool) error {
-	if err := context.ensureApiSession(); err != nil {
-		return fmt.Errorf("failed to refresh services: %v", err)
+func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool) error {
+	if !refreshAfterAuth { // if in authenticate mutex, can't re-auth
+		if err := context.ensureApiSession(); err != nil {
+			return fmt.Errorf("failed to refresh services: %v", err)
+		}
 	}
 
 	var checkService bool
@@ -677,28 +680,35 @@ func (context *ContextImpl) refreshServices(forceCheck bool) error {
 	var err error
 
 	log := pfxlog.Logger()
-	log.Debug("checking if service updates available")
-	if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-		log.WithError(err).Error("failed to check if service list update is available")
-		target := &current_api_session.ListServiceUpdatesUnauthorized{}
-		if errors.As(err, &target) {
-			checkService = true
-		} else {
-			if err = context.Authenticate(); err != nil {
-				log.WithError(err).Error("unable to re-authenticate during session refresh")
+
+	if !forceRefresh {
+		log.Debug("checking if service updates available")
+		if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
+			log.WithError(err).Error("failed to check if service list update is available")
+			target := &current_api_session.ListServiceUpdatesUnauthorized{}
+			if errors.As(err, &target) {
+				checkService = true
 			} else {
-				if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-					checkService = true
+				if err = context.Authenticate(); err != nil {
+					log.WithError(err).Error("unable to re-authenticate during session refresh")
+				} else {
+					if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
+						checkService = true
+					}
 				}
 			}
 		}
 	}
 
-	if checkService || forceCheck {
+	if checkService || forceRefresh {
 		log.Debug("refreshing services")
 
 		services, err := context.CtrlClt.GetServices()
 		if err != nil {
+			if refreshAfterAuth { // in authenticate mutex, can't re-auth
+				return err
+			}
+
 			target := &service.ListServicesUnauthorized{}
 			if errors.As(err, &target) {
 				log.Info("attempting to re-authenticate")
@@ -831,7 +841,7 @@ func (context *ContextImpl) runRefreshes() {
 
 		case <-svcRefreshTick.C:
 			log.Debug("refreshing services")
-			if err := context.refreshServices(false); err != nil {
+			if err := context.refreshServices(false, false); err != nil {
 				log.WithError(err).Error("failed to load service updates")
 			}
 
@@ -939,6 +949,9 @@ func (context *ContextImpl) Reauthenticate() error {
 }
 
 func (context *ContextImpl) Authenticate() error {
+	context.authAttemptLock.Lock()
+	defer context.authAttemptLock.Unlock()
+
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		if time.Since(context.lastSuccessfulApiSessionRefresh) < 5*time.Second {
 			return nil
@@ -1013,7 +1026,7 @@ func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
 	context.Emit(EventAuthenticationStateFull, apiSession)
 
 	// get services
-	if err := context.RefreshServices(); err != nil {
+	if err := context.refreshServices(true, true); err != nil {
 		doOnceErr = err
 	}
 
@@ -1668,7 +1681,7 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 
 		var createSessionNotFound = &rest_session.CreateSessionNotFound{}
 		if errors.As(err, &createSessionNotFound) {
-			if refreshErr := context.refreshServices(false); refreshErr != nil {
+			if refreshErr := context.refreshServices(false, false); refreshErr != nil {
 				logger.WithError(refreshErr).Info("failed to refresh services after create session returned 404 (likely for service)")
 			}
 		}

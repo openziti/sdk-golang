@@ -94,7 +94,7 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.1.3 // indirect
+	github.com/openziti/channel/v4 v4.2.0 // indirect
 	github.com/openziti/edge-api v0.26.45 // indirect
 	github.com/openziti/foundation/v2 v2.0.63 // indirect
 	github.com/openziti/identity v1.0.101 // indirect

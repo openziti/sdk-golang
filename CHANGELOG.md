@@ -9,7 +9,13 @@ server side, so if the feature is enabled, router version 1.6.2+ will be require
 
 ## Issues Fixed and Dependency Updates
 
+# Release notes 1.1.1
+
+## Issues Fixed and Dependency Updates
+
 * github.com/openziti/sdk-golang: [v1.1.0 -> v1.1.1](https://github.com/openziti/sdk-golang/compare/v1.1.0...v1.1.1)
+    * [Issue #735](https://github.com/openziti/sdk-golang/issues/735) - Ensure Authenticate can't be called in parallel
+
 * github.com/openziti/channel/v4: [v4.0.6 -> v4.1.3](https://github.com/openziti/channel/compare/v4.0.6...v4.1.3)
     * [Issue #187](https://github.com/openziti/channel/issues/187) - Allow fallback to regular channel when 'is grouped' isn't set when using multi-listener
     * [Issue #185](https://github.com/openziti/channel/issues/185) - Add group secret for multi-underlay channels
@@ -25,6 +31,7 @@ server side, so if the feature is enabled, router version 1.6.2+ will be require
 * golang.org/x/sync: v0.12.0 -> v0.14.0
 * golang.org/x/term: v0.30.0 -> v0.32.0
 * golang.org/x/text: v0.23.0 -> v0.25.0
+
 
 # Release notes 1.1.0
 
