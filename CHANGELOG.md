@@ -1,22 +1,30 @@
 # Release notes 1.1.1
 
+## Multi-underlay channel group secret
+
+For additional security the experimental multi-underlay channel code now requires that 
+clients provide a shared secret. This ensures that channels are get the expected 
+underlays without requiring much larger group ids. This will require support on the
+server side, so if the feature is enabled, router version 1.6.2+ will be required.
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.1.0 -> v1.1.1](https://github.com/openziti/sdk-golang/compare/v1.1.0...v1.1.1)
-    * [Issue #702](https://github.com/openziti/sdk-golang/issues/702) - [Go SDK] Support xgress flow control from the SDK
-
-* github.com/openziti/channel/v4: [v4.0.6 -> v4.1.1](https://github.com/openziti/channel/compare/v4.0.6...v4.1.1)
+* github.com/openziti/channel/v4: [v4.0.6 -> v4.1.3](https://github.com/openziti/channel/compare/v4.0.6...v4.1.3)
+    * [Issue #187](https://github.com/openziti/channel/issues/187) - Allow fallback to regular channel when 'is grouped' isn't set when using multi-listener
     * [Issue #185](https://github.com/openziti/channel/issues/185) - Add group secret for multi-underlay channels
 
-* github.com/openziti/edge-api: [v0.26.42 -> v0.26.43](https://github.com/openziti/edge-api/compare/v0.26.42...v0.26.43)
-* github.com/openziti/foundation/v2: [v2.0.59 -> v2.0.60](https://github.com/openziti/foundation/compare/v2.0.59...v2.0.60)
-* github.com/openziti/secretstream: [v0.1.32 -> v0.1.33](https://github.com/openziti/secretstream/compare/v0.1.32...v0.1.33)
-* github.com/openziti/transport/v2: [v2.0.168 -> v2.0.170](https://github.com/openziti/transport/compare/v2.0.168...v2.0.170)
-* golang.org/x/crypto: v0.36.0 -> v0.37.0
-* golang.org/x/net: v0.38.0 -> v0.39.0
-* golang.org/x/sync: v0.12.0 -> v0.13.0
-* golang.org/x/term: v0.30.0 -> v0.31.0
-* golang.org/x/text: v0.23.0 -> v0.24.0
+* github.com/openziti/edge-api: [v0.26.42 -> v0.26.45](https://github.com/openziti/edge-api/compare/v0.26.42...v0.26.45)
+* github.com/openziti/foundation/v2: [v2.0.59 -> v2.0.63](https://github.com/openziti/foundation/compare/v2.0.59...v2.0.63)
+* github.com/openziti/secretstream: [v0.1.32 -> v0.1.34](https://github.com/openziti/secretstream/compare/v0.1.32...v0.1.34)
+* github.com/openziti/transport/v2: [v2.0.168 -> v2.0.171](https://github.com/openziti/transport/compare/v2.0.168...v2.0.171)
+* golang.org/x/oauth2: v0.29.0 -> v0.30.0
+* golang.org/x/sys: v0.32.0 -> v0.33.0
+* golang.org/x/crypto: v0.36.0 -> v0.38.0
+* golang.org/x/net: v0.38.0 -> v0.40.0
+* golang.org/x/sync: v0.12.0 -> v0.14.0
+* golang.org/x/term: v0.30.0 -> v0.32.0
+* golang.org/x/text: v0.23.0 -> v0.25.0
 
 # Release notes 1.1.0
 
