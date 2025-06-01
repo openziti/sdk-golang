@@ -108,7 +108,6 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:      conn.msgMux,
 		serviceName: *service.Name,
-		connType:    ConnTypeDial,
 		marker:      newMarker(),
 	}
 
@@ -149,32 +148,29 @@ func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 	return fmt.Errorf("could not update token for router [%s]: %w", conn.Key(), err)
 }
 
-func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeConn {
+func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeHostConn {
 	id := conn.msgMux.GetNextId()
 
-	closeNotify := make(chan struct{})
-	edgeCh := &edgeConn{
-		closeNotify: closeNotify,
+	edgeCh := &edgeHostConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
 		msgMux:      conn.msgMux,
 		serviceName: *service.Name,
-		connType:    ConnTypeBind,
 		keyPair:     keyPair,
 		crypto:      keyPair != nil,
 		hosting:     cmap.New[*edgeListener](),
 	}
-	edgeCh.dataSink = &edgeCh.MsgChannel
 
-	// duplicate errors only happen on the server side, since client controls ids
+	// duplicate errors only happen on the server side, since the client controls ids
 	if err := conn.msgMux.AddMsgSink(edgeCh); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
+
 	pfxlog.Logger().WithField("connId", id).
 		WithField("routerName", conn.routerName).
 		WithField("serviceId", *service.ID).
 		WithField("serviceName", *service.Name).
 		Debug("created new listener connection")
+
 	return edgeCh
 }
 

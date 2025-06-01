@@ -91,7 +91,7 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 type edgeListener struct {
 	baseListener
 	token       string
-	edgeChan    *edgeConn
+	edgeChan    *edgeHostConn
 	manualStart bool
 	established atomic.Bool
 	eventC      chan *edge.ListenerEvent

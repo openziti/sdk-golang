@@ -1603,7 +1603,7 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 	cache := string(sessionType) == string(SessionDial)
 
 	// Can't cache Bind sessions, as we use session tokens for routing. If there are multiple binds on a single
-	// session routing information will get overwritten
+	// session, routing information will get overwritten
 	if cache {
 		session, ok := context.sessions.Get(sessionKey)
 		if ok {

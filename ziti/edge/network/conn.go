@@ -38,7 +38,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -59,7 +58,6 @@ type edgeConn struct {
 	readQ                 *noopSeq[*channel.Message]
 	inBuffer              [][]byte
 	msgMux                edge.MsgMux
-	hosting               cmap.ConcurrentMap[string, *edgeListener]
 	flags                 uint32
 	closed                atomic.Bool
 	closeNotify           chan struct{}
@@ -68,7 +66,6 @@ type edgeConn struct {
 	serviceName           string
 	sourceIdentity        string
 	acceptCompleteHandler *newConnHandler
-	connType              ConnType
 	marker                string
 	circuitId             string
 	customState           map[int32][]byte
@@ -126,25 +123,9 @@ func (conn *edgeConn) Inspect() string {
 	result["serviceName"] = conn.serviceName
 	result["closed"] = conn.closed.Load()
 	result["encryptionRequired"] = conn.crypto
-
-	if conn.connType == ConnTypeDial {
-		result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
-		result["readFIN"] = conn.readFIN.Load()
-		result["sentFIN"] = conn.sentFIN.Load()
-	}
-
-	if conn.connType == ConnTypeBind {
-		hosting := map[string]interface{}{}
-		for entry := range conn.hosting.IterBuffered() {
-			hosting[entry.Key] = map[string]interface{}{
-				"closed":      entry.Val.closed.Load(),
-				"manualStart": entry.Val.manualStart,
-				"serviceId":   *entry.Val.service.ID,
-				"serviceName": *entry.Val.service.Name,
-			}
-		}
-		result["hosting"] = hosting
-	}
+	result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
+	result["readFIN"] = conn.readFIN.Load()
+	result["sentFIN"] = conn.sentFIN.Load()
 
 	jsonOutput, err := json.Marshal(result)
 	if err != nil {
@@ -157,7 +138,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 	conn.TraceMsg("Accept", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnType(conn.connType), conn.Inspect())
+		resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
 		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("failed to send inspect response")
@@ -165,81 +146,55 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		return
 	}
 
-	switch conn.connType {
-	case ConnTypeDial:
-		switch msg.ContentType {
-		case edge.ContentTypeXgPayload:
-			conn.HandleXgPayload(msg)
-			return
+	switch msg.ContentType {
+	case edge.ContentTypeXgPayload:
+		conn.HandleXgPayload(msg)
+		return
 
-		case edge.ContentTypeXgAcknowledgement:
-			conn.HandleXgAcknowledgement(msg)
-			return
+	case edge.ContentTypeXgAcknowledgement:
+		conn.HandleXgAcknowledgement(msg)
+		return
 
-		case edge.ContentTypeStateClosed:
-			if conn.IsClosed() {
-				return
-			}
-			conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
-
-		case edge.ContentTypeInspectRequest:
-			conn.HandleInspect(msg)
-			return
-
-		case edge.ContentTypeTraceRoute:
-			hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
-			if hops > 0 {
-				hops--
-				msg.PutUint32Header(edge.TraceHopCountHeader, hops)
-			}
-
-			ts, _ := msg.GetUint64Header(edge.TimestampHeader)
-			connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-			resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
-
-			sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
-			resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-
-			if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
-				resp.Headers[edge.UUIDHeader] = msgUUID
-			}
-
-			if err := conn.GetControlSender().Send(resp); err != nil {
-				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-					Error("failed to send trace route response")
-			}
+	case edge.ContentTypeStateClosed:
+		if conn.IsClosed() {
 			return
 		}
+		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
-		if err := conn.readQ.PutSequenced(msg); err != nil {
+	case edge.ContentTypeInspectRequest:
+		conn.HandleInspect(msg)
+		return
+
+	case edge.ContentTypeTraceRoute:
+		hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+		if hops > 0 {
+			hops--
+			msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+		}
+
+		ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+		connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+		resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
+
+		sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+		resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+
+		if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+			resp.Headers[edge.UUIDHeader] = msgUUID
+		}
+
+		if err := conn.GetControlSender().Send(resp); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("error pushing edge message to sequencer")
-		} else {
-			logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+				Error("failed to send trace route response")
 		}
+		return
+	}
 
-	case ConnTypeBind:
-		if msg.ContentType == edge.ContentTypeDial {
-			newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithField("newConnId", newConnId).Debug("received dial request")
-			go conn.newChildConnection(msg)
-		} else if msg.ContentType == edge.ContentTypeStateClosed {
-			conn.close(true)
-		} else if msg.ContentType == edge.ContentTypeBindSuccess {
-			for entry := range conn.hosting.IterBuffered() {
-				entry.Val.established.Store(true)
-				event := &edge.ListenerEvent{
-					EventType: edge.ListenerEstablished,
-				}
-				select {
-				case entry.Val.eventC <- event:
-				default:
-					logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
-				}
-			}
-		}
-	default:
-		logrus.WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
+	if err := conn.readQ.PutSequenced(msg); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("error pushing edge message to sequencer")
+	} else {
+		logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 	}
 }
 
@@ -314,23 +269,19 @@ func (conn *edgeConn) HandleInspect(msg *channel.Message) {
 }
 
 func (conn *edgeConn) GetCircuitDetail() *xgress.CircuitDetail {
-	if conn.connType == ConnTypeDial {
-		detail := &xgress.CircuitDetail{
-			CircuitId: conn.circuitId,
-			ConnId:    conn.Id(),
-		}
-
-		if conn.xgCircuit != nil {
-			detail.IsXgress = true
-			detail.Originator = conn.xgCircuit.xg.Originator().String()
-			detail.Address = string(conn.xgCircuit.xg.Address())
-			detail.CtrlId = conn.xgCircuit.xg.CtrlId()
-		}
-
-		return detail
+	detail := &xgress.CircuitDetail{
+		CircuitId: conn.circuitId,
+		ConnId:    conn.Id(),
 	}
 
-	return nil
+	if conn.xgCircuit != nil {
+		detail.IsXgress = true
+		detail.Originator = conn.xgCircuit.xg.Originator().String()
+		detail.Address = string(conn.xgCircuit.xg.Address())
+		detail.CtrlId = conn.xgCircuit.xg.CtrlId()
+	}
+
+	return detail
 }
 
 func (conn *edgeConn) returnInspectResponse(msg *channel.Message, resp *inspect.SdkInspectResponse) {
@@ -562,78 +513,6 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
-func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions, envF func() xgress.Env) (*edgeListener, error) {
-	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
-		WithField("connId", conn.Id()).
-		WithField("serviceName", *service.Name).
-		WithField("sessionId", *session.ID)
-
-	listener := &edgeListener{
-		baseListener: baseListener{
-			service: service,
-			acceptC: make(chan edge.Conn, 10),
-			errorC:  make(chan error, 1),
-		},
-		token:       *session.Token,
-		edgeChan:    conn,
-		manualStart: options.ManualStart,
-		eventC:      options.GetEventChannel(),
-		envF:        envF,
-	}
-	logger.Debug("adding listener for session")
-	conn.hosting.Set(*session.Token, listener)
-
-	success := false
-	defer func() {
-		if !success {
-			logger.Debug("removing listener for session")
-			conn.unbind(logger, listener.token)
-		}
-	}()
-
-	logger.Debug("sending bind request to edge router")
-	var pub []byte
-	if conn.crypto {
-		pub = conn.keyPair.Public()
-	}
-	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)
-	conn.TraceMsg("listen", bindRequest)
-	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.GetControlSender())
-	if err != nil {
-		logger.WithError(err).Error("failed to bind")
-		return nil, err
-	}
-
-	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		msg := string(replyMsg.Body)
-		logger.Errorf("bind request resulted in disconnect. msg: (%v)", msg)
-		return nil, errors.Errorf("attempt to use closed connection: %v", msg)
-	}
-
-	if replyMsg.ContentType != edge.ContentTypeStateConnected {
-		logger.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-	}
-
-	success = true
-	logger.Debug("connected")
-
-	return listener, nil
-}
-
-func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
-	logger.Debug("starting unbind")
-
-	conn.hosting.Remove(token)
-
-	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
-	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-		logger.WithError(err).Error("unable to send unbind msg for conn")
-	} else {
-		logger.Debug("unbind message sent successfully")
-	}
-}
-
 func (conn *edgeConn) Read(p []byte) (int, error) {
 	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
 	if conn.closed.Load() {
@@ -777,142 +656,6 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	if conn.xgCircuit == nil {
 		conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 	}
-
-	if conn.connType == ConnTypeBind {
-		for entry := range conn.hosting.IterBuffered() {
-			listener := entry.Val
-			if err := listener.close(closedByRemote); err != nil {
-				log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
-			}
-		}
-	}
-}
-
-func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
-	return conn.hosting.Get(token)
-}
-
-func (conn *edgeConn) newChildConnection(message *channel.Message) {
-	token := string(message.Body)
-	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
-	logger := pfxlog.Logger().WithField("connId", conn.Id())
-	if circuitId != "" {
-		logger = logger.WithField("circuitId", circuitId)
-	}
-	logger.WithField("token", token).Debug("logging token")
-
-	logger.Debug("looking up listener")
-	listener, found := conn.getListener(token)
-	if !found {
-		logger.Warn("listener not found")
-		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	logger.Debug("listener found. checking for router provided connection id")
-
-	id, routerProvidedConnId := message.GetUint32Header(edge.RouterProvidedConnId)
-	if routerProvidedConnId {
-		logger.Debugf("using router provided connection id %v", id)
-	} else {
-		id = conn.msgMux.GetNextId()
-		logger.Debugf("listener found. generating id for new connection: %v", id)
-	}
-
-	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
-	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
-
-	closeNotify := make(chan struct{})
-	edgeCh := &edgeConn{
-		closeNotify:    closeNotify,
-		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:         conn.msgMux,
-		sourceIdentity: sourceIdentity,
-		crypto:         conn.crypto,
-		appData:        message.Headers[edge.AppDataHeader],
-		connType:       ConnTypeDial,
-		marker:         marker,
-		circuitId:      circuitId,
-	}
-
-	newConnLogger := pfxlog.Logger().
-		WithField("marker", marker).
-		WithField("connId", id).
-		WithField("parentConnId", conn.Id()).
-		WithField("token", token).
-		WithField("circuitId", token)
-
-	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
-	if err != nil {
-		conn.close(true)
-
-		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	if err = edgeCh.setupFlowControl(message, xgress.Terminator, listener.envF); err != nil {
-		logger.WithError(err).Error("failed to start flow control")
-		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("failed to start flow control (%s)", err.Error()))
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	var txHeader []byte
-	if edgeCh.crypto {
-		newConnLogger.Debug("setting up crypto")
-		clientKey := message.Headers[edge.PublicKeyHeader]
-		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
-
-		if clientKey != nil {
-			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
-				logger.WithError(err).Error("failed to establish crypto session")
-			}
-		} else {
-			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
-		}
-	}
-
-	if err != nil {
-		conn.close(true)
-		newConnLogger.WithError(err).Error("failed to establish connection")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	connHandler := &newConnHandler{
-		conn:                 conn,
-		edgeCh:               edgeCh,
-		message:              message,
-		txHeader:             txHeader,
-		routerProvidedConnId: routerProvidedConnId,
-		circuitId:            circuitId,
-	}
-
-	if listener.manualStart {
-		edgeCh.acceptCompleteHandler = connHandler
-	} else if err := connHandler.dialSucceeded(); err != nil {
-		logger.Debug("calling dial succeeded")
-		return
-	}
-
-	listener.acceptC <- edgeCh
 }
 
 func (conn *edgeConn) GetAppData() []byte {
@@ -965,7 +708,7 @@ func (conn *edgeConn) TraceRoute(hops uint32, timeout time.Duration) (*edge.Trac
 }
 
 type newConnHandler struct {
-	conn                 *edgeConn
+	conn                 *edgeHostConn
 	edgeCh               *edgeConn
 	message              *channel.Message
 	txHeader             []byte
