@@ -19,6 +19,7 @@ package ziti
 import (
 	"crypto/x509"
 	"encoding/json"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
@@ -114,6 +115,21 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 
 	if err != nil {
 		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
+	}
+
+	c.RouterProxy = func(addr string) *transport.ProxyConfiguration {
+		// Parse the HTTPS_PROXY env (or https:// proxy setting) for this address
+		req := &http.Request{URL: &url.URL{Host: addr}}
+		proxyURL, errProxy := http.ProxyFromEnvironment(req)
+		pfxlog.Logger().Infof("!!!!!!!!url: %s, proxyURL: %v, errProxy: %v", addr, proxyURL, errProxy)
+		if proxyURL == nil {
+			return nil // no proxy
+		}
+		// Extract host:port from proxyURL and create ProxyConfiguration
+		return &transport.ProxyConfiguration{
+			Type:    transport.ProxyTypeHttpConnect,
+			Address: proxyURL.Host,
+		}
 	}
 
 	return &c, nil
