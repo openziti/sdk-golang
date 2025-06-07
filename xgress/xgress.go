@@ -245,7 +245,7 @@ func (self *Xgress) Start() {
 			time.AfterFunc(self.Options.CircuitStartTimeout, self.terminateIfNotStarted)
 		}
 	} else {
-		log.Debug("initiator: sending circuit start")
+		log.Info("initiator: sending circuit start")
 		go self.payloadBuffer.run()
 		_ = self.forwardPayload(self.GetStartCircuit(), context.Background())
 
@@ -313,7 +313,7 @@ func (self *Xgress) Unrouted() {
 }
 
 func (self *Xgress) CloseXgToClient() {
-	pfxlog.ContextLogger(self.Label()).Debug("close xg to client")
+	pfxlog.ContextLogger(self.Label()).Info("close xg to client")
 	if self.flags.CompareAndSet(closedTxer, false, true) {
 		close(self.closeNotify)
 	}
@@ -330,7 +330,7 @@ func (self *Xgress) Close() {
 	log := pfxlog.ContextLogger(self.Label())
 
 	if self.flags.CompareAndSet(closedFlag, false, true) {
-		log.Debug("closing xgress")
+		log.Info("closing xgress")
 
 		self.sendEndOfCircuit()
 
@@ -361,7 +361,7 @@ func (self *Xgress) Close() {
 
 func (self *Xgress) PeerClosed() {
 	log := pfxlog.ContextLogger(self.Label())
-	log.Debug("peer closed")
+	log.Info("peer closed")
 	self.CloseXgToClient()
 	self.CloseRxTimeout()
 }
@@ -425,7 +425,7 @@ func (self *Xgress) HandleControlReceive(controlType ControlType, headers channe
 
 func (self *Xgress) acceptPayload(payload *Payload) {
 	if payload.IsCircuitStartFlagSet() && self.firstCircuitStartReceived() {
-		pfxlog.ContextLogger(self.Label()).Debug("start received")
+		pfxlog.ContextLogger(self.Label()).Info("start received")
 		go self.payloadBuffer.run()
 		if !self.flags.IsSet(rxPushModeFlag) {
 			go self.rx()
@@ -470,7 +470,7 @@ func (self *Xgress) tx() {
 		if payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet() {
 			self.markCircuitEndReceived()
 			self.CloseXgToClient()
-			payloadLogger.Debug("circuit end payload received, exiting")
+			payloadLogger.Info("circuit end payload received, exiting")
 			return false
 		}
 
@@ -672,8 +672,8 @@ const (
 func (self *Xgress) rx() {
 	log := pfxlog.ContextLogger(self.Label())
 
-	log.Debugf("started with peer: %v", self.peer.LogContext())
-	defer log.Debug("exited")
+	log.Infof("started with peer: %v", self.peer.LogContext())
+	defer log.Info("exited")
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -695,7 +695,7 @@ func (self *Xgress) rx() {
 				if errors.Is(err, ErrPeerClosed) { // if the peer closed, we need to close the txer as well
 					self.CloseXgToClient()
 				}
-				log.Debugf("EOF, exiting xgress.rx loop")
+				log.Infof("EOF, exiting xgress.rx loop")
 			} else {
 				log.Warnf("read failed (%s)", err)
 			}

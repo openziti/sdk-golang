@@ -117,7 +117,7 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 }
 
 func (buffer *LinkSendBuffer) CloseWhenEmpty() bool {
-	pfxlog.ContextLogger(buffer.x.Label()).Debug("close when empty")
+	pfxlog.ContextLogger(buffer.x.Label()).Info("close when empty")
 	return buffer.closeWhenEmpty.CompareAndSwap(false, true)
 }
 
@@ -171,7 +171,7 @@ func (buffer *LinkSendBuffer) metrics() Metrics {
 
 func (buffer *LinkSendBuffer) Close() {
 	if buffer.closed.CompareAndSwap(false, true) {
-		pfxlog.ContextLogger(buffer.x.Label()).Debugf("[%p] closing", buffer)
+		pfxlog.ContextLogger(buffer.x.Label()).Infof("[%p] closing", buffer)
 		close(buffer.closeNotify)
 	}
 	buffer.x.closeIfRxAndTxDone()
