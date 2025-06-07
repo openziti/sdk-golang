@@ -1,9 +1,11 @@
 package network
 
 import (
+	"fmt"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
+	"math"
 	"testing"
 	"time"
 )
@@ -88,4 +90,9 @@ func Test_SeqReadWithInterrupt(t *testing.T) {
 	req.NotNil(err)
 	req.ErrorIs(err, &ReadTimout{})
 	req.True(time.Since(first) < time.Millisecond)
+}
+
+func Test_GetMaxMsgMux(t *testing.T) {
+	maxId := (math.MaxUint32 / 2) - 1
+	fmt.Printf("max id: %d\n", maxId)
 }

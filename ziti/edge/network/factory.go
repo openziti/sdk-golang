@@ -65,7 +65,7 @@ func NewEdgeConnFactory(routerName, key string, owner RouterConnOwner) edge.Rout
 	connFactory := &routerConn{
 		key:        key,
 		routerName: routerName,
-		msgMux:     edge.NewCowMapMsgMux(),
+		msgMux:     edge.NewMapMsgMux(),
 		owner:      owner,
 	}
 
