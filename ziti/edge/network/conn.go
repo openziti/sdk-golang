@@ -446,19 +446,19 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 		method, _ := replyMsg.GetByteHeader(edge.CryptoMethodHeader)
 		hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
 		if hostPubKey != nil {
-			logger.Debug("setting up end-to-end encryption")
+			logger.Info("setting up end-to-end encryption")
 			if err = conn.establishClientCrypto(conn.keyPair, hostPubKey, edge.CryptoMethod(method)); err != nil {
 				logger.WithError(err).Error("crypto failure")
 				_ = conn.Close()
 				return nil, err
 			}
-			logger.Debug("client tx encryption setup done")
+			logger.Info("client tx encryption setup done")
 		} else {
 			logger.Warn("connection is not end-to-end-encrypted")
 		}
 	}
 
-	logger.Debug("connected")
+	logger.Info("connected")
 
 	return conn, nil
 }
@@ -698,8 +698,8 @@ func (conn *edgeConn) close(closedByRemote bool) {
 
 	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 
-	log.Debug("close: begin")
-	defer log.Debug("close: end")
+	log.Info("close: begin")
+	defer log.Info("close: end")
 
 	if conn.xgCircuit == nil {
 		if !closedByRemote {
@@ -803,7 +803,7 @@ func (self *newConnHandler) dialSucceeded() error {
 		WithField("parentConnId", self.conn.Id()).
 		WithField("circuitId", self.circuitId)
 
-	newConnLogger.Debug("new connection established")
+	newConnLogger.Info("new connection established")
 
 	reply := edge.NewDialSuccessMsg(self.conn.Id(), self.edgeCh.Id())
 	reply.ReplyTo(self.message)
@@ -825,12 +825,12 @@ func (self *newConnHandler) dialSucceeded() error {
 	}
 
 	if self.txHeader != nil {
-		newConnLogger.Debug("sending crypto header")
+		newConnLogger.Info("sending crypto header")
 		if _, err := self.edgeCh.dataSink.Write(self.txHeader); err != nil {
 			newConnLogger.WithError(err).Error("failed to write crypto header")
 			return err
 		}
-		newConnLogger.Debug("tx crypto established")
+		newConnLogger.Info("tx crypto established")
 	}
 	return nil
 }

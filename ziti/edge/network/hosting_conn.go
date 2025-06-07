@@ -60,7 +60,7 @@ func (conn *edgeHostConn) Accept(msg *channel.Message) {
 		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
 		logrus.WithFields(edge.GetLoggerFields(msg)).
 			WithField("circuitId", circuitId).
-			WithField("newConnId", newConnId).Debug("received dial request")
+			WithField("newConnId", newConnId).Info("received dial request")
 		go conn.newChildConnection(msg)
 	case edge.ContentTypeStateClosed:
 		conn.close(true)
@@ -183,7 +183,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 	var txHeader []byte
 	if edgeCh.crypto {
-		newConnLogger.Debug("setting up crypto")
+		newConnLogger.Info("setting up crypto")
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 
