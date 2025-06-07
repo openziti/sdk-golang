@@ -57,7 +57,10 @@ func (conn *edgeHostConn) Accept(msg *channel.Message) {
 	switch msg.ContentType {
 	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
-		logrus.WithFields(edge.GetLoggerFields(msg)).WithField("newConnId", newConnId).Debug("received dial request")
+		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
+		logrus.WithFields(edge.GetLoggerFields(msg)).
+			WithField("circuitId", circuitId).
+			WithField("newConnId", newConnId).Info("received dial request")
 		go conn.newChildConnection(msg)
 	case edge.ContentTypeStateClosed:
 		conn.close(true)
@@ -153,7 +156,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token).
-		WithField("circuitId", token)
+		WithField("circuitId", circuitId)
 
 	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
@@ -180,7 +183,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 	var txHeader []byte
 	if edgeCh.crypto {
-		newConnLogger.Debug("setting up crypto")
+		newConnLogger.Info("setting up crypto")
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 

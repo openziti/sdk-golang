@@ -103,6 +103,7 @@ type Conn interface {
 	ServiceConn
 	Identifiable
 	GetRouterId() string
+	GetState() string
 	CompleteAcceptSuccess() error
 	CompleteAcceptFailed(err error)
 }

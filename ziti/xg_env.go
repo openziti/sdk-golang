@@ -14,7 +14,7 @@ type xgEnv struct {
 func NewXgressEnv(closeNotify <-chan struct{}, registry metrics.Registry) xgress.Env {
 	return &xgEnv{
 		retransmitter:   xgress.NewRetransmitter(dummyRetransmitterFaultReporter{}, registry, closeNotify),
-		payloadIngester: xgress.NewPayloadIngester(closeNotify),
+		payloadIngester: xgress.NewPayloadIngesterWithConfig(5, closeNotify),
 		metrics:         xgress.NewMetrics(registry),
 	}
 }
