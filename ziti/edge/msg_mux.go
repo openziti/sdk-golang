@@ -101,14 +101,38 @@ func (mux *CowMapMsgMux) HandleReceive(msg *channel.Message, ch channel.Channel)
 	if sink, found := sinks[connId]; found {
 		sink.Accept(msg)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
-		pfxlog.Logger().WithField("connId", connId).Trace("no conn found for connection inspect")
+		pfxlog.Logger().WithField("connId", int(connId)).Trace("no conn found for connection inspect")
 		resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))
 		if err := resp.ReplyTo(msg).Send(ch); err != nil {
 			logrus.WithFields(GetLoggerFields(msg)).WithError(err).
 				Error("failed to send inspect response")
 		}
+	} else if msg.ContentType == ContentTypeXgPayload {
+		mux.handlePayload(msg, ch)
+	} else if msg.ContentType == ContentTypeStateClosed {
+		// ignore, as conn is already closed
 	} else {
-		pfxlog.Logger().Debugf("unable to dispatch msg received for unknown edge conn id: %v", connId)
+		pfxlog.Logger().WithField("connId", connId).WithField("contentType", msg.ContentType).
+			Debug("unable to dispatch msg received for unknown edge conn id")
+	}
+}
+
+func (mux *CowMapMsgMux) handlePayload(msg *channel.Message, ch channel.Channel) {
+	connId, _ := msg.GetUint32Header(ConnIdHeader)
+	payload, err := xgress.UnmarshallPayload(msg)
+	if err == nil {
+		if payload.IsCircuitEndFlagSet() && len(payload.Data) == 0 {
+			ack := xgress.NewAcknowledgement(payload.CircuitId, payload.GetOriginator().Invert())
+			ackMsg := ack.Marshall()
+			ackMsg.PutUint32Header(ConnIdHeader, connId)
+			_, _ = ch.TrySend(msg)
+		} else {
+			pfxlog.Logger().WithField("connId", int(connId)).WithField("circuitId", payload.CircuitId).
+				Debug("unable to dispatch xg payload received for unknown edge conn id")
+		}
+	} else {
+		pfxlog.Logger().WithError(err).WithField("connId", int(connId)).
+			Debug("unable to dispatch xg payload received for unknown edge conn id")
 	}
 }
 

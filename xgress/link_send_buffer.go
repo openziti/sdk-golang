@@ -18,9 +18,9 @@ package xgress
 
 import (
 	"github.com/michaelquigley/pfxlog"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"math"
+	"os"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -52,6 +52,7 @@ type LinkSendBuffer struct {
 	closeWhenEmpty        atomic.Bool
 	inspectRequests       chan *sendBufferInspectEvent
 	blockedSince          time.Time
+	closeStart            time.Time
 }
 
 type txPayload struct {
@@ -111,7 +112,6 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		inspectRequests:   make(chan *sendBufferInspectEvent, 1),
 	}
 
-	go buffer.run()
 	return buffer
 }
 
@@ -121,12 +121,33 @@ func (buffer *LinkSendBuffer) CloseWhenEmpty() bool {
 
 func (buffer *LinkSendBuffer) BufferPayload(payload *Payload) (func(), error) {
 	txPayload := &txPayload{payload: payload, age: math.MaxInt64, x: buffer.x}
+
 	select {
 	case buffer.newlyBuffered <- txPayload:
 		pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
 		return txPayload.markSent, nil
 	case <-buffer.closeNotify:
-		return nil, errors.Errorf("payload buffer closed")
+		return nil, WriteClosedErr
+	}
+}
+
+func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ds deadlineSource) (func(), error) {
+	txPayload := &txPayload{payload: payload, age: math.MaxInt64, x: buffer.x}
+
+	for {
+		select {
+		case <-ds.GetWriteDeadlineC():
+			return nil, os.ErrDeadlineExceeded
+		case <-ds.GetDeadlineChangeNotify():
+			continue // loop around with new deadline
+		case buffer.newlyBuffered <- txPayload:
+			pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
+			return txPayload.markSent, nil
+		case <-buffer.closeNotify:
+			return nil, WriteClosedErr
+		case <-ds.GetExternalCloseNotify():
+			return nil, WriteClosedErr
+		}
 	}
 }
 
@@ -151,10 +172,15 @@ func (buffer *LinkSendBuffer) metrics() Metrics {
 }
 
 func (buffer *LinkSendBuffer) Close() {
-	pfxlog.ContextLogger(buffer.x.Label()).Debugf("[%p] closing", buffer)
 	if buffer.closed.CompareAndSwap(false, true) {
+		pfxlog.ContextLogger(buffer.x.Label()).Debugf("[%p] closing", buffer)
 		close(buffer.closeNotify)
 	}
+	buffer.x.closeIfRxAndTxDone()
+}
+
+func (buffer *LinkSendBuffer) IsClosed() bool {
+	return buffer.closed.Load()
 }
 
 func (buffer *LinkSendBuffer) isBlocked() bool {
@@ -211,7 +237,7 @@ func (buffer *LinkSendBuffer) run() {
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
 		case <-buffer.closeNotify:
-			buffer.close()
+			buffer.cleanupMetrics()
 			return
 		default:
 		}
@@ -232,7 +258,7 @@ func (buffer *LinkSendBuffer) run() {
 				log.Tracef("buffering payload %v with size %v. payload buffer size: %v",
 					txPayload.payload.Sequence, len(txPayload.payload.Data), buffer.linkSendBufferSize)
 			case <-buffer.closeNotify:
-				buffer.close()
+				buffer.cleanupMetrics()
 				return
 			default:
 			}
@@ -245,9 +271,7 @@ func (buffer *LinkSendBuffer) run() {
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
 			buffer.retransmit()
-			if buffer.closeWhenEmpty.Load() && len(buffer.buffer) == 0 && !buffer.x.Closed() && buffer.x.IsEndOfCircuitSent() {
-				go buffer.x.Close()
-			}
+			buffer.checkForClose()
 
 		case txPayload := <-buffered:
 			buffer.buffer[txPayload.payload.GetSequence()] = txPayload
@@ -259,15 +283,46 @@ func (buffer *LinkSendBuffer) run() {
 
 		case <-retransmitTicker.C:
 			buffer.retransmit()
+			buffer.checkForClose()
 
 		case <-buffer.closeNotify:
-			buffer.close()
+			buffer.cleanupMetrics()
+			if len(buffer.buffer) > 0 {
+				isCircuitEnd := false
+				if len(buffer.buffer) == 1 {
+					for _, p := range buffer.buffer {
+						isCircuitEnd = p.payload.IsCircuitEndFlagSet()
+					}
+				}
+				if !isCircuitEnd {
+					log.WithField("payloadCount", len(buffer.buffer)).Warn("closing while buffer contains unacked payloads")
+				}
+			}
 			return
 		}
 	}
 }
 
-func (buffer *LinkSendBuffer) close() {
+func (buffer *LinkSendBuffer) checkForClose() {
+	if buffer.closeWhenEmpty.Load() {
+		if buffer.closeStart.IsZero() {
+			buffer.closeStart = time.Now()
+		}
+		closeDuration := time.Since(buffer.closeStart)
+
+		if (len(buffer.buffer) == 0 && closeDuration > 5*time.Second) || closeDuration > buffer.x.Options.MaxCloseWait {
+			buffer.Close()
+		} else if len(buffer.buffer) == 1 && closeDuration > 5*time.Second {
+			for _, p := range buffer.buffer {
+				if p.payload.IsCircuitEndFlagSet() {
+					buffer.Close()
+				}
+			}
+		}
+	}
+}
+
+func (buffer *LinkSendBuffer) cleanupMetrics() {
 	if buffer.blockedByLocalWindow {
 		buffer.metrics().BufferUnblockedByLocalWindow()
 	}
