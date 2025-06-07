@@ -25,25 +25,34 @@ func (r ReadTimout) Temporary() bool {
 
 func NewNoopSequencer[T any](closeNotify <-chan struct{}, channelDepth int) *noopSeq[T] {
 	return &noopSeq[T]{
-		closeNotify:    closeNotify,
-		ch:             make(chan T, channelDepth),
-		deadlineNotify: make(chan struct{}),
+		externalCloseNotify: closeNotify,
+		ch:                  make(chan T, channelDepth),
+		deadlineNotify:      make(chan struct{}),
+		closeNotify:         make(chan struct{}),
 	}
 }
 
 type noopSeq[T any] struct {
-	ch             chan T
-	closeNotify    <-chan struct{}
-	deadlineNotify chan struct{}
-	deadline       concurrenz.AtomicValue[time.Time]
-	readInProgress atomic.Bool
+	ch                  chan T
+	externalCloseNotify <-chan struct{}
+	deadlineNotify      chan struct{}
+	closeNotify         chan struct{}
+	closed              atomic.Bool
+	deadline            concurrenz.AtomicValue[time.Time]
+	readInProgress      atomic.Bool
+}
+
+func (self *noopSeq[T]) Close() {
+	if self.closed.CompareAndSwap(false, true) {
+		close(self.closeNotify)
+	}
 }
 
 func (seq *noopSeq[T]) PutSequenced(event T) error {
 	select {
 	case seq.ch <- event:
 		return nil
-	case <-seq.closeNotify:
+	case <-seq.externalCloseNotify:
 		return ErrClosed
 	}
 }
@@ -81,6 +90,14 @@ func (seq *noopSeq[T]) GetNext() (T, error) {
 		select {
 		case val = <-seq.ch:
 			return val, nil
+		case <-seq.externalCloseNotify:
+			// If we're closed, return any buffered values, otherwise return nil
+			select {
+			case val = <-seq.ch:
+				return val, nil
+			default:
+				return val, ErrClosed
+			}
 		case <-seq.closeNotify:
 			// If we're closed, return any buffered values, otherwise return nil
 			select {

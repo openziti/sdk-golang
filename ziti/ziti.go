@@ -990,7 +990,7 @@ func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 			logrus.Info("previous apiSession expired")
 			return backoff.Permanent(err)
 		}
-		logrus.WithError(err).Info("unable to refresh apiSession, will retry")
+		logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
 		return err
 	}
 
