@@ -1,3 +1,15 @@
+# Release notes 1.1.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.1.1 -> v1.1.2](https://github.com/openziti/sdk-golang/compare/v1.1.1...v1.1.2)
+    * [Issue #739](https://github.com/openziti/sdk-golang/issues/739) - go-jose v2.6.3 CVE-2025-27144 resolution
+
+* github.com/zitadel/oidc/v3: v2.12.2 -> v3.39.0
+* github.com/go-jose/go-jose/v4: v4.0.5 (new)
+* github.com/zitadel/logging: v0.6.2 (new)
+* github.com/zitadel/schema: v1.3.1 (new)
+
 # Release notes 1.1.1
 
 ## Multi-underlay channel group secret
