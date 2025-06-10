@@ -119,10 +119,15 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 
 	c.RouterProxy = func(addr string) *transport.ProxyConfiguration {
 		// Parse the HTTPS_PROXY env (or https:// proxy setting) for this address
-		req := &http.Request{URL: &url.URL{Host: addr}}
+		parsedUrl, errParse := url.Parse(c.ZtAPI)
+		if errParse != nil {
+			pfxlog.Logger().Infof("!!!111!!!!!error: %s", errParse.Error())
+			return nil
+		}
+		req := &http.Request{URL: parsedUrl}
 		proxyURL, errProxy := http.ProxyFromEnvironment(req)
 		val := os.Getenv("HTTPS_PROXY") // for debugging purposes
-		pfxlog.Logger().Infof("!!!!!!!!val: %s, url: %s, proxyURL: %v, errProxy: %v", val, addr, proxyURL, errProxy)
+		pfxlog.Logger().Infof("!!!!!!!!val: %s, ZtAPI: %s, addr: %s, proxyURL: %v, errProxy: %v", val, c.ZtAPI, addr, proxyURL, errProxy)
 		if proxyURL == nil {
 			return nil // no proxy
 		}
