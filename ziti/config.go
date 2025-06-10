@@ -121,7 +121,8 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 		// Parse the HTTPS_PROXY env (or https:// proxy setting) for this address
 		req := &http.Request{URL: &url.URL{Host: addr}}
 		proxyURL, errProxy := http.ProxyFromEnvironment(req)
-		pfxlog.Logger().Infof("!!!!!!!!url: %s, proxyURL: %v, errProxy: %v", addr, proxyURL, errProxy)
+		val := os.Getenv("HTTPS_PROXY") // for debugging purposes
+		pfxlog.Logger().Infof("!!!!!!!!val: %s, url: %s, proxyURL: %v, errProxy: %v", val, addr, proxyURL, errProxy)
 		if proxyURL == nil {
 			return nil // no proxy
 		}
