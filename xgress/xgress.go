@@ -138,6 +138,10 @@ type Xgress struct {
 	tags                 map[string]string
 }
 
+func (self *Xgress) GetDestinationType() string {
+	return "xgress"
+}
+
 func (self *Xgress) GetIntervalId() string {
 	return self.circuitId
 }
