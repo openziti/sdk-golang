@@ -117,26 +117,7 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
 	}
 
-	c.RouterProxy = func(addr string) *transport.ProxyConfiguration {
-		// Parse the HTTPS_PROXY env (or https:// proxy setting) for this address
-		parsedUrl, errParse := url.Parse(c.ZtAPI)
-		if errParse != nil {
-			pfxlog.Logger().Infof("!!!111!!!!!error: %s", errParse.Error())
-			return nil
-		}
-		req := &http.Request{URL: parsedUrl}
-		proxyURL, errProxy := http.ProxyFromEnvironment(req)
-		val := os.Getenv("HTTPS_PROXY") // for debugging purposes
-		pfxlog.Logger().Infof("!!!!!!!!val: %s, ZtAPI: %s, addr: %s, proxyURL: %v, errProxy: %v", val, c.ZtAPI, addr, proxyURL, errProxy)
-		if proxyURL == nil {
-			return nil // no proxy
-		}
-		// Extract host:port from proxyURL and create ProxyConfiguration
-		return &transport.ProxyConfiguration{
-			Type:    transport.ProxyTypeHttpConnect,
-			Address: proxyURL.Host,
-		}
-	}
+	c.RouterProxy = routerProxyFromEnvironment
 
 	return &c, nil
 }
@@ -148,4 +129,45 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 // request is required.
 func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error) {
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
+}
+
+// routerProxyFromEnvironment will return a ProxyConfiguration for the given address based on the environment variables
+func routerProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
+	// Create a request with the address to parse
+	parsedURL, errParse := parseTLS(addr)
+	if errParse != nil {
+		pfxlog.Logger().Infof("Could not parse URL. Error: %s", errParse.Error())
+		return nil
+	}
+	req := &http.Request{URL: parsedURL}
+
+	// Parse the HTTPS_PROXY or HTTP_PROXY env for this address
+	proxyURL, errProxy := http.ProxyFromEnvironment(req)
+	if errProxy != nil {
+		pfxlog.Logger().Infof("Could not determine proxy from environment. Error: %s", errProxy.Error())
+		return nil
+	}
+	if proxyURL == nil {
+		return nil // no proxy
+	}
+
+	return &transport.ProxyConfiguration{
+		Type:    transport.ProxyTypeHttpConnect,
+		Address: proxyURL.Host,
+	}
+}
+
+// parseTLS is a helper function to parse a raw URL string that may be prefixed with "tls:".
+// If the URL is prefixed with "tls:", it will prepend "https://" and reparse it.
+func parseTLS(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	if u.Scheme == "tls" {
+		// Prepend standard "https://" and reparse
+		return url.Parse("https://" + u.Opaque)
+	}
+	return u, nil
 }
