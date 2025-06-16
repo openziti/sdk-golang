@@ -102,4 +102,5 @@ type CircuitDetail struct {
 	Address    string `json:"address"`
 	Originator string `json:"originator"`
 	IsXgress   bool   `json:"isXgress"`
+	CtrlId     string `json:"ctrlId"`
 }

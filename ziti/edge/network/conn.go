@@ -324,6 +324,7 @@ func (conn *edgeConn) GetCircuitDetail() *xgress.CircuitDetail {
 			detail.IsXgress = true
 			detail.Originator = conn.xgCircuit.xg.Originator().String()
 			detail.Address = string(conn.xgCircuit.xg.Address())
+			detail.CtrlId = conn.xgCircuit.xg.CtrlId()
 		}
 
 		return detail
