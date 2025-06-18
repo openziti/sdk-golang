@@ -47,11 +47,11 @@ type IdClaims struct {
 }
 
 func (r *IdClaims) GetExpirationTime() (*jwt.NumericDate, error) {
-	return &jwt.NumericDate{Time: r.TokenClaims.GetExpiration()}, nil
+	return &jwt.NumericDate{Time: r.GetExpiration()}, nil
 }
 
 func (r *IdClaims) GetNotBefore() (*jwt.NumericDate, error) {
-	notBefore := r.TokenClaims.NotBefore.AsTime()
+	notBefore := r.NotBefore.AsTime()
 	return &jwt.NumericDate{Time: notBefore}, nil
 }
 
@@ -60,15 +60,15 @@ func (r *IdClaims) GetIssuedAt() (*jwt.NumericDate, error) {
 }
 
 func (r *IdClaims) GetIssuer() (string, error) {
-	return r.TokenClaims.Issuer, nil
+	return r.Issuer, nil
 }
 
 func (r *IdClaims) GetSubject() (string, error) {
-	return r.TokenClaims.Issuer, nil
+	return r.Issuer, nil
 }
 
 func (r *IdClaims) GetAudience() (jwt.ClaimStrings, error) {
-	return jwt.ClaimStrings(r.TokenClaims.Audience), nil
+	return jwt.ClaimStrings(r.Audience), nil
 }
 
 type localRpServer struct {
@@ -100,11 +100,7 @@ func (t *localRpServer) Start() {
 			},
 		}
 		end := time.Now().Add(11 * time.Second)
-		for {
-			if time.Now().After(end) {
-				break
-			}
-
+		for time.Now().Before(end) {
 			time.Sleep(100 * time.Millisecond)
 
 			_, err := client.Get(t.LoginUri)

@@ -1714,10 +1714,10 @@ func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionD
 	sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
 
 	if *session.Type == SessionDial {
-		if op == "create" {
+		switch op {
+		case "create":
 			context.sessions.Set(sessionKey, session)
-		} else if op == "refresh" {
-			// N.B.: refreshed sessions do not contain token so update stored session object with updated edgeRouters
+		case "refresh":
 			isUpdate := false
 			val := context.sessions.Upsert(sessionKey, session, func(exist bool, valueInMap *rest_model.SessionDetail, newValue *rest_model.SessionDetail) *rest_model.SessionDetail {
 				isUpdate = exist

@@ -164,7 +164,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		ConfigTypes:     cfg.ConfigTypes,
 	}
 
-	newContext.CtrlClt.ClientApiClient.SetAllowOidcDynamicallyEnabled(cfg.EnableHa)
+	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(cfg.EnableHa)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {

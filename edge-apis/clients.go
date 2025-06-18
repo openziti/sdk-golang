@@ -105,7 +105,7 @@ func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypesOver
 	if credCaPool := credentials.GetCaPool(); credCaPool != nil {
 		self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
 	} else {
-		self.HttpTransport.TLSClientConfig.RootCAs = self.Components.CaPool
+		self.HttpTransport.TLSClientConfig.RootCAs = self.CaPool
 	}
 
 	apiSession, err := self.AuthEnabledApi.Authenticate(credentials, configTypesOverride, self.HttpClient)
@@ -245,7 +245,7 @@ func NewManagementApiClientWithConfig(config *ApiClientConfig) *ManagementApiCli
 	transportPool := NewClientTransportPoolRandom()
 
 	for _, apiUrl := range config.ApiUrls {
-		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
+		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.HttpClient)
 		newRuntime.DefaultAuthentication = ret
 		transportPool.Add(apiUrl, newRuntime)
 	}
@@ -299,7 +299,7 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	transportPool := NewClientTransportPoolRandom()
 
 	for _, apiUrl := range config.ApiUrls {
-		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.Components.HttpClient)
+		newRuntime := NewRuntime(apiUrl, ret.Schemes, ret.HttpClient)
 		newRuntime.DefaultAuthentication = ret
 		transportPool.Add(apiUrl, newRuntime)
 	}

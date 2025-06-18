@@ -54,13 +54,14 @@ func (conn *edgeHostConn) Accept(msg *channel.Message) {
 		return
 	}
 
-	if msg.ContentType == edge.ContentTypeDial {
+	switch msg.ContentType {
+	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithField("newConnId", newConnId).Debug("received dial request")
 		go conn.newChildConnection(msg)
-	} else if msg.ContentType == edge.ContentTypeStateClosed {
+	case edge.ContentTypeStateClosed:
 		conn.close(true)
-	} else if msg.ContentType == edge.ContentTypeBindSuccess {
+	case edge.ContentTypeBindSuccess:
 		for entry := range conn.hosting.IterBuffered() {
 			entry.Val.established.Store(true)
 			event := &edge.ListenerEvent{
