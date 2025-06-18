@@ -136,7 +136,7 @@ func routerProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
 	// Create a request with the address to parse
 	parsedURL, errParse := parseTLS(addr)
 	if errParse != nil {
-		pfxlog.Logger().Infof("Could not parse URL. Error: %s", errParse.Error())
+		pfxlog.Logger().Warnf("Could not parse URL. Error: %s", errParse.Error())
 		return nil
 	}
 	req := &http.Request{URL: parsedURL}
@@ -144,7 +144,7 @@ func routerProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
 	// Parse the HTTPS_PROXY or HTTP_PROXY env for this address
 	proxyURL, errProxy := http.ProxyFromEnvironment(req)
 	if errProxy != nil {
-		pfxlog.Logger().Infof("Could not determine proxy from environment. Error: %s", errProxy.Error())
+		pfxlog.Logger().Warnf("Could not determine proxy from environment. Error: %s", errProxy.Error())
 		return nil
 	}
 	if proxyURL == nil {
