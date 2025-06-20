@@ -191,8 +191,8 @@ type ClientConfig struct {
 	Port     int
 }
 
-func (s *ClientConfig) String() string {
-	return fmt.Sprintf("%v:%v:%v", s.Protocol, s.Hostname, s.Port)
+func (self *ClientConfig) String() string {
+	return fmt.Sprintf("%v:%v:%v", self.Protocol, self.Hostname, self.Port)
 }
 
 func (self *ClientConfig) ToInterceptV1Config() *InterceptV1Config {

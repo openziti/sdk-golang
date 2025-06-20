@@ -31,7 +31,7 @@ func (self *XgAdapter) HandleXgressClose(x *xgress.Xgress) {
 	self.conn.msgMux.RemoveMsgSink(self.conn)
 
 	xgCloseMsg := channel.NewMessage(edge.ContentTypeXgClose, []byte(self.xg.CircuitId()))
-	if err := xgCloseMsg.WithTimeout(5 * time.Second).Send(self.conn.SdkChannel.GetControlSender()); err != nil {
+	if err := xgCloseMsg.WithTimeout(5 * time.Second).Send(self.conn.GetControlSender()); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send close xg close message")
 	}
 }

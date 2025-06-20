@@ -110,7 +110,7 @@ func (conn *edgeConn) CloseWrite() error {
 	if conn.sentFIN.CompareAndSwap(false, true) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
-		_, err := conn.MsgChannel.WriteTraced(nil, nil, headers)
+		_, err := conn.WriteTraced(nil, nil, headers)
 		return err
 	}
 

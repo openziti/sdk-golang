@@ -20,14 +20,14 @@ func main() {
 
 func hello(w http.ResponseWriter, req *http.Request) {
 	host, _ := os.Hostname()
-	fmt.Fprintf(w, "zitified hello from %s", host)
+	_, _ = fmt.Fprintf(w, "zitified hello from %s", host)
 }
 
 func add(w http.ResponseWriter, req *http.Request) {
 	a, _ := strconv.Atoi(req.URL.Query().Get("a"))
 	b, _ := strconv.Atoi(req.URL.Query().Get("b"))
 	c := a + b
-	fmt.Fprintf(w, "zitified a+b=%d+%d=%d", a, b, c)
+	_, _ = fmt.Fprintf(w, "zitified a+b=%d+%d=%d", a, b, c)
 }
 
 func createZitiListener() net.Listener {
