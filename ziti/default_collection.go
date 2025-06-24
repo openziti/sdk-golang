@@ -16,10 +16,11 @@
 
 package ziti
 
-// Deprecated: DefaultCollection is deprecated and is included for legacy support.
+// DefaultCollection is deprecated and is included for legacy support.
 // It powers two other deprecated functions: `ForAllContext() and and `LoadContext()` which rely on it. The intended
 // replacement is for implementations that wish to have this functionality to use NewSdkCollection() or
 // NewSdkCollectionFromEnv() on their own.
+// Deprecated: use NewSdkCollection() or NewSdkCollectionFromEnv() instead
 var DefaultCollection *CtxCollection
 
 // IdentitiesEnv is the string environment variable that is used to load identity files to populate DefaultCollection
