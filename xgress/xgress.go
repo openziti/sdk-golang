@@ -118,6 +118,7 @@ type Connection interface {
 }
 
 type Xgress struct {
+	timeOfLastRxFromLink int64 // must be first for 64-bit atomic operations on 32-bit machines
 	dataPlane            DataPlaneAdapter
 	circuitId            string
 	ctrlId               string
@@ -134,7 +135,6 @@ type Xgress struct {
 	closeHandlers        []CloseHandler
 	peekHandlers         []PeekHandler
 	flags                concurrenz.AtomicBitSet
-	timeOfLastRxFromLink int64
 	tags                 map[string]string
 }
 

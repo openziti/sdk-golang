@@ -185,6 +185,14 @@ func TestReadMultipart(t *testing.T) {
 type NoopTestChannel struct {
 }
 
+func (ch *NoopTestChannel) GetUnderlays() []channel.Underlay {
+	panic("implement me")
+}
+
+func (ch *NoopTestChannel) GetUnderlayCountsByType() map[string]int {
+	panic("implement me")
+}
+
 func (ch *NoopTestChannel) GetUserData() interface{} {
 	return nil
 }
