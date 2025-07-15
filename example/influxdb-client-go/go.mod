@@ -94,13 +94,13 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.2.8 // indirect
+	github.com/openziti/channel/v4 v4.2.15 // indirect
 	github.com/openziti/edge-api v0.26.46 // indirect
-	github.com/openziti/foundation/v2 v2.0.66 // indirect
-	github.com/openziti/identity v1.0.105 // indirect
-	github.com/openziti/metrics v1.4.1 // indirect
-	github.com/openziti/secretstream v0.1.36 // indirect
-	github.com/openziti/transport/v2 v2.0.177 // indirect
+	github.com/openziti/foundation/v2 v2.0.70 // indirect
+	github.com/openziti/identity v1.0.109 // indirect
+	github.com/openziti/metrics v1.4.2 // indirect
+	github.com/openziti/secretstream v0.1.37 // indirect
+	github.com/openziti/transport/v2 v2.0.182 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -133,14 +133,14 @@ require (
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	golang.org/x/arch v0.5.0 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.32.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/term v0.33.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
