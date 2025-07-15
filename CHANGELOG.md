@@ -19,6 +19,7 @@
 * github.com/openziti/metrics: [v1.4.1 -> v1.4.2](https://github.com/openziti/metrics/compare/v1.4.1...v1.4.2)
 * github.com/openziti/secretstream: [v0.1.34 -> v0.1.37](https://github.com/openziti/secretstream/compare/v0.1.34...v0.1.37)
 * github.com/openziti/transport/v2: [v2.0.171 -> v2.0.182](https://github.com/openziti/transport/compare/v2.0.171...v2.0.182)
+* github.com/zitadel/oidc/v3: v3.39.0 -> v3.39.1
 * golang.org/x/sys: v0.33.0 -> v0.34.0
 * golang.org/x/crypto: v0.38.0 -> v0.40.0
 * golang.org/x/net: v0.40.0 -> v0.42.0
