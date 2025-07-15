@@ -118,6 +118,15 @@ func (conn *edgeConn) CloseWrite() error {
 }
 
 func (conn *edgeConn) Inspect() string {
+	state := conn.getBaseState()
+	jsonOutput, err := json.Marshal(state)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
+	}
+	return string(jsonOutput)
+}
+
+func (conn *edgeConn) getBaseState() map[string]any {
 	result := map[string]interface{}{}
 	result["id"] = conn.Id()
 	result["serviceName"] = conn.serviceName
@@ -126,8 +135,17 @@ func (conn *edgeConn) Inspect() string {
 	result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
 	result["readFIN"] = conn.readFIN.Load()
 	result["sentFIN"] = conn.sentFIN.Load()
+	result["marker"] = conn.marker
+	result["circuitId"] = conn.circuitId
+	return result
+}
 
-	jsonOutput, err := json.Marshal(result)
+func (conn *edgeConn) GetState() string {
+	state := conn.getBaseState()
+	if conn.xgCircuit != nil && conn.xgCircuit.xg != nil {
+		state["xg"] = conn.xgCircuit.xg.GetInspectDetail(true)
+	}
+	jsonOutput, err := json.Marshal(state)
 	if err != nil {
 		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
 	}

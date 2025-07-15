@@ -126,7 +126,6 @@ type Xgress struct {
 	peer                 Connection
 	originator           Originator
 	Options              *Options
-	txQueue              chan *Payload
 	closeNotify          chan struct{}
 	rxSequence           uint64
 	rxSequenceLock       sync.Mutex
@@ -136,6 +135,7 @@ type Xgress struct {
 	peekHandlers         []PeekHandler
 	flags                concurrenz.AtomicBitSet
 	tags                 map[string]string
+	lastBufferSizeSent   uint32
 }
 
 func (self *Xgress) GetDestinationType() string {
@@ -158,10 +158,9 @@ func NewXgress(circuitId string, ctrlId string, address Address, peer Connection
 		peer:                 peer,
 		originator:           originator,
 		Options:              options,
-		txQueue:              make(chan *Payload, options.TxQueueSize),
 		closeNotify:          make(chan struct{}),
 		rxSequence:           0,
-		linkRxBuffer:         NewLinkReceiveBuffer(),
+		linkRxBuffer:         NewLinkReceiveBuffer(options.TxQueueSize),
 		timeOfLastRxFromLink: time.Now().UnixMilli(),
 		tags:                 tags,
 	}
@@ -379,45 +378,6 @@ func (self *Xgress) acceptPayload(payload *Payload) {
 	if !self.Options.RandomDrops || rand.Int31n(self.Options.Drop1InN) != 1 {
 		self.PayloadReceived(payload)
 	}
-	self.queueSends()
-}
-
-func (self *Xgress) queueSends() {
-	payload := self.linkRxBuffer.PeekHead()
-	for payload != nil {
-		select {
-		case self.txQueue <- payload:
-			self.linkRxBuffer.Remove(payload)
-			payload = self.linkRxBuffer.PeekHead()
-		default:
-			payload = nil
-		}
-	}
-}
-
-func (self *Xgress) nextPayload() *Payload {
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	default:
-	}
-
-	// nothing was available in the txQueue, request more, then wait on txQueue
-	self.dataPlane.GetPayloadIngester().payloadSendReq <- self
-
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	case <-self.closeNotify:
-	}
-
-	// closed, check if there's anything pending in the queue
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	default:
-		return nil
-	}
 }
 
 func (self *Xgress) tx() {
@@ -440,7 +400,7 @@ func (self *Xgress) tx() {
 		payloadLogger := log.WithFields(payload.GetLoggerFields())
 		payloadLogger.Debugf("payload %v of size %v removed from rx buffer, new size: %v", payload.Sequence, payloadSize, size)
 
-		lastBufferSizeSent := self.linkRxBuffer.getLastBufferSizeSent()
+		lastBufferSizeSent := self.getLastBufferSizeSent()
 		if lastBufferSizeSent > 10000 && (lastBufferSizeSent>>1) > size {
 			self.SendEmptyAck()
 		}
@@ -485,7 +445,7 @@ func (self *Xgress) tx() {
 	var payloadWriteOffset int
 
 	for {
-		payloadChunk = self.nextPayload()
+		payloadChunk = self.linkRxBuffer.NextPayload(self.closeNotify)
 
 		if payloadChunk == nil {
 			log.Debug("nil payload received, exiting")
@@ -829,7 +789,7 @@ func (self *Xgress) PayloadReceived(payload *Payload) {
 		ack.Sequence = append(ack.Sequence, payload.Sequence)
 		ack.RTT = payload.RTT
 
-		atomic.StoreUint32(&self.linkRxBuffer.lastBufferSizeSent, ack.RecvBufferSize)
+		atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
 		self.dataPlane.ForwardAcknowledgement(ack, self.address)
 	} else {
 		log.Debug("dropped")
@@ -840,7 +800,7 @@ func (self *Xgress) SendEmptyAck() {
 	pfxlog.ContextLogger(self.Label()).WithField("circuit", self.circuitId).Debug("sending empty ack")
 	ack := NewAcknowledgement(self.circuitId, self.originator)
 	ack.RecvBufferSize = self.linkRxBuffer.Size()
-	atomic.StoreUint32(&self.linkRxBuffer.lastBufferSizeSent, ack.RecvBufferSize)
+	atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
 	self.dataPlane.ForwardAcknowledgement(ack, self.address)
 }
 
@@ -848,6 +808,10 @@ func (self *Xgress) GetSequence() uint64 {
 	self.rxSequenceLock.Lock()
 	defer self.rxSequenceLock.Unlock()
 	return uint64(self.rxSequence)
+}
+
+func (self *Xgress) getLastBufferSizeSent() uint32 {
+	return atomic.LoadUint32(&self.lastBufferSizeSent)
 }
 
 func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
@@ -861,11 +825,12 @@ func (self *Xgress) GetInspectDetail(includeGoroutines bool) *InspectDetail {
 		Originator:            self.originator.String(),
 		TimeSinceLastLinkRx:   timeSinceLastRxFromLink.String(),
 		SendBufferDetail:      self.payloadBuffer.Inspect(),
-		RecvBufferDetail:      self.linkRxBuffer.Inspect(self),
+		RecvBufferDetail:      self.linkRxBuffer.Inspect(),
 		XgressPointer:         fmt.Sprintf("%p", self),
 		LinkSendBufferPointer: fmt.Sprintf("%p", self.payloadBuffer),
 		Sequence:              self.GetSequence(),
 		Flags:                 strconv.FormatUint(uint64(self.flags.Load()), 2),
+		LastSizeSent:          self.getLastBufferSizeSent(),
 	}
 
 	if includeGoroutines {

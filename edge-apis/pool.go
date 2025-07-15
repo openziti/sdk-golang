@@ -24,6 +24,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/url"
+	"slices"
 	"sync/atomic"
 	"time"
 )
@@ -35,7 +36,7 @@ type ApiClientTransport struct {
 
 // ClientTransportPool abstracts the concept of multiple `runtime.ClientTransport` (openapi interface) representing one
 // target OpenZiti network. In situations where controllers are running in HA mode (multiple controllers) this
-// interface can attempt to try different controller during outages or partitioning.
+// interface can attempt to try a different controller during outages or partitioning.
 type ClientTransportPool interface {
 	runtime.ClientTransport
 
@@ -265,6 +266,5 @@ func selectAndRemoveRandom[T any](slice []T, zero T) (selected T, modifiedSlice 
 	rng := rand.New(rand.NewPCG(seed, seed))
 	index := rng.IntN(len(slice))
 	selected = slice[index]
-	modifiedSlice = append(slice[:index], slice[index+1:]...)
-	return selected, modifiedSlice
+	return selected, slices.Delete(slice, index, index+1)
 }

@@ -21,22 +21,24 @@ import (
 	"github.com/emirpasic/gods/trees/btree"
 	"github.com/emirpasic/gods/utils"
 	"github.com/michaelquigley/pfxlog"
+	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type LinkReceiveBuffer struct {
-	tree               *btree.Tree
-	sequence           int32
-	maxSequence        int32
-	size               uint32
-	lastBufferSizeSent uint32
+	sync.Mutex
+	tree        *btree.Tree
+	sequence    int32
+	maxSequence int32
+	size        uint32
+	txQueue     chan *Payload
 }
 
-func NewLinkReceiveBuffer() *LinkReceiveBuffer {
+func NewLinkReceiveBuffer(txQueueSize int32) *LinkReceiveBuffer {
 	return &LinkReceiveBuffer{
 		tree:     btree.NewWith(10240, utils.Int32Comparator),
 		sequence: -1,
+		txQueue:  make(chan *Payload, txQueueSize),
 	}
 }
 
@@ -45,6 +47,9 @@ func (buffer *LinkReceiveBuffer) Size() uint32 {
 }
 
 func (buffer *LinkReceiveBuffer) ReceiveUnordered(x *Xgress, payload *Payload, maxSize uint32) bool {
+	buffer.Lock()
+	defer buffer.Unlock()
+
 	if payload.GetSequence() <= buffer.sequence {
 		x.dataPlane.GetMetrics().MarkDuplicatePayload()
 		return true
@@ -67,47 +72,56 @@ func (buffer *LinkReceiveBuffer) ReceiveUnordered(x *Xgress, payload *Payload, m
 	} else {
 		x.dataPlane.GetMetrics().MarkDuplicatePayload()
 	}
+
+	buffer.queueNext()
+
 	return true
 }
 
-func (buffer *LinkReceiveBuffer) PeekHead() *Payload {
+func (buffer *LinkReceiveBuffer) queueNext() {
 	if val := buffer.tree.LeftValue(); val != nil {
 		payload := val.(*Payload)
 		if payload.Sequence == buffer.sequence+1 {
-			return payload
+			select {
+			case buffer.txQueue <- payload:
+				buffer.tree.Remove(payload.Sequence)
+				buffer.sequence = payload.Sequence
+			default:
+			}
 		}
 	}
-	return nil
 }
 
-func (buffer *LinkReceiveBuffer) Remove(payload *Payload) {
-	buffer.tree.Remove(payload.Sequence)
-	buffer.sequence = payload.Sequence
-}
-
-func (buffer *LinkReceiveBuffer) getLastBufferSizeSent() uint32 {
-	return atomic.LoadUint32(&buffer.lastBufferSizeSent)
-}
-
-func (buffer *LinkReceiveBuffer) Inspect(x *Xgress) *RecvBufferDetail {
-	timeout := time.After(100 * time.Millisecond)
-	inspectEvent := &receiveBufferInspectEvent{
-		buffer:         buffer,
-		notifyComplete: make(chan *RecvBufferDetail, 1),
+func (buffer *LinkReceiveBuffer) NextPayload(closeNotify <-chan struct{}) *Payload {
+	select {
+	case payload := <-buffer.txQueue:
+		return payload
+	default:
 	}
 
-	if x.dataPlane.GetPayloadIngester().inspect(inspectEvent, timeout) {
-		select {
-		case result := <-inspectEvent.notifyComplete:
-			return result
-		case <-timeout:
-		}
+	buffer.Lock()
+	buffer.queueNext()
+	buffer.Unlock()
+
+	select {
+	case payload := <-buffer.txQueue:
+		return payload
+	case <-closeNotify:
 	}
 
-	return buffer.inspectIncomplete()
+	// closed, check if there's anything pending in the queue
+	select {
+	case payload := <-buffer.txQueue:
+		return payload
+	default:
+		return nil
+	}
 }
 
-func (buffer *LinkReceiveBuffer) inspectComplete() *RecvBufferDetail {
+func (buffer *LinkReceiveBuffer) Inspect() *RecvBufferDetail {
+	buffer.Lock()
+	defer buffer.Unlock()
+
 	nextPayload := "none"
 	if head := buffer.tree.LeftValue(); head != nil {
 		payload := head.(*Payload)
@@ -117,31 +131,9 @@ func (buffer *LinkReceiveBuffer) inspectComplete() *RecvBufferDetail {
 	return &RecvBufferDetail{
 		Size:           buffer.Size(),
 		PayloadCount:   uint32(buffer.tree.Size()),
-		LastSizeSent:   buffer.getLastBufferSizeSent(),
 		Sequence:       buffer.sequence,
 		MaxSequence:    buffer.maxSequence,
 		NextPayload:    nextPayload,
 		AcquiredSafely: true,
 	}
-}
-
-func (buffer *LinkReceiveBuffer) inspectIncomplete() *RecvBufferDetail {
-	return &RecvBufferDetail{
-		Size:           buffer.Size(),
-		LastSizeSent:   buffer.getLastBufferSizeSent(),
-		Sequence:       buffer.sequence,
-		MaxSequence:    buffer.maxSequence,
-		NextPayload:    "unsafe to check",
-		AcquiredSafely: false,
-	}
-}
-
-type receiveBufferInspectEvent struct {
-	buffer         *LinkReceiveBuffer
-	notifyComplete chan *RecvBufferDetail
-}
-
-func (self *receiveBufferInspectEvent) handle() {
-	result := self.buffer.inspectComplete()
-	self.notifyComplete <- result
 }
