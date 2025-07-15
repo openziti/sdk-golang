@@ -26,7 +26,9 @@ import (
 	"github.com/openziti/edge-api/rest_client_api_client/authentication"
 	"github.com/openziti/edge-api/rest_client_api_client/service"
 	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
+	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/errorz"
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/xgress"
@@ -686,11 +688,11 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 		if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 			log.WithError(err).Error("failed to check if service list update is available")
 			target := &current_api_session.ListServiceUpdatesUnauthorized{}
-			if errors.As(err, &target) {
+			if !errors.As(err, &target) {
 				checkService = true
 			} else {
 				if err = context.Authenticate(); err != nil {
-					log.WithError(err).Error("unable to re-authenticate during session refresh")
+					log.WithError(err).Error("unable to re-authenticate during service list refresh")
 				} else {
 					if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 						checkService = true
@@ -1661,6 +1663,14 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	return session, backoff.Retry(operation, expBackoff)
 }
 
+func (context *ContextImpl) isUnauthorizedApiError(err error) bool {
+	apiFormattedErr := &rest_util.APIFormattedError{}
+	if errors.As(err, &apiFormattedErr) {
+		return apiFormattedErr.APIError != nil && apiFormattedErr.Code == errorz.UnauthorizedCode
+	}
+	return false
+}
+
 func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	start := time.Now()
 	logger := pfxlog.Logger()
@@ -1669,7 +1679,13 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 	if err != nil {
 		logger.WithError(err).WithField("errorType", fmt.Sprintf("%T", err)).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
 		var createSessionUnauthorized = &rest_session.CreateSessionUnauthorized{}
-		if errors.As(err, &createSessionUnauthorized) {
+		isUnauthorized := errors.As(err, &createSessionUnauthorized)
+
+		if !isUnauthorized {
+			isUnauthorized = context.isUnauthorizedApiError(err)
+		}
+
+		if isUnauthorized {
 			if err := context.Authenticate(); err != nil {
 				var authenticateUnauthorized = &authentication.AuthenticateUnauthorized{}
 				if errors.As(err, &authenticateUnauthorized) {

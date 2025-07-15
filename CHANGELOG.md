@@ -3,18 +3,30 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.1.2 -> v1.1.3](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.1.3)
-* github.com/openziti/channel/v4: [v4.2.0 -> v4.2.8](https://github.com/openziti/channel/compare/v4.2.0...v4.2.8)
+    * [Issue #754](https://github.com/openziti/sdk-golang/issues/754) - panic: unaligned 64-bit atomic operation when running on 32-bit raspberry pi
+    * [Issue #757](https://github.com/openziti/sdk-golang/issues/757) - Not authenticated check fails on session create when using OIDC
+
+* github.com/openziti/channel/v4: [v4.2.0 -> v4.2.15](https://github.com/openziti/channel/compare/v4.2.0...v4.2.15)
+    * [Issue #194](https://github.com/openziti/channel/issues/194) - Add GetUnderlays and GetUnderlayCountsByType to Channel
+
 * github.com/openziti/edge-api: [v0.26.45 -> v0.26.46](https://github.com/openziti/edge-api/compare/v0.26.45...v0.26.46)
     * [Issue #155](https://github.com/openziti/edge-api/issues/155) - Add network interface list to routers and identities
 
-* github.com/openziti/foundation/v2: [v2.0.63 -> v2.0.66](https://github.com/openziti/foundation/compare/v2.0.63...v2.0.66)
-* github.com/openziti/identity: [v1.0.101 -> v1.0.105](https://github.com/openziti/identity/compare/v1.0.101...v1.0.105)
-* github.com/openziti/secretstream: [v0.1.34 -> v0.1.36](https://github.com/openziti/secretstream/compare/v0.1.34...v0.1.36)
-* github.com/openziti/transport/v2: [v2.0.171 -> v2.0.177](https://github.com/openziti/transport/compare/v2.0.171...v2.0.177)
-* golang.org/x/crypto: v0.38.0 -> v0.39.0
-* golang.org/x/net: v0.40.0 -> v0.41.0
-* golang.org/x/sync: v0.14.0 -> v0.15.0
-* golang.org/x/text: v0.25.0 -> v0.26.0
+* github.com/openziti/foundation/v2: [v2.0.63 -> v2.0.70](https://github.com/openziti/foundation/compare/v2.0.63...v2.0.70)
+    * [Issue #443](https://github.com/openziti/foundation/issues/443) - Allow injecting custom method into go-routine pools, to allow identifying them in stack dumps
+
+* github.com/openziti/identity: [v1.0.101 -> v1.0.109](https://github.com/openziti/identity/compare/v1.0.101...v1.0.109)
+* github.com/openziti/metrics: [v1.4.1 -> v1.4.2](https://github.com/openziti/metrics/compare/v1.4.1...v1.4.2)
+* github.com/openziti/secretstream: [v0.1.34 -> v0.1.37](https://github.com/openziti/secretstream/compare/v0.1.34...v0.1.37)
+* github.com/openziti/transport/v2: [v2.0.171 -> v2.0.182](https://github.com/openziti/transport/compare/v2.0.171...v2.0.182)
+* github.com/zitadel/oidc/v3: v3.39.0 -> v3.39.1
+* golang.org/x/sys: v0.33.0 -> v0.34.0
+* golang.org/x/crypto: v0.38.0 -> v0.40.0
+* golang.org/x/net: v0.40.0 -> v0.42.0
+* golang.org/x/sync: v0.14.0 -> v0.16.0
+* golang.org/x/term: v0.32.0 -> v0.33.0
+* golang.org/x/text: v0.25.0 -> v0.27.0
+
 
 # Release notes 1.1.2
 
