@@ -3,9 +3,12 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.1.2 -> v1.1.3](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.1.3)
+    * [Issue #763](https://github.com/openziti/sdk-golang/issues/763) - Use a go-routine pool for payload ingest
+    * [Issue #761](https://github.com/openziti/sdk-golang/issues/761) - Use cmap.ConcurrentMap for message multiplexer
     * [Issue #754](https://github.com/openziti/sdk-golang/issues/754) - panic: unaligned 64-bit atomic operation when running on 32-bit raspberry pi
     * [Issue #757](https://github.com/openziti/sdk-golang/issues/757) - Not authenticated check fails on session create when using OIDC
 
+* github.com/golang-jwt/jwt/v5: v5.2.2 -> v5.2.3
 * github.com/openziti/channel/v4: [v4.2.0 -> v4.2.15](https://github.com/openziti/channel/compare/v4.2.0...v4.2.15)
     * [Issue #194](https://github.com/openziti/channel/issues/194) - Add GetUnderlays and GetUnderlayCountsByType to Channel
 
@@ -26,7 +29,6 @@
 * golang.org/x/sync: v0.14.0 -> v0.16.0
 * golang.org/x/term: v0.32.0 -> v0.33.0
 * golang.org/x/text: v0.25.0 -> v0.27.0
-
 
 # Release notes 1.1.2
 

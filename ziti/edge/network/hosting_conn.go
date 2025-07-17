@@ -153,7 +153,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		WithField("connId", id).
 		WithField("parentConnId", conn.Id()).
 		WithField("token", token).
-		WithField("circuitId", token)
+		WithField("circuitId", circuitId)
 
 	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
