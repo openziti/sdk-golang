@@ -94,7 +94,7 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.2.15 // indirect
+	github.com/openziti/channel/v4 v4.2.16 // indirect
 	github.com/openziti/edge-api v0.26.46 // indirect
 	github.com/openziti/foundation/v2 v2.0.70 // indirect
 	github.com/openziti/identity v1.0.109 // indirect
@@ -125,7 +125,7 @@ require (
 	github.com/yosssi/ace v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zitadel/logging v0.6.2 // indirect
-	github.com/zitadel/oidc/v3 v3.39.1 // indirect
+	github.com/zitadel/oidc/v3 v3.41.0 // indirect
 	github.com/zitadel/schema v1.3.1 // indirect
 	go.mongodb.org/mongo-driver v1.17.0 // indirect
 	go.mozilla.org/pkcs7 v0.9.0 // indirect
