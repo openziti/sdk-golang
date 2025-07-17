@@ -1,8 +1,23 @@
-# Release notes 1.1.3
+# Release notes 1.2.0
+
+## What's New
+
+This release contains substantial revisions to the SDK flow control feature first released in v1.1.0.
+See the v1.1.0 release notes for more details.
+
+It has now received a substantial amount of testing including long running tests and backwards compability testing. 
+
+These features should be used with version 1.6.6 or newer of OpenZiti.
+
+It is still considered experimental, and the feature and APIs may still change, however Go SDK
+users who are multi-plexing connections, are encouraged to try it out.
+
+Once it has undergone sufficient soak time in a production environment, it will marked as stable.
 
 ## Issues Fixed and Dependency Updates
 
-* github.com/openziti/sdk-golang: [v1.1.2 -> v1.1.3](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.1.3)
+* github.com/openziti/sdk-golang: [v1.1.2 -> v1.2.0](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.2.0)
+    * [Issue #765](https://github.com/openziti/sdk-golang/issues/765) - Allow independent close of xgress send and receive
     * [Issue #763](https://github.com/openziti/sdk-golang/issues/763) - Use a go-routine pool for payload ingest
     * [Issue #761](https://github.com/openziti/sdk-golang/issues/761) - Use cmap.ConcurrentMap for message multiplexer
     * [Issue #754](https://github.com/openziti/sdk-golang/issues/754) - panic: unaligned 64-bit atomic operation when running on 32-bit raspberry pi

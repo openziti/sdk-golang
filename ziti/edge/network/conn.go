@@ -23,6 +23,7 @@ import (
 	"github.com/openziti/sdk-golang/xgress"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,13 +44,6 @@ import (
 )
 
 var unsupportedCrypto = errors.New("unsupported crypto")
-
-type ConnType byte
-
-const (
-	ConnTypeDial ConnType = 1
-	ConnTypeBind ConnType = 2
-)
 
 var _ edge.Conn = &edgeConn{}
 
@@ -84,6 +78,9 @@ type edgeConn struct {
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
 	if conn.sentFIN.Load() {
+		if conn.IsClosed() {
+			return 0, errors.New("connection closed")
+		}
 		return 0, errors.New("calling Write() after CloseWrite()")
 	}
 
@@ -112,6 +109,10 @@ func (conn *edgeConn) CloseWrite() error {
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.WriteTraced(nil, nil, headers)
 		return err
+	}
+
+	if conn.xgCircuit != nil {
+		conn.xgCircuit.xg.CloseRxTimeout()
 	}
 
 	return nil
@@ -177,6 +178,10 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		if conn.IsClosed() {
 			return
 		}
+		// routing is not accepting more data, so we need to close the send buffer
+		if conn.xgCircuit != nil {
+			conn.xgCircuit.xg.CloseSendBuffer()
+		}
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
 	case edge.ContentTypeInspectRequest:
@@ -218,18 +223,21 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 
 func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
 	adapter := conn.xgCircuit
+
 	if adapter == nil {
-		// TODO: handle
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).Error("can't accept payload, xgress adapter not present")
 		return
 	}
 
 	payload, err := xgress.UnmarshallPayload(msg)
 	if err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error unmarshalling payload")
 		adapter.xg.Close()
 		return
 	}
 
 	if err = adapter.xg.SendPayload(payload, 0, 0); err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error accepting payload")
 		adapter.xg.Close()
 	}
 }
@@ -237,17 +245,19 @@ func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
 func (conn *edgeConn) HandleXgAcknowledgement(msg *channel.Message) {
 	adapter := conn.xgCircuit
 	if adapter == nil {
-		// TODO: handle
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).Error("can't accept ack, xgress adapter not present")
 		return
 	}
 
 	ack, err := xgress.UnmarshallAcknowledgement(msg)
 	if err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error unmarshalling acknowledgement")
 		adapter.xg.Close()
 		return
 	}
 
 	if err = adapter.xg.SendAcknowledgement(ack); err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error accepting acknowledgement")
 		adapter.xg.Close()
 	}
 	// adapter.env.GetAckIngester().Ingest(msg, adapter.xg)
@@ -346,6 +356,13 @@ func (conn *edgeConn) SetDeadline(t time.Time) error {
 	return conn.SetWriteDeadline(t)
 }
 
+func (conn *edgeConn) SetWriteDeadline(t time.Time) error {
+	if conn.xgCircuit != nil {
+		return conn.xgCircuit.writeAdapter.SetWriteDeadline(t)
+	}
+	return conn.MsgChannel.SetWriteDeadline(t)
+}
+
 func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 	conn.readQ.SetReadDeadline(t)
 	return nil
@@ -370,13 +387,12 @@ func (conn *edgeConn) GetStickinessToken() []byte {
 }
 
 func (conn *edgeConn) HandleClose(channel.Channel) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
-	if conn.closed.CompareAndSwap(false, true) {
-		close(conn.closeNotify)
+	conn.close(true)
+	if conn.xgCircuit != nil {
+		conn.xgCircuit.xg.CloseSendBuffer()
 	}
-	conn.sentFIN.Store(true)
-	conn.readFIN.Store(true)
 }
 
 func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
@@ -459,19 +475,18 @@ func (conn *edgeConn) setupFlowControl(msg *channel.Message, originator xgress.O
 		}
 
 		xgAdapter := &XgAdapter{
-			conn:        conn,
-			readC:       make(chan []byte),
-			closeNotify: conn.closeNotify,
-			env:         envF(),
+			conn:  conn,
+			readC: make(chan []byte),
+			env:   envF(),
 		}
 		conn.xgCircuit = xgAdapter
 		xg := xgress.NewXgress(conn.circuitId, ctrlId, xgress.Address(addr), xgAdapter, originator, xgress.DefaultOptions(), nil)
 		xgAdapter.xg = xg
-		conn.dataSink = xgAdapter
+		xgAdapter.writeAdapter = xg.NewWriteAdapter()
+		xgAdapter.xg.AddCloseHandler(xgAdapter)
+		conn.dataSink = xgAdapter.writeAdapter
 
 		xg.SetDataPlaneAdapter(xgAdapter)
-		xg.AddCloseHandler(xgAdapter)
-
 		xg.Start()
 	} else {
 		conn.dataSink = &conn.MsgChannel
@@ -532,8 +547,12 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 }
 
 func (conn *edgeConn) Read(p []byte) (int, error) {
-	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	log := pfxlog.Logger().WithField("connId", conn.Id()).
+		WithField("marker", conn.marker).
+		WithField("circuitId", conn.circuitId)
+
 	if conn.closed.Load() {
+		log.Trace("edgeConn closed, returning EOF")
 		return 0, io.EOF
 	}
 
@@ -553,21 +572,23 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 	for {
 		if conn.readFIN.Load() {
+			log.Tracef("readFIN true, returning EOF")
 			return 0, io.EOF
 		}
 
 		msg, err := conn.readQ.GetNext()
 		if errors.Is(err, ErrClosed) {
-			log.Debug("sequencer closed, closing connection")
-			conn.closed.Store(true)
+			log.Debug("sequencer closed, marking readFIN")
+			conn.readFIN.Store(true)
 			return 0, io.EOF
 		} else if err != nil {
-			log.Debugf("unexpected sequencer err (%v)", err)
+			log.WithError(err).Debug("unexpected sequencer err")
 			return 0, err
 		}
 
 		flags, _ := msg.GetUint32Header(edge.FlagsHeader)
 		if flags&edge.FIN != 0 {
+			log.Trace("got fin msg, marking readFIN true")
 			conn.readFIN.Store(true)
 		}
 		conn.flags = conn.flags | (flags & (edge.STREAM | edge.MULTIPART))
@@ -575,8 +596,18 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		switch msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
-			log.Debug("received ConnState_CLOSED message, closing connection")
-			conn.close(true)
+			if conn.xgCircuit != nil {
+				conn.readFIN.Store(true)
+				if conn.sentFIN.Load() {
+					log.Debug("received ConnState_CLOSED message, fin sent, closing connection")
+					conn.close(true)
+				} else {
+					log.Debug("received ConnState_CLOSED message, fin not yet sent")
+				}
+			} else {
+				log.Debug("received ConnState_CLOSED message, closing connection")
+				conn.close(true)
+			}
 			continue
 
 		case edge.ContentTypeData:
@@ -643,6 +674,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 }
 
 func (conn *edgeConn) Close() error {
+	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn")
 	conn.close(false)
 	return nil
 }
@@ -659,20 +691,26 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
 
-	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
+
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
-	if !closedByRemote {
-		msg := edge.NewStateClosedMsg(conn.Id(), "")
-		if err := conn.SendState(msg); err != nil {
-			log.WithError(err).Error("failed to send close message")
-		}
-	}
-
-	// if we're using xgress, wait to remove the conn from the mux until the xgress closes, otherwise it becomes unroutable.
 	if conn.xgCircuit == nil {
+		if !closedByRemote {
+			msg := edge.NewStateClosedMsg(conn.Id(), "")
+			if err := conn.SendState(msg); err != nil {
+				log.WithError(err).Error("failed to send close message")
+			}
+		}
+
 		conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
+	} else {
+		// cancel any pending writes
+		_ = conn.xgCircuit.writeAdapter.SetWriteDeadline(time.Now())
+
+		// if we're using xgress, wait to remove the connection from the mux until the xgress closes, otherwise it becomes unroutable.
+		conn.xgCircuit.xg.PeerClosed()
 	}
 }
 
@@ -768,7 +806,7 @@ func (self *newConnHandler) dialSucceeded() error {
 	if !self.routerProvidedConnId {
 		startMsg, err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendForReply(self.conn.GetControlSender())
 		if err != nil {
-			logger.WithError(err).Error("Failed to send reply to dial request")
+			logger.WithError(err).Error("failed to send reply to dial request")
 			return err
 		}
 
@@ -777,7 +815,7 @@ func (self *newConnHandler) dialSucceeded() error {
 			return errors.Errorf("failed to receive start after dial. got %v", startMsg)
 		}
 	} else if err := reply.WithPriority(channel.Highest).WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
-		logger.WithError(err).Error("Failed to send reply to dial request")
+		logger.WithError(err).Error("failed to send reply to dial request")
 		return err
 	}
 

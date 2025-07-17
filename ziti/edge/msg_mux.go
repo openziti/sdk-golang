@@ -120,7 +120,7 @@ func (mux *MsgMuxImpl) handlePayloadWithNoSink(msg *channel.Message, ch channel.
 	connId, _ := msg.GetUint32Header(ConnIdHeader)
 	payload, err := xgress.UnmarshallPayload(msg)
 	if err == nil {
-		if payload.IsCircuitEndFlagSet() && len(payload.Data) == 0 {
+		if (payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet()) && len(payload.Data) == 0 {
 			ack := xgress.NewAcknowledgement(payload.CircuitId, payload.GetOriginator().Invert())
 			ackMsg := ack.Marshall()
 			ackMsg.PutUint32Header(ConnIdHeader, connId)
