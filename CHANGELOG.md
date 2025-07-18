@@ -17,6 +17,7 @@ Once it has undergone sufficient soak time in a production environment, it will 
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.1.2 -> v1.2.0](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.2.0)
+    * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
     * [Issue #765](https://github.com/openziti/sdk-golang/issues/765) - Allow independent close of xgress send and receive
     * [Issue #763](https://github.com/openziti/sdk-golang/issues/763) - Use a go-routine pool for payload ingest
     * [Issue #761](https://github.com/openziti/sdk-golang/issues/761) - Use cmap.ConcurrentMap for message multiplexer
@@ -37,7 +38,7 @@ Once it has undergone sufficient soak time in a production environment, it will 
 * github.com/openziti/metrics: [v1.4.1 -> v1.4.2](https://github.com/openziti/metrics/compare/v1.4.1...v1.4.2)
 * github.com/openziti/secretstream: [v0.1.34 -> v0.1.37](https://github.com/openziti/secretstream/compare/v0.1.34...v0.1.37)
 * github.com/openziti/transport/v2: [v2.0.171 -> v2.0.182](https://github.com/openziti/transport/compare/v2.0.171...v2.0.182)
-* github.com/zitadel/oidc/v3: v3.39.0 -> v3.39.1
+* github.com/zitadel/oidc/v3: v3.39.0 -> v3.41.0
 * golang.org/x/sys: v0.33.0 -> v0.34.0
 * golang.org/x/crypto: v0.38.0 -> v0.40.0
 * golang.org/x/net: v0.40.0 -> v0.42.0

@@ -425,6 +425,8 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	}
 
 	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	logger = logger.WithField("circuitId", conn.circuitId)
+
 	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
 		if conn.customState == nil {
 			conn.customState = map[int32][]byte{}
@@ -489,6 +491,9 @@ func (conn *edgeConn) setupFlowControl(msg *channel.Message, originator xgress.O
 		xg.SetDataPlaneAdapter(xgAdapter)
 		xg.Start()
 	} else {
+		if defaultConnections := conn.GetChannel().GetUnderlayCountsByType()[edge.ChannelTypeDefault]; defaultConnections > 1 {
+			return errors.New("edge connections must use sdk flow control when using multiple default connections")
+		}
 		conn.dataSink = &conn.MsgChannel
 	}
 
