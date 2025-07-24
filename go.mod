@@ -18,7 +18,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.2.16
+	github.com/openziti/channel/v4 v4.2.18
 	github.com/openziti/edge-api v0.26.46
 	github.com/openziti/foundation/v2 v2.0.70
 	github.com/openziti/identity v1.0.109
@@ -31,7 +31,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
-	github.com/zitadel/oidc/v3 v3.41.0
+	github.com/zitadel/oidc/v3 v3.42.0
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sys v0.34.0
