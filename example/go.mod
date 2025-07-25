@@ -109,7 +109,7 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zitadel/logging v0.6.2 // indirect
-	github.com/zitadel/oidc/v3 v3.41.0 // indirect
+	github.com/zitadel/oidc/v3 v3.42.0 // indirect
 	github.com/zitadel/schema v1.3.1 // indirect
 	go.mongodb.org/mongo-driver v1.17.0 // indirect
 	go.mozilla.org/pkcs7 v0.9.0 // indirect
