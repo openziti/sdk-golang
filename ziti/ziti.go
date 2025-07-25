@@ -33,6 +33,7 @@ import (
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"math"
 	"math/rand"
 	"net"
@@ -990,6 +991,13 @@ func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 			logrus.Info("previous apiSession expired")
 			return backoff.Permanent(err)
 		}
+
+		oidcErr := &oidc.Error{}
+		if errors.As(err, &oidcErr) {
+			logrus.Info("oidc error, re-authenticating")
+			return backoff.Permanent(err)
+		}
+
 		logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
 		return err
 	}

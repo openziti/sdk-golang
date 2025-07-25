@@ -3,6 +3,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.2.0 -> v1.2.1](https://github.com/openziti/sdk-golang/compare/v1.2.0...v1.2.1)
+    * [Issue #777](https://github.com/openziti/sdk-golang/issues/777) - OIDC auth token refresh doesn't fall back to re-auth if token has expired
     * [Issue #772](https://github.com/openziti/sdk-golang/issues/772) - xgress close tweaks
     * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
 
