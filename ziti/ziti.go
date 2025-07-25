@@ -1441,6 +1441,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	if context.maxControlConnections > 0 || context.maxDefaultConnections > 1 {
 		headers.PutBoolHeader(channel.IsGroupedHeader, true)
 		headers.PutStringHeader(channel.TypeHeader, edge.ChannelTypeDefault)
+		headers.PutBoolHeader(channel.IsFirstGroupConnection, true)
 	}
 	underlay, err := dialer.CreateWithHeaders(options.ConnectTimeout, headers)
 	if err != nil {

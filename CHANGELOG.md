@@ -1,3 +1,15 @@
+# Release notes 1.2.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.0 -> v1.2.1](https://github.com/openziti/sdk-golang/compare/v1.2.0...v1.2.1)
+    * [Issue #772](https://github.com/openziti/sdk-golang/issues/772) - xgress close tweaks
+    * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
+
+* github.com/openziti/channel/v4: [v4.2.16 -> v4.2.18](https://github.com/openziti/channel/compare/v4.2.16...v4.2.18)
+    * [Issue #201](https://github.com/openziti/channel/issues/201) - SendAndWait methods should return an error if the channel closes instead of blocking
+    * [Issue #199](https://github.com/openziti/channel/issues/199) - Reject multi-underlay connections that are the first connection for a channel, but aren't marked as such.
+
 # Release notes 1.2.0
 
 ## What's New

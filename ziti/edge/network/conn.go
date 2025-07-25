@@ -108,11 +108,12 @@ func (conn *edgeConn) CloseWrite() error {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.WriteTraced(nil, nil, headers)
-		return err
-	}
 
-	if conn.xgCircuit != nil {
-		conn.xgCircuit.xg.CloseRxTimeout()
+		if conn.xgCircuit != nil {
+			conn.xgCircuit.xg.CloseRxTimeout()
+		}
+
+		return err
 	}
 
 	return nil

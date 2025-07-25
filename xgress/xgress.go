@@ -304,12 +304,11 @@ func (self *Xgress) CloseRxTimeout() {
 }
 
 func (self *Xgress) Unrouted() {
-	// if we're unrouted no more data is inbound
+	// if we're unrouted no more data is inbound. this still allows already queued data to flow to the client
 	self.CloseXgToClient()
 
-	// When we're unrouted, if 'end of circuit' hasn't already arrived, give incoming/queued data
-	// a chance to outflow before closing. We're unrouted so no point in sending EOF
-	self.payloadBuffer.CloseWhenEmpty()
+	// If we're unrouted, we can't send any more data, so close the payload buffer
+	self.payloadBuffer.Close()
 }
 
 func (self *Xgress) CloseXgToClient() {

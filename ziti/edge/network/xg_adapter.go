@@ -44,6 +44,10 @@ func (self *XgAdapter) RetransmitPayload(srcAddr xgress.Address, payload *xgress
 	msg := payload.Marshall()
 	sent, err := self.conn.MsgChannel.GetDefaultSender().TrySend(msg)
 	if err != nil {
+		// if the channel is closed, close the xgress
+		if self.conn.MsgChannel.GetChannel().IsClosed() {
+			self.xg.Close()
+		}
 		return err
 	}
 

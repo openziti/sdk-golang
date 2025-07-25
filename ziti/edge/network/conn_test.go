@@ -185,6 +185,10 @@ func TestReadMultipart(t *testing.T) {
 type NoopTestChannel struct {
 }
 
+func (ch *NoopTestChannel) CloseNotify() <-chan struct{} {
+	panic("implement me")
+}
+
 func (ch *NoopTestChannel) GetUnderlays() []channel.Underlay {
 	panic("implement me")
 }
