@@ -12,7 +12,7 @@ require (
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/go-resty/resty/v2 v2.16.5
-	github.com/golang-jwt/jwt/v5 v5.2.3
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
@@ -31,7 +31,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
-	github.com/zitadel/oidc/v3 v3.42.0
+	github.com/zitadel/oidc/v3 v3.43.0
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sys v0.34.0
@@ -43,7 +43,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
@@ -78,9 +78,10 @@ require (
 	github.com/zitadel/logging v0.6.2 // indirect
 	github.com/zitadel/schema v1.3.1 // indirect
 	go.mongodb.org/mongo-driver v1.17.0 // indirect
-	go.opentelemetry.io/otel v1.29.0 // indirect
-	go.opentelemetry.io/otel/metric v1.29.0 // indirect
-	go.opentelemetry.io/otel/trace v1.29.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/metric v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
