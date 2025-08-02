@@ -1,3 +1,10 @@
+# Release notes 1.2.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.1 -> v1.2.2](https://github.com/openziti/sdk-golang/compare/v1.2.1...v1.2.2)
+    * [Issue #784](https://github.com/openziti/sdk-golang/issues/784) - Drop retransmit error to debug
+
 # Release notes 1.2.1
 
 ## Issues Fixed and Dependency Updates

@@ -52,7 +52,7 @@ func (self *XgAdapter) RetransmitPayload(srcAddr xgress.Address, payload *xgress
 	}
 
 	if !sent {
-		pfxlog.Logger().WithField("circuitId", payload.CircuitId).WithError(err).Error("payload dropped")
+		pfxlog.Logger().WithField("circuitId", payload.CircuitId).WithError(err).Debug("payload dropped")
 	}
 
 	return nil
