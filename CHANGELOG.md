@@ -3,7 +3,30 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.2.1 -> v1.2.2](https://github.com/openziti/sdk-golang/compare/v1.2.1...v1.2.2)
+    * [Issue #786](https://github.com/openziti/sdk-golang/issues/786) - Slow down dials to an ER if they happen too quickly
     * [Issue #784](https://github.com/openziti/sdk-golang/issues/784) - Drop retransmit error to debug
+
+* github.com/golang-jwt/jwt/v5: v5.2.3 -> v5.3.0
+* github.com/openziti/channel/v4: [v4.2.18 -> v4.2.19](https://github.com/openziti/channel/compare/v4.2.18...v4.2.19)
+    * [Issue #203](https://github.com/openziti/channel/issues/203) - Track last dial time in UnderlayConstraints
+
+* github.com/openziti/edge-api: [v0.26.46 -> v0.26.47](https://github.com/openziti/edge-api/compare/v0.26.46...v0.26.47)
+* github.com/openziti/secretstream: [v0.1.37 -> v0.1.38](https://github.com/openziti/secretstream/compare/v0.1.37...v0.1.38)
+* github.com/openziti/transport/v2: [v2.0.182 -> v2.0.183](https://github.com/openziti/transport/compare/v2.0.182...v2.0.183)
+* github.com/rcrowley/go-metrics: v0.0.0-20201227073835-cf1acfcdf475 -> v0.0.0-20250401214520-65e299d6c5c9
+* github.com/zitadel/oidc/v3: v3.42.0 -> v3.44.0
+* golang.org/x/sys: v0.34.0 -> v0.35.0
+* google.golang.org/protobuf: v1.36.6 -> v1.36.7
+* github.com/fsnotify/fsnotify: v1.8.0 -> v1.9.0
+* github.com/go-logr/logr: v1.4.2 -> v1.4.3
+* go.opentelemetry.io/auto/sdk: v1.1.0 (new)
+* go.opentelemetry.io/otel: v1.29.0 -> v1.37.0
+* go.opentelemetry.io/otel/metric: v1.29.0 -> v1.37.0
+* go.opentelemetry.io/otel/trace: v1.29.0 -> v1.37.0
+* golang.org/x/crypto: v0.40.0 -> v0.41.0
+* golang.org/x/net: v0.42.0 -> v0.43.0
+* golang.org/x/term: v0.33.0 -> v0.34.0
+* golang.org/x/text: v0.27.0 -> v0.28.0
 
 # Release notes 1.2.1
 
