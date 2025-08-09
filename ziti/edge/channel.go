@@ -1,11 +1,12 @@
 package edge
 
 import (
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
 	"io"
 	"sync/atomic"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/channel/v4"
 )
 
 const (
@@ -160,8 +161,9 @@ type SdkChannel interface {
 
 type DialSdkChannel struct {
 	BaseSdkChannel
-	dialer      channel.DialUnderlayFactory
-	constraints channel.UnderlayConstraints
+	dialer           channel.DialUnderlayFactory
+	constraints      channel.UnderlayConstraints
+	rateLimitedDials atomic.Uint32
 }
 
 func (self *DialSdkChannel) Start(channel channel.MultiChannel) {
@@ -187,6 +189,26 @@ func (self *DialSdkChannel) DialFailed(_ channel.MultiChannel, _ string, attempt
 }
 
 func (self *DialSdkChannel) CreateGroupedUnderlay(groupId string, groupSecret []byte, underlayType string, timeout time.Duration) (channel.Underlay, error) {
+	log := pfxlog.Logger().WithField("conn", self.ch.Label()).WithField("underlayType", underlayType)
+
+	dialElapsed := time.Since(self.constraints.LastDialTime())
+
+	limit := time.Duration(max(1, min(self.rateLimitedDials.Load(), 20))) * (250 * time.Millisecond)
+	if dialElapsed < limit {
+		delay := limit - dialElapsed
+		log.Infof("slowing dials, waiting %s", delay.String())
+		time.Sleep(delay)
+
+		// ensure we're valid before we dial, since we just slept
+		if !self.constraints.CheckStateValid(self.ch, true) {
+			return nil, channel.ClosedError{}
+		}
+
+		self.rateLimitedDials.Add(1)
+	} else {
+		self.rateLimitedDials.Store(0)
+	}
+
 	return self.dialer.CreateWithHeaders(timeout, map[int32][]byte{
 		channel.TypeHeader:         []byte(underlayType),
 		channel.ConnectionIdHeader: []byte(groupId),

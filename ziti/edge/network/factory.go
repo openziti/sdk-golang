@@ -18,8 +18,9 @@ package network
 
 import (
 	"fmt"
-	"github.com/openziti/sdk-golang/xgress"
 	"time"
+
+	"github.com/openziti/sdk-golang/xgress"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
@@ -178,8 +179,10 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 	ec := conn.NewDialConn(service)
 	dialConn, err := ec.Connect(session, options, envF)
 	if err != nil {
-		if err2 := ec.Close(); err2 != nil {
-			pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
+		if !conn.ch.GetChannel().IsClosed() {
+			if err2 := ec.Close(); err2 != nil {
+				pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
+			}
 		}
 	}
 	return dialConn, err
