@@ -26,6 +26,10 @@
 package ziti
 
 import (
+	"net/http"
+	"net/url"
+	"strconv"
+
 	"github.com/kataras/go-events"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
@@ -34,9 +38,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
-	"net/http"
-	"net/url"
-	"strconv"
 )
 
 var idCount = 0
@@ -164,7 +165,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		ConfigTypes:     cfg.ConfigTypes,
 	}
 
-	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(cfg.EnableHa)
+	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(true)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {

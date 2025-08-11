@@ -1,3 +1,12 @@
+# Release notes 1.2.3
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.2 -> v1.2.3](https://github.com/openziti/sdk-golang/compare/v1.2.2...v1.2.3)
+    * [Issue #779](https://github.com/openziti/sdk-golang/issues/779) - Remove need to EnableHA flag in Go SDK
+
+* github.com/openziti/channel/v4: [v4.2.19 -> v4.2.21](https://github.com/openziti/channel/compare/v4.2.19...v4.2.21)
+
 # Release notes 1.2.2
 
 ## Issues Fixed and Dependency Updates
