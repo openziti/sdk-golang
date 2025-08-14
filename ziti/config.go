@@ -19,14 +19,15 @@ package ziti
 import (
 	"crypto/x509"
 	"encoding/json"
+	"net/http"
+	"net/url"
+	"os"
+
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
-	"net/http"
-	"net/url"
-	"os"
 )
 
 type Config struct {
@@ -48,8 +49,11 @@ type Config struct {
 	//to populate this field with credentials.
 	Credentials apis.Credentials `json:"-"`
 
-	//EnableHa will signal to the SDK to query and use OIDC authentication which is required for HA controller setups.
-	//This is a temporary feature flag that will be removed and "default to true" at a later date.
+	// EnableHa is now deprecated and will be removed in a future revision. The SDK will now query the controller
+	// and use OIDC authentication if its enabled. This flag is now ignored.
+	//
+	// Deprecated: This flag is now ignored
+	//
 	EnableHa bool `json:"enableHa"`
 
 	//Allows providing a function which controls how/where request to a controller are proxied.

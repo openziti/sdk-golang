@@ -20,6 +20,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"net"
+	"net/url"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/kataras/go-events"
@@ -34,16 +45,6 @@ import (
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
-	"math"
-	"math/rand"
-	"net"
-	"net/url"
-	"reflect"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
@@ -1508,16 +1509,17 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
-			if exist { // use the routerConnection already in the map, close new one
+			if exist && !oldV.IsClosed() { // use the routerConnection already in the map, close new one
 				pfxlog.Logger().Infof("connection to %s already established, closing duplicate connection", ingressUrl)
 
 				go func() {
-					if err := newV.Close(); err != nil {
-						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
+					if closeErr := newV.Close(); closeErr != nil {
+						pfxlog.Logger().Errorf("unable to close router connection (%v)", closeErr)
 					}
 				}()
 				return oldV
 			}
+
 			h := context.metrics.Histogram("latency." + ingressUrl)
 			h.Update(int64(connectTime))
 
