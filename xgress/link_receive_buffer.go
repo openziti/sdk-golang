@@ -18,11 +18,12 @@ package xgress
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
+
 	"github.com/emirpasic/gods/trees/btree"
 	"github.com/emirpasic/gods/utils"
 	"github.com/michaelquigley/pfxlog"
-	"sync"
-	"sync/atomic"
 )
 
 type LinkReceiveBuffer struct {

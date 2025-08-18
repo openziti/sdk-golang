@@ -18,13 +18,14 @@ package xgress
 
 import (
 	"context"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/sirupsen/logrus"
 	"math"
 	"os"
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/sirupsen/logrus"
 )
 
 // Note: if altering this struct, be sure to account for 64 bit alignment on 32 bit arm arch
@@ -399,6 +400,7 @@ func (buffer *LinkSendBuffer) retransmit() {
 		})
 
 		for _, v := range rtxList {
+
 			v.markQueued()
 			buffer.x.dataPlane.GetRetransmitter().queue(v)
 			retransmitted++
@@ -415,6 +417,26 @@ func (buffer *LinkSendBuffer) retransmit() {
 		}
 		buffer.lastRetransmitTime = now
 	}
+}
+
+func (buffer *LinkSendBuffer) retransmitPayload(tx *txPayload) {
+	tx.payload.MarkAsRetransmit()
+	if err := buffer.x.dataPlane.RetransmitPayload(buffer.x.address, tx.payload); err != nil {
+		log := pfxlog.ContextLogger(buffer.x.Label())
+
+		// if xgress payload buffer is closed, don't log the error
+		if !buffer.x.payloadBuffer.IsClosed() {
+			log.WithError(err).Errorf("unexpected error while retransmitting payload from [@/%v]", buffer.x.address)
+			buffer.x.dataPlane.GetMetrics().MarkRetransmissionFailure()
+			self.faultReporter.ReportForwardingFault(tx.payload.CircuitId, buffer.x.ctrlId)
+		} else {
+			log.WithError(err).Tracef("unexpected error while retransmitting payload from [@/%v] (already closed)", buffer.x.address)
+		}
+	} else {
+		tx.markSent()
+		buffer.x.dataPlane.GetMetrics().MarkRetransmissionSuccess()
+	}
+
 }
 
 func (buffer *LinkSendBuffer) scale(factor float64) {
