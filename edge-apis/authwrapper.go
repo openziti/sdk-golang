@@ -6,6 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-resty/resty/v2"
@@ -28,10 +33,6 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/client/tokenexchange"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
-	"net/http"
-	"net/url"
-	"sync"
-	"time"
 )
 
 const (
@@ -47,7 +48,7 @@ type AuthEnabledApi interface {
 	//http client if not provided.
 	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error)
 	SetUseOidc(bool)
-	ListControllers() (*rest_model.ControllersList, error)
+	ListControllers(authInfo runtime.ClientAuthInfoWriter) (*rest_model.ControllersList, error)
 	GetClientTransportPool() ClientTransportPool
 	SetClientTransportPool(ClientTransportPool)
 }
@@ -239,20 +240,13 @@ func (a *ApiSessionOidc) AuthenticateRequest(request runtime.ClientRequest, _ st
 
 	//set request headers
 	for h, v := range a.RequestHeaders {
-		err := request.SetHeaderParam(h, v...)
-		if err != nil {
+		if err := request.SetHeaderParam(h, v...); err != nil {
 			return err
 		}
 	}
 
 	//restore auth headers
-	err := request.SetHeaderParam(primaryAuthHeader, authValues...)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return request.SetHeaderParam(primaryAuthHeader, authValues...)
 }
 
 func (a *ApiSessionOidc) GetToken() []byte {
@@ -305,9 +299,9 @@ func (self *ZitiEdgeManagement) GetClientTransportPool() ClientTransportPool {
 	return self.ClientTransportPool
 }
 
-func (self *ZitiEdgeManagement) ListControllers() (*rest_model.ControllersList, error) {
+func (self *ZitiEdgeManagement) ListControllers(authInfo runtime.ClientAuthInfoWriter) (*rest_model.ControllersList, error) {
 	params := manControllers.NewListControllersParams()
-	resp, err := self.Controllers.ListControllers(params, nil)
+	resp, err := self.Controllers.ListControllers(params, authInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -441,9 +435,9 @@ func (self *ZitiEdgeClient) SetClientTransportPool(transportPool ClientTransport
 	self.ClientTransportPool = transportPool
 }
 
-func (self *ZitiEdgeClient) ListControllers() (*rest_model.ControllersList, error) {
+func (self *ZitiEdgeClient) ListControllers(authInfo runtime.ClientAuthInfoWriter) (*rest_model.ControllersList, error) {
 	params := clientControllers.NewListControllersParams()
-	resp, err := self.Controllers.ListControllers(params, nil)
+	resp, err := self.Controllers.ListControllers(params, authInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -798,6 +792,10 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 
 	if err != nil {
 		return nil, err
+	}
+
+	if outTokens == nil {
+		return nil, errors.New("authentication did not complete, received nil tokens")
 	}
 
 	return &ApiSessionOidc{
