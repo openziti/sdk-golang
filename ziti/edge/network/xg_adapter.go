@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/sdk-golang/edgexg"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/sirupsen/logrus"
-	"time"
 )
 
 type XgAdapter struct {
@@ -28,7 +29,7 @@ func (self *XgAdapter) HandleXgressClose(x *xgress.Xgress) {
 	}
 
 	// see note in close
-	self.conn.msgMux.RemoveMsgSink(self.conn)
+	self.conn.msgMux.Remove(self.conn)
 }
 
 func (self *XgAdapter) ForwardPayload(payload *xgress.Payload, _ *xgress.Xgress, ctx context.Context) {

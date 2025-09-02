@@ -51,7 +51,7 @@ type edgeConn struct {
 	edge.MsgChannel
 	readQ                 *noopSeq[*channel.Message]
 	inBuffer              [][]byte
-	msgMux                edge.MsgMux
+	msgMux                edge.ConnMux[any]
 	flags                 uint32
 	closed                atomic.Bool
 	closeNotify           chan struct{}
@@ -74,6 +74,16 @@ type edgeConn struct {
 
 	dataSink  io.Writer
 	xgCircuit *XgAdapter
+
+	data any
+}
+
+func (conn *edgeConn) GetData() any {
+	return conn.data
+}
+
+func (conn *edgeConn) SetData(data any) {
+	conn.data = data
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
@@ -710,7 +720,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 			}
 		}
 
-		conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
+		conn.msgMux.Remove(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 	} else {
 		// cancel any pending writes
 		_ = conn.xgCircuit.writeAdapter.SetWriteDeadline(time.Now())
