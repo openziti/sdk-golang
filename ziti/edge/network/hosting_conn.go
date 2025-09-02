@@ -19,6 +19,9 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
@@ -27,19 +30,26 @@ import (
 	"github.com/openziti/secretstream/kx"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sirupsen/logrus"
-	"sync/atomic"
-	"time"
 )
 
 type edgeHostConn struct {
 	edge.MsgChannel
-	msgMux      edge.MsgMux
+	msgMux      edge.ConnMux[any]
 	hosting     cmap.ConcurrentMap[string, *edgeListener]
 	closed      atomic.Bool
 	serviceName string
 	marker      string
 	crypto      bool
 	keyPair     *kx.KeyPair
+	data        any
+}
+
+func (conn *edgeHostConn) GetData() any {
+	return conn.data
+}
+
+func (conn *edgeHostConn) SetData(data any) {
+	conn.data = data
 }
 
 func (conn *edgeHostConn) Accept(msg *channel.Message) {
@@ -158,7 +168,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		WithField("token", token).
 		WithField("circuitId", circuitId)
 
-	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
+	err := conn.msgMux.Add(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
 		conn.close(true)
 
