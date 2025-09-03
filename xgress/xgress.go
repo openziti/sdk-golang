@@ -48,6 +48,7 @@ const (
 	endOfCircuitSentFlag  = 3
 	closedTxer            = 4
 	rxPushModeFlag        = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
+	txPullModeFlag        = 6 // false == push, use tx(), 1 == pull, use ReadAdapter
 )
 
 var ErrWriteClosed = errors.New("write closed")
@@ -235,6 +236,11 @@ func (self *Xgress) firstCircuitStartReceived() bool {
 func (self *Xgress) NewWriteAdapter() *WriteAdapter {
 	self.flags.Set(rxPushModeFlag, true)
 	return NewWriteAdapter(self)
+}
+
+func (self *Xgress) NewReadAdapter() *ReadAdapter {
+	self.flags.Set(txPullModeFlag, true)
+	return NewReadAdapter(self)
 }
 
 func (self *Xgress) Start() {
@@ -434,6 +440,96 @@ func (self *Xgress) acceptPayload(payload *Payload) {
 	if !self.Options.RandomDrops || rand.Int31n(self.Options.Drop1InN) != 1 {
 		self.PayloadReceived(payload)
 	}
+}
+
+func (self *Xgress) getNextPayloadChunk() *Payload {
+	payloadChunk := self.linkRxBuffer.NextPayload(self.closeNotify)
+	if payloadChunk == nil {
+		return nil
+	}
+
+	payloadSize := len(payloadChunk.Data)
+	size := atomic.AddUint32(&self.linkRxBuffer.size, ^uint32(payloadSize-1)) // subtraction for uint32
+
+	log := pfxlog.ContextLogger(self.Label())
+	payloadLogger := log.WithFields(payloadChunk.GetLoggerFields())
+	payloadLogger.Debugf("payload %v of size %v removed from rx buffer, new size: %v", payloadChunk.Sequence, payloadSize, size)
+
+	lastBufferSizeSent := self.getLastBufferSizeSent()
+	if lastBufferSizeSent > 10000 && (lastBufferSizeSent>>1) > size {
+		self.SendEmptyAck()
+	}
+
+	return payloadChunk
+}
+
+func (self *Xgress) getNextFullPayload() *Payload {
+	payloadChunk := self.getNextPayloadChunk()
+
+	if payloadChunk == nil {
+		pfxlog.ContextLogger(self.Label()).Debug("nil payload received, exiting")
+		return nil
+	}
+
+	if !isFlagSet(payloadChunk.GetFlags(), PayloadFlagChunk) {
+		return payloadChunk
+	}
+
+	payloadSize, payloadReadOffset := binary.Uvarint(payloadChunk.Data)
+
+	if len(payloadChunk.Data) == 0 || payloadSize+uint64(payloadReadOffset) == uint64(len(payloadChunk.Data)) {
+		payloadChunk.Data = payloadChunk.Data[payloadReadOffset:]
+		return payloadChunk
+	}
+
+	payload := &Payload{
+		CircuitId: payloadChunk.CircuitId,
+		Flags:     payloadChunk.Flags,
+		RTT:       payloadChunk.RTT,
+		Sequence:  payloadChunk.Sequence,
+		Headers:   payloadChunk.Headers,
+		Data:      make([]byte, payloadSize),
+	}
+
+	var payloadWriteOffset int
+
+	for {
+		payloadChunk = self.getNextPayloadChunk()
+
+		if payloadChunk == nil {
+			pfxlog.ContextLogger(self.Label()).Debug("nil payload received, exiting")
+			return nil
+		}
+
+		chunkData := payloadChunk.Data
+		copy(payload.Data[payloadWriteOffset:], chunkData)
+		payloadWriteOffset += len(chunkData)
+		if uint64(payloadWriteOffset) == payloadSize {
+			return payload
+		}
+	}
+}
+
+func (self *Xgress) Read() ([]byte, map[uint8][]byte, error) {
+	payload := self.getNextFullPayload()
+
+	if payload.IsCircuitStartFlagSet() {
+		return self.Read()
+	}
+
+	if payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet() {
+		self.markCircuitEndReceived()
+		self.CloseXgToClient()
+		log := pfxlog.ContextLogger(self.Label()).WithFields(payload.GetLoggerFields())
+		log.Debug("circuit end payload received, exiting")
+		return nil, nil, io.EOF
+	}
+
+	for _, peekHandler := range self.peekHandlers {
+		peekHandler.Tx(self, payload)
+	}
+
+	return payload.Data, payload.Headers, nil
 }
 
 func (self *Xgress) tx() {
@@ -1217,4 +1313,88 @@ func (self *WriteAdapter) WriteToXgress(b []byte, header map[uint8][]byte) (n in
 		return 0, err
 	}
 	return len(b), nil
+}
+
+func NewReadAdapter(x *Xgress) *ReadAdapter {
+	result := &ReadAdapter{
+		x: x,
+	}
+	result.doneNotify.Store(make(chan struct{}))
+	return result
+}
+
+type ReadAdapter struct {
+	x                *Xgress
+	deadline         concurrenz.AtomicValue[time.Time]
+	doneNotify       concurrenz.AtomicValue[chan struct{}]
+	doneNotifyClosed bool
+	lock             sync.Mutex
+}
+
+func (self *ReadAdapter) Deadline() (deadline time.Time, ok bool) {
+	deadline = self.deadline.Load()
+	return deadline, !deadline.IsZero()
+}
+
+func (self *ReadAdapter) Done() <-chan struct{} {
+	return self.doneNotify.Load()
+}
+
+func (self *ReadAdapter) Err() error {
+	return nil
+}
+
+func (self *ReadAdapter) Value(any) any {
+	return nil
+}
+
+func (self *ReadAdapter) SetReadDeadline(t time.Time) error {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+
+	self.deadline.Store(t)
+	if t.IsZero() {
+		if self.doneNotifyClosed {
+			self.doneNotify.Store(make(chan struct{}))
+			self.doneNotifyClosed = false
+		}
+		return nil
+	}
+	d := time.Until(t)
+	if d > 0 {
+		if self.doneNotifyClosed {
+			self.doneNotify.Store(make(chan struct{}))
+			self.doneNotifyClosed = false
+		}
+
+		time.AfterFunc(d, func() {
+			self.lock.Lock()
+			defer self.lock.Unlock()
+
+			if t.Equal(self.deadline.Load()) {
+				if !self.doneNotifyClosed {
+					close(self.doneNotify.Load())
+					self.doneNotifyClosed = true
+				}
+			}
+		})
+	} else {
+		if !self.doneNotifyClosed {
+			close(self.doneNotify.Load())
+			self.doneNotifyClosed = true
+		}
+	}
+
+	return nil
+}
+
+func (self *ReadAdapter) Write(b []byte) (n int, err error) {
+	if err = self.x.Write(b, nil, self); err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+func (self *ReadAdapter) ReadFromXgress() (b []byte, header map[uint8][]byte, err error) {
+	return self.x.Read()
 }
