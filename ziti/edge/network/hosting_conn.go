@@ -32,26 +32,107 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// edgeHostConn represents a service hosting connection that acts as a "receptionist"
+// for incoming client dial requests. It implements edge.MsgSink to handle service-level
+// messages and manages multiple client connections through its embedded ConnMux.
+//
+// Architecture:
+//   - Receives dial requests from clients wanting to connect to the hosted service
+//   - Creates individual edgeConn instances for each accepted client connection
+//   - Routes ongoing client messages directly to their respective edgeConn via msgMux
+//   - Manages service lifecycle (bind, unbind, close) with the edge router
+//
+// Message Flow:
+//   1. Client sends dial request → edgeHostConn.Accept() handles it
+//   2. edgeHostConn creates new edgeConn for the client
+//   3. edgeConn is added to msgMux for future message routing
+//   4. Client's data messages bypass edgeHostConn and go directly to edgeConn.Accept()
+//
+// Thread Safety: All methods are safe for concurrent use.
 type edgeHostConn struct {
+	// MsgChannel provides the underlying channel communication capabilities
+	// for sending messages back to the edge router (bind requests, state changes, etc.)
 	edge.MsgChannel
-	msgMux      edge.ConnMux[any]
-	hosting     cmap.ConcurrentMap[string, *edgeListener]
-	closed      atomic.Bool
+
+	// msgMux manages individual client connections created from dial requests.
+	// Each accepted client gets an edgeConn that is registered with this mux.
+	// Future messages for specific clients are routed directly to their edgeConn.
+	msgMux edge.ConnMux[any]
+
+	// hosting maps session tokens to their corresponding edgeListener instances.
+	// Each token represents a service binding session with the edge router.
+	hosting cmap.ConcurrentMap[string, *edgeListener]
+
+	// closed indicates whether this hosting connection has been terminated.
+	// Used to prevent new operations on a closed connection.
+	closed atomic.Bool
+
+	// serviceName is the name of the service being hosted by this connection.
+	// Used for logging and debugging purposes.
 	serviceName string
-	marker      string
-	crypto      bool
-	keyPair     *kx.KeyPair
-	data        any
+
+	// marker is a unique identifier for this hosting connection instance.
+	// Used for tracing and debugging across the distributed system.
+	marker string
+
+	// crypto indicates whether end-to-end encryption is required for client connections.
+	// When true, client connections must establish encrypted sessions using keyPair.
+	crypto bool
+
+	// keyPair contains the cryptographic keys used for end-to-end encryption
+	// when crypto is enabled. Used during client connection handshake.
+	keyPair *kx.KeyPair
+
+	// data stores arbitrary service-level context information that can be
+	// accessed by the hosting application. This might include service configuration,
+	// authentication policies, metrics collectors, or other service-wide state.
+	// Unlike client-specific data in edgeConn, this context applies to the entire service.
+	data atomic.Value
 }
 
+// GetData retrieves arbitrary service-level context data associated with this hosting connection.
+// This allows hosting applications to store and retrieve service-wide configuration,
+// state, or metadata that applies to all clients of this service.
+//
+// Returns:
+//   - any: the stored service context data, or nil if none has been set
+//
+// Examples of service-level data:
+//   - Service configuration and feature flags
+//   - Authentication and authorization policies
+//   - Metrics collectors or connection limits
+//   - Custom service handlers or middleware
 func (conn *edgeHostConn) GetData() any {
-	return conn.data
+	return conn.data.Load()
 }
 
+// SetData stores arbitrary service-level context data for this hosting connection.
+// This data persists for the lifetime of the service and can be accessed during
+// client connection handling or other service operations.
+//
+// Parameters:
+//   - data: arbitrary context data to associate with this service
+//
+// Thread Safety: This method is safe for concurrent use.
 func (conn *edgeHostConn) SetData(data any) {
-	conn.data = data
+	conn.data.Store(data)
 }
 
+// Accept implements edge.MsgSink and handles service-level messages for this hosting connection.
+// This method acts as the "receptionist" that processes incoming requests and manages
+// the service lifecycle. It does NOT handle individual client data messages - those
+// are routed directly to the appropriate edgeConn via msgMux.
+//
+// Handled Message Types:
+//   - ContentTypeDial: Creates new client connections for dial requests
+//   - ContentTypeStateClosed: Handles service shutdown notifications
+//   - ContentTypeBindSuccess: Confirms service binding and notifies listeners
+//   - ContentTypeConnInspectRequest: Provides service inspection data
+//
+// Parameters:
+//   - msg: the incoming message to process
+//
+// Thread Safety: This method is safe for concurrent use.
 func (conn *edgeHostConn) Accept(msg *channel.Message) {
 	conn.TraceMsg("Accept", msg)
 
