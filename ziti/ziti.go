@@ -2190,11 +2190,10 @@ func (mgr *listenerManager) refreshSession() {
 }
 
 func (mgr *listenerManager) createSessionWithBackoff() {
+	log := pfxlog.Logger().WithField("serviceName", *mgr.service.Name)
 	latestSvc, _ := mgr.context.services.Get(*mgr.service.Name)
 	if latestSvc != nil && *latestSvc.ID != *mgr.service.ID {
-		pfxlog.Logger().
-			WithField("serviceName", *mgr.service.Name).
-			WithField("oldServiceId", *mgr.service.ID).
+		log.WithField("oldServiceId", *mgr.service.ID).
 			WithField("newServiceId", *latestSvc.ID).
 			Info("service id changed, service was recreated")
 		mgr.service = latestSvc
@@ -2203,9 +2202,9 @@ func (mgr *listenerManager) createSessionWithBackoff() {
 	session, err := mgr.context.createSessionWithBackoff(mgr.service, SessionType(SessionBind), mgr.options)
 	if session != nil {
 		mgr.sessionRefreshed(session)
-		pfxlog.Logger().WithField("session token", *session.Token).Info("new service session")
+		log.Debug("new service session created")
 	} else {
-		pfxlog.Logger().WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
+		log.WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
 	}
 }
 

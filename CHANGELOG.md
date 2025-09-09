@@ -1,3 +1,25 @@
+# Release notes 1.2.4
+
+## What's New
+
+* Updates Go version to 1.24, in-line with Go's supported version policy
+* Dependency updates and a minor logging fix
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.3 -> v1.2.4](https://github.com/openziti/sdk-golang/compare/v1.2.3...v1.2.4)
+    * [Issue #800](https://github.com/openziti/sdk-golang/issues/800) - Tidy create service session logging
+
+* github.com/openziti/channel/v4: [v4.2.21 -> v4.2.31](https://github.com/openziti/channel/compare/v4.2.21...v4.2.31)
+* github.com/openziti/foundation/v2: [v2.0.70 -> v2.0.73](https://github.com/openziti/foundation/compare/v2.0.70...v2.0.73)
+* github.com/openziti/identity: [v1.0.109 -> v1.0.112](https://github.com/openziti/identity/compare/v1.0.109...v1.0.112)
+* github.com/openziti/secretstream: [v0.1.38 -> v0.1.39](https://github.com/openziti/secretstream/compare/v0.1.38...v0.1.39)
+* github.com/openziti/transport/v2: [v2.0.183 -> v2.0.189](https://github.com/openziti/transport/compare/v2.0.183...v2.0.189)
+* github.com/stretchr/testify: v1.10.0 -> v1.11.1
+* golang.org/x/oauth2: v0.30.0 -> v0.31.0
+* golang.org/x/sys: v0.35.0 -> v0.36.0
+* google.golang.org/protobuf: v1.36.7 -> v1.36.9
+
 # Release notes 1.2.3
 
 ## Issues Fixed and Dependency Updates
