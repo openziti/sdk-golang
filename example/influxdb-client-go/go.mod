@@ -1,6 +1,6 @@
 module github.com/openziti/sdk-golang/example/influx-client-go
 
-go 1.23.7
+go 1.24.0
 
 toolchain go1.24.1
 
@@ -94,13 +94,13 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.2.21 // indirect
+	github.com/openziti/channel/v4 v4.2.31 // indirect
 	github.com/openziti/edge-api v0.26.47 // indirect
-	github.com/openziti/foundation/v2 v2.0.70 // indirect
-	github.com/openziti/identity v1.0.109 // indirect
+	github.com/openziti/foundation/v2 v2.0.73 // indirect
+	github.com/openziti/identity v1.0.112 // indirect
 	github.com/openziti/metrics v1.4.2 // indirect
-	github.com/openziti/secretstream v0.1.38 // indirect
-	github.com/openziti/transport/v2 v2.0.183 // indirect
+	github.com/openziti/secretstream v0.1.39 // indirect
+	github.com/openziti/transport/v2 v2.0.189 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -137,13 +137,13 @@ require (
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
+	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
+	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
