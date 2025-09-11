@@ -39,7 +39,7 @@ type routerConn struct {
 	routerName string
 	key        string
 	ch         edge.SdkChannel
-	msgMux     edge.MsgMux
+	mux        edge.ConnMux[any]
 	owner      RouterConnOwner
 }
 
@@ -66,7 +66,7 @@ func NewEdgeConnFactory(routerName, key string, owner RouterConnOwner) edge.Rout
 	connFactory := &routerConn{
 		key:        key,
 		routerName: routerName,
-		msgMux:     edge.NewMapMsgMux(),
+		mux:        edge.NewChannelConnMapMux[any](),
 		owner:      owner,
 	}
 
@@ -81,33 +81,33 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
 	}
 
-	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeBindSuccess, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeXgPayload, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.msgMux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.msgMux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeConnInspectRequest, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeBindSuccess, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgPayload, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.mux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
-	binding.AddTypedReceiveHandler(conn.msgMux)
-	binding.AddCloseHandler(conn.msgMux)
+	binding.AddTypedReceiveHandler(conn.mux)
+	binding.AddCloseHandler(conn.mux)
 	binding.AddCloseHandler(conn)
 
 	return nil
 }
 
 func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
-	id := conn.msgMux.GetNextId()
+	id := conn.mux.GetNextId()
 
 	closeNotify := make(chan struct{})
 	edgeCh := &edgeConn{
 		closeNotify: closeNotify,
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
 		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      conn.msgMux,
+		msgMux:      conn.mux,
 		serviceName: *service.Name,
 		marker:      newMarker(),
 	}
@@ -121,7 +121,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 		}
 	}
 
-	err = conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
+	err = conn.mux.Add(edgeCh) // duplicate errors only happen on the server side, since client controls ids
 	if err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
@@ -150,11 +150,11 @@ func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 }
 
 func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeHostConn {
-	id := conn.msgMux.GetNextId()
+	id := conn.mux.GetNextId()
 
 	edgeCh := &edgeHostConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		msgMux:      conn.msgMux,
+		msgMux:      conn.mux,
 		serviceName: *service.Name,
 		keyPair:     keyPair,
 		crypto:      keyPair != nil,
@@ -162,7 +162,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair
 	}
 
 	// duplicate errors only happen on the server side, since the client controls ids
-	if err := conn.msgMux.AddMsgSink(edgeCh); err != nil {
+	if err := conn.mux.Add(edgeCh); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
 
