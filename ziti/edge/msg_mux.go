@@ -224,6 +224,29 @@ type ConnMux[T any] interface {
 	//   }
 	GetConnCount() int
 
+	// GetSinks returns a snapshot of all currently active message sinks managed by this multiplexer.
+	// This method provides access to the complete set of active connections and their associated
+	// message handlers, indexed by their connection IDs.
+	//
+	// The returned map is a snapshot taken at the time of the call and will not reflect
+	// subsequent additions or removals of connections. This method is useful for:
+	//   - Administrative operations that need to inspect all active connections
+	//   - Debugging and monitoring tools
+	//   - Broadcasting operations across all connections
+	//   - Connection lifecycle management and cleanup
+	//
+	// Returns:
+	//   map[uint32]MsgSink[T] - a map of connection IDs to their corresponding message sinks
+	//
+	// Thread Safety: This method is safe for concurrent use.
+	//
+	// Example:
+	//   sinks := mux.GetSinks()
+	//   for connId, sink := range sinks {
+	//       fmt.Printf("Connection %d: %v\n", connId, sink.GetData())
+	//   }
+	GetSinks() map[uint32]MsgSink[T]
+
 	// GetNextId generates the next available connection ID for creating new connections.
 	// This method ensures that connection IDs are unique within the multiplexer's scope
 	// and handles ID allocation automatically. The implementation may use sequential
@@ -303,6 +326,10 @@ func (mux *ConnMuxImpl[T]) HasConn(connId uint32) bool {
 
 func (mux *ConnMuxImpl[T]) GetConnCount() int {
 	return mux.sinks.Count()
+}
+
+func (mux *ConnMuxImpl[T]) GetSinks() map[uint32]MsgSink[T] {
+	return mux.sinks.Items()
 }
 
 func (mux *ConnMuxImpl[T]) GetNextId() uint32 {

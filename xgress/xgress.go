@@ -61,7 +61,7 @@ type AckSender interface {
 
 type OptionsData map[interface{}]interface{}
 
-// The BindHandlers are invoked to install the appropriate handlers.
+// BindHandler is an interface invoked to install the appropriate handlers.
 type BindHandler interface {
 	HandleXgressBind(x *Xgress)
 }
@@ -923,7 +923,7 @@ func (self *Xgress) SendEmptyAck() {
 func (self *Xgress) GetSequence() uint64 {
 	self.rxSequenceLock.Lock()
 	defer self.rxSequenceLock.Unlock()
-	return uint64(self.rxSequence)
+	return self.rxSequence
 }
 
 func (self *Xgress) getLastBufferSizeSent() uint32 {
