@@ -18,10 +18,6 @@ package edge
 
 import (
 	"fmt"
-	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/foundation/v2/concurrenz"
-	"github.com/openziti/sdk-golang/xgress"
-	"github.com/openziti/secretstream/kx"
 	"io"
 	"net"
 	"os"
@@ -31,7 +27,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
+	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequence"
+	"github.com/openziti/sdk-golang/xgress"
+	"github.com/openziti/secretstream/kx"
 )
 
 const (

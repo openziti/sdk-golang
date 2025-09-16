@@ -17,10 +17,11 @@
 package network
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/xgress"
 	"io"
 	"net"
 	"strconv"
@@ -29,13 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/binary"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
@@ -47,33 +47,168 @@ var unsupportedCrypto = errors.New("unsupported crypto")
 
 var _ edge.Conn = &edgeConn{}
 
+// edgeConn represents an individual connection in the Ziti edge network.
+// It implements both edge.Conn (providing standard network connection semantics) and edge.MsgSink
+// (handling connection-specific messages from the edge router).
+//
+// Use Cases:
+//   - Service Hosting: Created by edgeHostConn when a client dials a hosted service
+//   - Service Consumption: Created when this SDK dials a service hosted elsewhere
+//
+// Architecture:
+//   - Registered with a msgMux to receive connection-specific messages
+//   - Handles data transfer, flow control, and encryption for a single session
+//   - Provides standard Read/Write interface while managing underlying message protocols
+//   - Manages connection lifecycle from establishment to termination
+//
+// Message Flow:
+//   1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.Accept()
+//   2. edgeConn.Accept() processes message based on content type (data, state, ack, etc.)
+//   3. Application reads data via Read() method from internal buffer
+//   4. Application writes data via Write() method, which sends to edge router
+//
+// Lifecycle:
+//   1. Created during connection establishment (dial or accept)
+//   2. Added to msgMux for message routing
+//   3. Handles session until Close() or remote disconnect
+//   4. Removed from msgMux and cleaned up
+//
+// Thread Safety: All methods are safe for concurrent use.
 type edgeConn struct {
+	// MsgChannel provides the underlying channel communication capabilities
+	// for sending messages back to the edge router (data, state changes, acks, etc.)
 	edge.MsgChannel
-	readQ                 *noopSeq[*channel.Message]
-	inBuffer              [][]byte
-	msgMux                edge.MsgMux
-	flags                 uint32
-	closed                atomic.Bool
-	closeNotify           chan struct{}
-	readFIN               atomic.Bool
-	sentFIN               atomic.Bool
-	serviceName           string
-	sourceIdentity        string
-	acceptCompleteHandler *newConnHandler
-	marker                string
-	circuitId             string
-	customState           map[int32][]byte
 
-	crypto   bool
-	keyPair  *kx.KeyPair
-	rxKey    []byte
+	// readQ sequences incoming messages for ordered delivery to the application.
+	// Ensures data messages are delivered in the correct order even with
+	// concurrent message processing.
+	readQ *noopSeq[*channel.Message]
+
+	// inBuffer stores message data that has been received but not yet read
+	// by the application. Acts as a buffer between network messages and Read() calls.
+	inBuffer [][]byte
+
+	// msgMux is the parent connection multiplexer that manages this connection.
+	// Used to remove this connection when it closes.
+	msgMux edge.ConnMux[any]
+
+	// flags stores various connection state flags for internal protocol handling.
+	flags uint32
+
+	// closed indicates whether this connection has been terminated.
+	// Used to prevent operations on closed connections.
+	closed atomic.Bool
+
+	// closeNotify is used to signal connection closure to waiting goroutines.
+	// Closed when the connection is terminated.
+	closeNotify chan struct{}
+
+	// readFIN indicates that the remote side has finished sending data.
+	// When true, no more data will be received from the client.
+	readFIN atomic.Bool
+
+	// sentFIN indicates that this side has finished sending data.
+	// When true, no more data can be sent to the client.
+	sentFIN atomic.Bool
+
+	// serviceName is the name of the service this connection is accessing.
+	// Used for logging and debugging purposes.
+	serviceName string
+
+	// sourceIdentity identifies the remote peer that established this connection.
+	// For hosted services: identifies the client dialing the service
+	// For consumed services: identifies the service host
+	// Used for authorization, logging, and audit purposes.
+	sourceIdentity string
+
+	// acceptCompleteHandler handles the completion of the connection handshake.
+	// Set during connection establishment and cleared after handshake completion.
+	acceptCompleteHandler *newConnHandler
+
+	// marker is a unique identifier for this connection instance.
+	// Used for tracing and debugging across the distributed system.
+	marker string
+
+	// circuitId identifies the network circuit used for this connection.
+	// Used for routing and network-level debugging.
+	circuitId string
+
+	// customState stores protocol-specific state information as key-value pairs.
+	// Used by the edge protocol for managing connection-level metadata.
+	customState map[int32][]byte
+
+	// crypto indicates whether end-to-end encryption is enabled for this connection.
+	// When true, all data is encrypted/decrypted using the sender/receiver.
+	crypto bool
+
+	// keyPair contains the cryptographic keys for this connection's encryption.
+	// Used during encryption setup and for deriving session keys.
+	keyPair *kx.KeyPair
+
+	// rxKey is the derived key used for decrypting incoming data.
+	// Generated during the encryption handshake process.
+	rxKey []byte
+
+	// receiver handles decryption of incoming encrypted data from the client.
+	// Only used when crypto is enabled.
 	receiver secretstream.Decryptor
-	sender   secretstream.Encryptor
-	appData  []byte
+
+	// sender handles encryption of outgoing data to the client.
+	// Only used when crypto is enabled.
+	sender secretstream.Encryptor
+
+	// appData contains application-specific data sent during connection establishment.
+	// Available to the hosting application for connection-specific context.
+	appData []byte
+
+	// Mutex protects concurrent access to encryption/decryption operations
+	// and other critical sections that modify connection state.
 	sync.Mutex
 
-	dataSink  io.Writer
+	// dataSink is an optional writer that receives a copy of all data
+	// sent through this connection. Used for logging or monitoring purposes.
+	dataSink io.Writer
+
+	// xgCircuit manages the underlying transport circuit for this connection.
+	// Handles flow control, acknowledgments, and low-level data transfer.
 	xgCircuit *XgAdapter
+
+	// data stores arbitrary connection-specific context information that can be
+	// accessed by the application. This might include session data, authentication
+	// state, request context, or other per-connection metadata.
+	// For hosted services: stores client-specific context
+	// For consumed services: stores connection-specific application state
+	data atomic.Value
+}
+
+// GetData retrieves arbitrary connection-specific context data associated with this connection.
+// This allows applications to store and retrieve per-connection state, session information,
+// or metadata that applies to this individual connection.
+//
+// Returns:
+//   - any: the stored connection context data, or nil if none has been set
+//
+// Examples of connection-specific data:
+//   - User authentication state and session tokens
+//   - Request context and correlation IDs
+//   - Connection-specific configuration or feature flags
+//   - Per-connection metrics or rate limiting state
+//   - Custom connection handlers or middleware
+//   - Application-specific connection state
+func (conn *edgeConn) GetData() any {
+	return conn.data.Load()
+}
+
+// SetData stores arbitrary connection-specific context data for this connection.
+// This data persists for the lifetime of this connection and can be accessed
+// during message processing or other connection operations.
+//
+// Parameters:
+//   - data: arbitrary context data to associate with this connection
+//
+// Thread Safety: This method is safe for concurrent use.
+func (conn *edgeConn) SetData(data any) {
+	conn.data.Store(data)
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
@@ -710,7 +845,7 @@ func (conn *edgeConn) close(closedByRemote bool) {
 			}
 		}
 
-		conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
+		conn.msgMux.Remove(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 	} else {
 		// cancel any pending writes
 		_ = conn.xgCircuit.writeAdapter.SetWriteDeadline(time.Now())
