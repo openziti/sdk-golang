@@ -88,6 +88,10 @@ type Context interface {
 	// creation.
 	Authenticate() error
 
+	// GetExternalSigners retrieves a list of external JWT signers with their details.
+	// Returns an error if the operation fails.
+	GetExternalSigners() ([]*rest_model.ClientExternalJWTSignerDetail, error)
+
 	// SetCredentials sets the credentials used to authenticate against the Edge Client API.
 	SetCredentials(authenticator apis.Credentials)
 
@@ -107,17 +111,17 @@ type Context interface {
 	// DialWithOptions performs the same logic as Dial but allows specification of DialOptions.
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
 
-	// DialAddr finds the service for given address and performs a Dial for it.
+	// DialAddr finds the service for a given address and performs a Dial for it.
 	DialAddr(network string, addr string) (edge.Conn, error)
 
 	// Listen attempts to host a service by the given service name;  authenticating as necessary in order to obtain
 	// a service session, attach to Edge Routers, and bind (host) the service.
 	Listen(serviceName string) (edge.Listener, error)
 
-	// ListenWithOptions performs the same logic as Listen, but allows the specification of ListenOptions.
+	// ListenWithOptions performs the same logic as Listen but allows the specification of ListenOptions.
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 
-	// GetServiceId will return the id of a specific service by service name. If not found, false, will be returned
+	// GetServiceId will return the id of a specific service by service name. If not found, false will be returned
 	// with an empty string.
 	GetServiceId(serviceName string) (string, bool, error)
 
@@ -128,7 +132,7 @@ type Context interface {
 	// GetService will return the service details of a specific service by service name.
 	GetService(serviceName string) (*rest_model.ServiceDetail, bool)
 
-	// GetServiceForAddr finds the service with intercept that matches best to given address
+	// GetServiceForAddr finds the service with intercept that matches best to the given address
 	GetServiceForAddr(network, hostname string, port uint16) (*rest_model.ServiceDetail, int, error)
 
 	// RefreshServices forces the context to refresh the list of services the current authenticating identity has access
@@ -136,7 +140,7 @@ type Context interface {
 	RefreshServices() error
 
 	// RefreshService forces the context to refresh just the service with the given name. If the given service isn't
-	// found, a nil will be returned
+	// found, nil will be returned
 	RefreshService(serviceName string) (*rest_model.ServiceDetail, error)
 
 	// GetServiceTerminators will return a slice of rest_model.TerminatorClientDetail for a specific service name.
@@ -666,6 +670,11 @@ func (context *ContextImpl) refreshSessions() {
 	for u, name := range edgeRouters {
 		go context.handleConnectEdgeRouter(name, u, nil)
 	}
+}
+
+func (context *ContextImpl) GetExternalSigners() ([]*rest_model.ClientExternalJWTSignerDetail, error) {
+	result, err := context.CtrlClt.GetExternalSigners()
+	return result, err
 }
 
 func (context *ContextImpl) RefreshServices() error {

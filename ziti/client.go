@@ -25,6 +25,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"strings"
+	"sync/atomic"
+
 	"github.com/go-openapi/strfmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -46,8 +49,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
-	"strings"
-	"sync/atomic"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -67,6 +68,15 @@ type CtrlClient struct {
 	ConfigTypes                      []string
 	supportsConfigTypesOnServiceList atomic.Bool
 	capabilitiesLoaded               atomic.Bool
+}
+
+func (self *CtrlClient) GetExternalSigners() (rest_model.ClientExternalJWTSignerList, error) {
+	response, err := self.API.ExternalJWTSigner.ListExternalJWTSigners(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Payload.Data, nil
 }
 
 // GetCurrentApiSession returns the current cached ApiSession or nil
@@ -92,7 +102,7 @@ func (self *CtrlClient) Refresh() (apis.ApiSession, error) {
 }
 
 // IsServiceListUpdateAvailable will contact the controller to determine if a new set of services are available. Service
-// updates could entail gaining/losing services access via policy or runtime authorization revocation due to posture
+// updates could entail gaining/losing service access via policy or runtime authorization revocation due to posture
 // checks.
 func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, error) {
 	resp, err := self.API.CurrentAPISession.ListServiceUpdates(current_api_session.NewListServiceUpdatesParams(), self.GetCurrentApiSession())
@@ -104,7 +114,7 @@ func (self *CtrlClient) IsServiceListUpdateAvailable() (bool, *strfmt.DateTime, 
 	return self.lastServiceUpdate == nil || !resp.Payload.Data.LastChangeAt.Equal(*self.lastServiceUpdate), resp.Payload.Data.LastChangeAt, nil
 }
 
-// Authenticate attempts to use authenticate, overwriting any existing ApiSession.
+// Authenticate attempts to authenticate, overwriting any existing ApiSession.
 func (self *CtrlClient) Authenticate() (apis.ApiSession, error) {
 	var err error
 
