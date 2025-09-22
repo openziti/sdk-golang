@@ -25,6 +25,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"strings"
+	"sync/atomic"
+
 	"github.com/go-openapi/strfmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -46,8 +49,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
-	"strings"
-	"sync/atomic"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -503,4 +504,25 @@ func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
 		self.loadCtrlCapabilities()
 	}
 	return self.supportsConfigTypesOnServiceList.Load()
+}
+
+// GetAvailableERs retrieves edge routers accessible to the current identity from the controller.
+// Returns detailed router information including supported protocols and connection addresses
+// for establishing data plane connections.
+func (self *CtrlClient) GetAvailableERs() ([]*rest_model.CurrentIdentityEdgeRouterDetail, error) {
+	params := current_identity.NewGetCurrentIdentityEdgeRoutersParams()
+
+	var ers []*rest_model.CurrentIdentityEdgeRouterDetail
+
+	resp, err := self.API.CurrentIdentity.GetCurrentIdentityEdgeRouters(params, self.GetCurrentApiSession())
+
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	ers = make([]*rest_model.CurrentIdentityEdgeRouterDetail, 0, *resp.Payload.Meta.Pagination.TotalCount)
+
+	ers = append(ers, resp.Payload.Data...)
+
+	return ers, nil
 }
