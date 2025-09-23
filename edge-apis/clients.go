@@ -18,16 +18,17 @@ package edge_apis
 
 import (
 	"crypto/x509"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync/atomic"
+
 	"github.com/go-openapi/runtime"
 	openapiclient "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	"github.com/openziti/edge-api/rest_management_api_client"
-	"net/http"
-	"net/url"
-	"strings"
-	"sync/atomic"
 )
 
 // ApiType is an interface constraint for generics. The underlying go-swagger types only have fields, which are
@@ -173,7 +174,7 @@ func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
 	list, err := authEnabledApi.ListControllers()
 
 	if err != nil {
-		pfxlog.Logger().WithError(err).Error("error listing controllers, continuing with 1 default configured controller")
+		pfxlog.Logger().WithError(err).Debug("error listing controllers, continuing with 1 default configured controller")
 		return
 	}
 

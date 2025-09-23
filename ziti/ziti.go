@@ -95,6 +95,8 @@ type Context interface {
 	// SetCredentials sets the credentials used to authenticate against the Edge Client API.
 	SetCredentials(authenticator apis.Credentials)
 
+	LoginWithJWT(jst string)
+
 	// GetCredentials returns the currently set credentials used to authenticate against the Edge Client API.
 	GetCredentials() apis.Credentials
 
@@ -484,6 +486,20 @@ func (context *ContextImpl) SetId(id string) {
 
 func (context *ContextImpl) SetCredentials(credentials apis.Credentials) {
 	context.CtrlClt.Credentials = credentials
+}
+
+func (context *ContextImpl) LoginWithJWT(jwt string) {
+	cred := context.CtrlClt.Credentials
+	jwtCred := &apis.JwtCredentials{
+		BaseCredentials: apis.BaseCredentials{
+			ConfigTypes: cred.Payload().ConfigTypes,
+			EnvInfo:     cred.Payload().EnvInfo,
+			SdkInfo:     cred.Payload().SdkInfo,
+			CaPool:      context.CtrlClt.CaPool,
+		},
+		JWT: jwt,
+	}
+	context.SetCredentials(jwtCred)
 }
 
 func (context *ContextImpl) GetCredentials() apis.Credentials {
