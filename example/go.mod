@@ -8,9 +8,11 @@ replace github.com/openziti/sdk-golang => ../
 
 require (
 	github.com/Jeffail/gabs v1.4.0
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
+	github.com/openziti/edge-api v0.26.47
 	github.com/openziti/foundation/v2 v2.0.73
 	github.com/openziti/runzmd v1.0.33
 	github.com/openziti/sdk-golang v0.0.0
@@ -82,7 +84,6 @@ require (
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/openziti/channel/v4 v4.2.31 // indirect
-	github.com/openziti/edge-api v0.26.47 // indirect
 	github.com/openziti/identity v1.0.112 // indirect
 	github.com/openziti/metrics v1.4.2 // indirect
 	github.com/openziti/secretstream v0.1.39 // indirect

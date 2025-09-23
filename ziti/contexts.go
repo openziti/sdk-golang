@@ -98,13 +98,9 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		newContext.maxDefaultConnections = 1
 	}
 
-	if cfg.ID.Cert != "" && cfg.ID.Key != "" {
-		idCredentials := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
-		idCredentials.ConfigTypes = cfg.ConfigTypes
-		cfg.Credentials = idCredentials
-	} else if cfg.Credentials == nil {
-		return nil, errors.New("either cfg.ID or cfg.Credentials must be provided")
-	}
+	idCredentials := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+	idCredentials.ConfigTypes = cfg.ConfigTypes
+	cfg.Credentials = idCredentials
 
 	var apiStrs []string
 	if len(cfg.ZtAPIs) > 0 {
