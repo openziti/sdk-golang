@@ -1,3 +1,12 @@
+# Release notes 1.2.5
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.4 -> v1.2.5](https://github.com/openziti/sdk-golang/compare/v1.2.4...v1.2.5)
+    * [Issue #804](https://github.com/openziti/sdk-golang/issues/804): Simplify OIDC flow for applications
+    * [PR #797](https://github.com/openziti/sdk-golang/pull/797): Add.generic.msg.sink
+
+
 # Release notes 1.2.4
 
 ## What's New
