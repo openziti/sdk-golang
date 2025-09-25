@@ -1,6 +1,7 @@
 package xgress
 
 import (
+	"context"
 	"encoding/binary"
 	"github.com/openziti/channel/v4"
 	"github.com/stretchr/testify/require"
@@ -64,7 +65,7 @@ func (n noopReceiveHandler) GetPayloadIngester() *PayloadIngester {
 
 func (n noopReceiveHandler) ForwardAcknowledgement(*Acknowledgement, Address) {}
 
-func (n noopReceiveHandler) ForwardPayload(*Payload, *Xgress) {}
+func (n noopReceiveHandler) ForwardPayload(*Payload, *Xgress, context.Context) {}
 
 func (n noopReceiveHandler) ForwardControlMessage(*Control, *Xgress) {}
 

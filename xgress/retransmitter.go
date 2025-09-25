@@ -145,8 +145,8 @@ func (self *Retransmitter) retransmitSender() {
 			if !retransmit.isAcked() {
 				retransmit.payload.MarkAsRetransmit()
 				if err := retransmit.x.dataPlane.RetransmitPayload(retransmit.x.address, retransmit.payload); err != nil {
-					// if xgress is closed, don't log the error. We still want to try retransmitting in case we're re-sending end of circuit
-					if !retransmit.x.Closed() {
+					// if xgress payload buffer is closed, don't log the error
+					if !retransmit.x.payloadBuffer.IsClosed() {
 						logger.WithError(err).Errorf("unexpected error while retransmitting payload from [@/%v]", retransmit.x.address)
 						self.retransmissionFailures.Mark(1)
 						self.faultReporter.ReportForwardingFault(retransmit.payload.CircuitId, retransmit.x.ctrlId)

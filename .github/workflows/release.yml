@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Git Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
 

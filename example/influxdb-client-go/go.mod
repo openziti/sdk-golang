@@ -1,8 +1,8 @@
 module github.com/openziti/sdk-golang/example/influx-client-go
 
-go 1.23.0
+go 1.24.0
 
-toolchain go1.23.1
+toolchain go1.24.1
 
 replace github.com/openziti/sdk-golang => ../../
 
@@ -30,12 +30,13 @@ require (
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/flosch/pongo2/v4 v4.0.2 // indirect
-	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/gin-gonic/gin v1.9.1 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
@@ -53,13 +54,12 @@ require (
 	github.com/go-playground/validator/v10 v10.15.4 // indirect
 	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gomarkdown/markdown v0.0.0-20230922112808-5421fefb8386 // indirect
+	github.com/gomarkdown/markdown v0.0.0-20250311123330-531bef5e742b // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/gorilla/schema v1.3.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/influxdata/line-protocol v0.0.0-20210922203350-b1ad95c89adf // indirect
@@ -94,19 +94,19 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/openziti/channel/v4 v4.2.0 // indirect
-	github.com/openziti/edge-api v0.26.45 // indirect
-	github.com/openziti/foundation/v2 v2.0.63 // indirect
-	github.com/openziti/identity v1.0.101 // indirect
-	github.com/openziti/metrics v1.4.1 // indirect
-	github.com/openziti/secretstream v0.1.34 // indirect
-	github.com/openziti/transport/v2 v2.0.171 // indirect
+	github.com/openziti/channel/v4 v4.2.31 // indirect
+	github.com/openziti/edge-api v0.26.47 // indirect
+	github.com/openziti/foundation/v2 v2.0.73 // indirect
+	github.com/openziti/identity v1.0.112 // indirect
+	github.com/openziti/metrics v1.4.2 // indirect
+	github.com/openziti/secretstream v0.1.39 // indirect
+	github.com/openziti/transport/v2 v2.0.189 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20221212215047-62379fc7944b // indirect
-	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/schollz/closestmatch v2.1.0+incompatible // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
@@ -124,24 +124,26 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yosssi/ace v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	github.com/zitadel/oidc/v2 v2.12.2 // indirect
+	github.com/zitadel/logging v0.6.2 // indirect
+	github.com/zitadel/oidc/v3 v3.44.0 // indirect
+	github.com/zitadel/schema v1.3.1 // indirect
 	go.mongodb.org/mongo-driver v1.17.0 // indirect
 	go.mozilla.org/pkcs7 v0.9.0 // indirect
-	go.opentelemetry.io/otel v1.29.0 // indirect
-	go.opentelemetry.io/otel/metric v1.29.0 // indirect
-	go.opentelemetry.io/otel/trace v1.29.0 // indirect
+	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/metric v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	golang.org/x/arch v0.5.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
+	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.32.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/oauth2 v0.31.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/term v0.34.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
-	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
+	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect

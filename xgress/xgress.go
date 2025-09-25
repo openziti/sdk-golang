@@ -19,6 +19,7 @@ package xgress
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -45,7 +46,12 @@ const (
 	rxerStartedFlag       = 1
 	endOfCircuitRecvdFlag = 2
 	endOfCircuitSentFlag  = 3
+	closedTxer            = 4
+	rxPushModeFlag        = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
 )
+
+var ErrWriteClosed = errors.New("write closed")
+var ErrPeerClosed = errors.New("peer closed")
 
 type Address string
 
@@ -55,7 +61,7 @@ type AckSender interface {
 
 type OptionsData map[interface{}]interface{}
 
-// The BindHandlers are invoked to install the appropriate handlers.
+// BindHandler is an interface invoked to install the appropriate handlers.
 type BindHandler interface {
 	HandleXgressBind(x *Xgress)
 }
@@ -74,7 +80,7 @@ type Env interface {
 // is implemented to connect the xgress to a data plane data transmission system.
 type DataPlaneAdapter interface {
 	// ForwardPayload is used to forward data payloads onto the data-plane from an xgress
-	ForwardPayload(payload *Payload, x *Xgress)
+	ForwardPayload(payload *Payload, x *Xgress, ctx context.Context)
 
 	// RetransmitPayload is used to retransmit data payloads onto the data-plane from an xgress
 	RetransmitPayload(srcAddr Address, payload *Payload) error
@@ -114,10 +120,17 @@ type Connection interface {
 	LogContext() string
 	ReadPayload() ([]byte, map[uint8][]byte, error)
 	WritePayload([]byte, map[uint8][]byte) (int, error)
+
 	HandleControlMsg(controlType ControlType, headers channel.Headers, responder ControlReceiver) error
 }
 
+type SignalConnection interface {
+	Connection
+	FlowFromFabricToXgressClosed()
+}
+
 type Xgress struct {
+	timeOfLastRxFromLink int64 // must be first for 64-bit atomic operations on 32-bit machines
 	dataPlane            DataPlaneAdapter
 	circuitId            string
 	ctrlId               string
@@ -125,7 +138,6 @@ type Xgress struct {
 	peer                 Connection
 	originator           Originator
 	Options              *Options
-	txQueue              chan *Payload
 	closeNotify          chan struct{}
 	rxSequence           uint64
 	rxSequenceLock       sync.Mutex
@@ -134,8 +146,12 @@ type Xgress struct {
 	closeHandlers        []CloseHandler
 	peekHandlers         []PeekHandler
 	flags                concurrenz.AtomicBitSet
-	timeOfLastRxFromLink int64
 	tags                 map[string]string
+	lastBufferSizeSent   uint32
+}
+
+func (self *Xgress) GetDestinationType() string {
+	return "xgress"
 }
 
 func (self *Xgress) GetIntervalId() string {
@@ -154,10 +170,9 @@ func NewXgress(circuitId string, ctrlId string, address Address, peer Connection
 		peer:                 peer,
 		originator:           originator,
 		Options:              options,
-		txQueue:              make(chan *Payload, options.TxQueueSize),
 		closeNotify:          make(chan struct{}),
 		rxSequence:           0,
-		linkRxBuffer:         NewLinkReceiveBuffer(),
+		linkRxBuffer:         NewLinkReceiveBuffer(options.TxQueueSize),
 		timeOfLastRxFromLink: time.Now().UnixMilli(),
 		tags:                 tags,
 	}
@@ -217,6 +232,11 @@ func (self *Xgress) firstCircuitStartReceived() bool {
 	return self.flags.CompareAndSet(rxerStartedFlag, false, true)
 }
 
+func (self *Xgress) NewWriteAdapter() *WriteAdapter {
+	self.flags.Set(rxPushModeFlag, true)
+	return NewWriteAdapter(self)
+}
+
 func (self *Xgress) Start() {
 	log := pfxlog.ContextLogger(self.Label())
 	if self.IsTerminator() {
@@ -226,8 +246,12 @@ func (self *Xgress) Start() {
 		}
 	} else {
 		log.Debug("initiator: sending circuit start")
-		self.forwardPayload(self.GetStartCircuit())
-		go self.rx()
+		go self.payloadBuffer.run()
+		_ = self.forwardPayload(self.GetStartCircuit(), context.Background())
+
+		if !self.flags.IsSet(rxPushModeFlag) {
+			go self.rx()
+		}
 	}
 	go self.tx()
 }
@@ -267,7 +291,6 @@ func (self *Xgress) ForwardEndOfCircuit(sendF func(payload *Payload) bool) {
 	// for now always send end of circuit. too many is better than not enough
 	if self.flags.CompareAndSet(endOfCircuitSentFlag, false, true) {
 		sendF(self.GetEndCircuit())
-		self.flags.Set(endOfCircuitSentFlag, true)
 	}
 }
 
@@ -275,40 +298,49 @@ func (self *Xgress) IsEndOfCircuitSent() bool {
 	return self.flags.IsSet(endOfCircuitSentFlag)
 }
 
-func (self *Xgress) CloseTimeout(duration time.Duration) {
-	if self.payloadBuffer.CloseWhenEmpty() { // If we clear the send buffer, close sooner
-		time.AfterFunc(duration, self.Close)
-	}
+func (self *Xgress) CloseRxTimeout() {
+	self.sendEOF()
+	self.payloadBuffer.CloseWhenEmpty()
 }
 
 func (self *Xgress) Unrouted() {
-	// When we're unrouted, if end of circuit hasn't already arrived, give incoming/queued data
-	// a chance to outflow before closing
-	if !self.flags.IsSet(closedFlag) {
-		self.payloadBuffer.Close()
-		time.AfterFunc(self.Options.MaxCloseWait, self.Close)
+	// if we're unrouted no more data is inbound. this still allows already queued data to flow to the client
+	self.CloseXgToClient()
+
+	// If we're unrouted, we can't send any more data, so close the payload buffer
+	self.payloadBuffer.Close()
+}
+
+func (self *Xgress) CloseXgToClient() {
+	pfxlog.ContextLogger(self.Label()).Debug("close xg to client")
+	if self.flags.CompareAndSet(closedTxer, false, true) {
+		close(self.closeNotify)
+	}
+
+	if self.payloadBuffer.IsClosed() {
+		self.Close()
 	}
 }
 
 /*
-Things which can trigger close
-
-1. Read fails
-2. Write fails
-3. End of Circuit received
-4. Unroute received
+Close should only be called once both sides of the circuit are complete.
 */
 func (self *Xgress) Close() {
 	log := pfxlog.ContextLogger(self.Label())
 
 	if self.flags.CompareAndSet(closedFlag, false, true) {
-		log.Debug("closing xgress peer")
+		log.Debug("closing xgress")
+
+		self.sendEndOfCircuit()
+
 		if err := self.peer.Close(); err != nil {
 			log.WithError(err).Warn("error while closing xgress peer")
 		}
 
 		log.Debug("closing tx queue")
-		close(self.closeNotify)
+		if self.flags.CompareAndSet(closedTxer, false, true) {
+			close(self.closeNotify)
+		}
 
 		self.payloadBuffer.Close()
 
@@ -326,11 +358,28 @@ func (self *Xgress) Close() {
 	}
 }
 
+func (self *Xgress) PeerClosed() {
+	log := pfxlog.ContextLogger(self.Label())
+	log.Debug("peer closed")
+	self.CloseXgToClient()
+	self.CloseRxTimeout()
+}
+
+func (self *Xgress) closeIfRxAndTxDone() {
+	if self.payloadBuffer.IsClosed() && self.flags.IsSet(closedTxer) {
+		self.Close()
+	}
+}
+
 func (self *Xgress) CloseSendBuffer() {
 	self.payloadBuffer.Close()
 }
 
 func (self *Xgress) Closed() bool {
+	return self.flags.IsSet(closedFlag)
+}
+
+func (self *Xgress) IsClosed() bool {
 	return self.flags.IsSet(closedFlag)
 }
 
@@ -340,8 +389,14 @@ func (self *Xgress) SendPayload(payload *Payload, _ time.Duration, _ PayloadType
 	}
 
 	if payload.IsCircuitEndFlagSet() {
-		pfxlog.ContextLogger(self.Label()).Debug("received end of circuit Payload")
+		pfxlog.ContextLogger(self.Label()).Debug("received end of circuit payload")
 	}
+
+	if payload.IsFlagWriteFailedSet() {
+		pfxlog.ContextLogger(self.Label()).Debug("received write failed payload")
+		self.payloadBuffer.Close()
+	}
+
 	atomic.StoreInt64(&self.timeOfLastRxFromLink, time.Now().UnixMilli())
 	self.dataPlane.GetPayloadIngester().ingest(payload, self)
 
@@ -369,50 +424,15 @@ func (self *Xgress) HandleControlReceive(controlType ControlType, headers channe
 
 func (self *Xgress) acceptPayload(payload *Payload) {
 	if payload.IsCircuitStartFlagSet() && self.firstCircuitStartReceived() {
-		go self.rx()
+		pfxlog.ContextLogger(self.Label()).Debug("start received")
+		go self.payloadBuffer.run()
+		if !self.flags.IsSet(rxPushModeFlag) {
+			go self.rx()
+		}
 	}
 
 	if !self.Options.RandomDrops || rand.Int31n(self.Options.Drop1InN) != 1 {
 		self.PayloadReceived(payload)
-	}
-	self.queueSends()
-}
-
-func (self *Xgress) queueSends() {
-	payload := self.linkRxBuffer.PeekHead()
-	for payload != nil {
-		select {
-		case self.txQueue <- payload:
-			self.linkRxBuffer.Remove(payload)
-			payload = self.linkRxBuffer.PeekHead()
-		default:
-			payload = nil
-		}
-	}
-}
-
-func (self *Xgress) nextPayload() *Payload {
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	default:
-	}
-
-	// nothing was available in the txQueue, request more, then wait on txQueue
-	self.dataPlane.GetPayloadIngester().payloadSendReq <- self
-
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	case <-self.closeNotify:
-	}
-
-	// closed, check if there's anything pending in the queue
-	select {
-	case payload := <-self.txQueue:
-		return payload
-	default:
-		return nil
 	}
 }
 
@@ -422,10 +442,11 @@ func (self *Xgress) tx() {
 	log.Debug("started")
 	defer log.Debug("exited")
 	defer func() {
-		if self.IsEndOfCircuitReceived() {
-			self.Close()
-		} else {
-			self.flushSendThenClose()
+		if signalConn, ok := self.peer.(SignalConnection); ok {
+			signalConn.FlowFromFabricToXgressClosed()
+		}
+		if !self.IsEndOfCircuitReceived() {
+			self.sendWriteFailed()
 		}
 	}()
 
@@ -436,7 +457,7 @@ func (self *Xgress) tx() {
 		payloadLogger := log.WithFields(payload.GetLoggerFields())
 		payloadLogger.Debugf("payload %v of size %v removed from rx buffer, new size: %v", payload.Sequence, payloadSize, size)
 
-		lastBufferSizeSent := self.linkRxBuffer.getLastBufferSizeSent()
+		lastBufferSizeSent := self.getLastBufferSizeSent()
 		if lastBufferSizeSent > 10000 && (lastBufferSizeSent>>1) > size {
 			self.SendEmptyAck()
 		}
@@ -445,8 +466,9 @@ func (self *Xgress) tx() {
 	sendPayload := func(payload *Payload) bool {
 		payloadLogger := log.WithFields(payload.GetLoggerFields())
 
-		if payload.IsCircuitEndFlagSet() {
+		if payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet() {
 			self.markCircuitEndReceived()
+			self.CloseXgToClient()
 			payloadLogger.Debug("circuit end payload received, exiting")
 			return false
 		}
@@ -481,7 +503,7 @@ func (self *Xgress) tx() {
 	var payloadWriteOffset int
 
 	for {
-		payloadChunk = self.nextPayload()
+		payloadChunk = self.linkRxBuffer.NextPayload(self.closeNotify)
 
 		if payloadChunk == nil {
 			log.Debug("nil payload received, exiting")
@@ -544,17 +566,48 @@ func (self *Xgress) tx() {
 	}
 }
 
-func (self *Xgress) flushSendThenClose() {
-	self.CloseTimeout(self.Options.MaxCloseWait)
-	self.ForwardEndOfCircuit(func(payload *Payload) bool {
-		if self.payloadBuffer.closed.Load() {
-			// Avoid spurious 'failed to forward payload' error if the buffer is already closed
-			return false
-		}
+func (self *Xgress) sendEOF() {
+	log := pfxlog.ContextLogger(self.Label())
+	log.Debug("sendEOF")
 
-		pfxlog.ContextLogger(self.Label()).Info("sending end of circuit payload")
-		return self.forwardPayload(payload)
-	})
+	if self.payloadBuffer.closed.Load() {
+		// Avoid spurious 'failed to forward payload' error if the buffer is already closed
+		return
+	}
+
+	payload := &Payload{
+		CircuitId: self.circuitId,
+		Flags:     SetOriginatorFlag(uint32(PayloadFlagEOF), self.originator),
+		Sequence:  int32(self.nextReceiveSequence()),
+		Data:      nil,
+	}
+
+	_ = self.forwardPayload(payload, context.Background())
+}
+
+func (self *Xgress) sendWriteFailed() {
+	log := pfxlog.ContextLogger(self.Label())
+	log.Debug("sendWriteFailed")
+
+	if self.payloadBuffer.closed.Load() {
+		return
+	}
+
+	payload := &Payload{
+		CircuitId: self.circuitId,
+		Flags:     SetOriginatorFlag(uint32(PayloadFlagWriteFailed), self.originator),
+		Sequence:  int32(self.nextReceiveSequence()),
+		Data:      nil,
+	}
+
+	log.Debug("sending end of circuit payload")
+	_ = self.forwardPayload(payload, context.Background())
+}
+
+func (self *Xgress) sendEndOfCircuit() {
+	log := pfxlog.ContextLogger(self.Label())
+	log.Debug("sendEndOfCircuit")
+	self.dataPlane.ForwardPayload(self.GetEndCircuit(), self, context.Background())
 }
 
 /**
@@ -628,7 +681,7 @@ func (self *Xgress) rx() {
 		}
 	}()
 
-	defer self.flushSendThenClose()
+	defer self.CloseRxTimeout()
 
 	for {
 		buffer, headers, err := self.peer.ReadPayload()
@@ -637,7 +690,10 @@ func (self *Xgress) rx() {
 
 		// if we got an EOF, but also some data, ignore the EOF, next read we'll get 0, EOF
 		if err != nil && (n == 0 || err != io.EOF) {
-			if err == io.EOF {
+			if err == io.EOF || errors.Is(err, ErrPeerClosed) {
+				if errors.Is(err, ErrPeerClosed) { // if the peer closed, we need to close the txer as well
+					self.CloseXgToClient()
+				}
 				log.Debugf("EOF, exiting xgress.rx loop")
 			} else {
 				log.Warnf("read failed (%s)", err)
@@ -650,117 +706,132 @@ func (self *Xgress) rx() {
 			return
 		}
 
-		if self.Options.Mtu == 0 {
-			if !self.sendUnchunkedBuffer(buffer, headers) {
-				return
-			}
-			continue
+		if err = self.Write(buffer, headers, nil); err != nil {
+			return
 		}
-
-		first := true
-		chunked := false
-		for len(buffer) > 0 || (first && len(headers) > 0) {
-			seq := self.nextReceiveSequence()
-
-			chunk := make([]byte, self.Options.Mtu)
-
-			flagsHeader := VersionMask & (PayloadProtocolV1 << PayloadProtocolOffset)
-			var sizesHeader byte
-			if self.originator == Terminator {
-				flagsHeader |= TerminatorFlagMask
-			}
-
-			written := 2
-			rest := chunk[2:]
-			includeRtt := seq%5 == 0
-			if includeRtt {
-				flagsHeader |= RttFlagMask
-				written += 2
-				rest = rest[2:]
-			}
-
-			size := copy(rest, self.circuitId)
-			sizesHeader |= CircuitIdSizeMask & uint8(size)
-			written += size
-			rest = rest[size:]
-			size = binary.PutUvarint(rest, seq)
-			rest = rest[size:]
-			written += size
-
-			if first && len(headers) > 0 {
-				flagsHeader |= HeadersFlagMask
-				size, err = writeU8ToBytesMap(headers, rest)
-				if err != nil {
-					log.WithError(err).Error("payload encoding error, closing")
-					return
-				}
-				rest = rest[size:]
-				written += size
-			}
-
-			data := rest
-			dataLen := 0
-			if first && len(rest) < len(buffer) {
-				chunked = true
-				size = binary.PutUvarint(rest, uint64(n))
-				dataLen += size
-				written += size
-				rest = rest[size:]
-			}
-
-			if chunked {
-				flagsHeader |= ChunkFlagMask
-			}
-
-			size = copy(rest, buffer)
-			written += size
-			dataLen += size
-
-			buffer = buffer[size:]
-
-			// check if there's room for a heartbeat
-			if written+8 <= len(chunk) {
-				flagsHeader |= HeartbeatFlagMask
-				written += 8
-			}
-
-			chunk[0] = flagsHeader
-			chunk[1] = sizesHeader
-
-			payload := &Payload{
-				CircuitId: self.circuitId,
-				Flags:     SetOriginatorFlag(0, self.originator),
-				Sequence:  int32(seq),
-				Data:      data[:dataLen],
-				raw:       chunk[:written],
-			}
-
-			if chunked {
-				payload.Flags = setPayloadFlag(payload.Flags, PayloadFlagChunk)
-			}
-
-			if first {
-				payload.Headers = headers
-			}
-
-			log.Debugf("sending payload chunk. seq: %d, first: %v, chunk size: %d, payload size: %d, remainder: %d", payload.Sequence, first, len(payload.Data), n, len(buffer))
-			first = false
-
-			// if the payload buffer is closed, we can't forward any more data, so might as well exit the rx loop
-			// The txer will still have a chance to flush any already received data
-			if !self.forwardPayload(payload) {
-				return
-			}
-
-			payloadLogger := log.WithFields(payload.GetLoggerFields())
-			payloadLogger.Debugf("forwarded [%s]", info.ByteCount(int64(n)))
-		}
-
-		logrus.Debugf("received payload for [%d] bytes", n)
 	}
 }
 
-func (self *Xgress) sendUnchunkedBuffer(buf []byte, headers map[uint8][]byte) bool {
+func (self *Xgress) Write(buffer []byte, headers map[uint8][]byte, ctx context.Context) error {
+	log := pfxlog.ContextLogger(self.Label())
+
+	log.Debugf("payload read: %d bytes read", len(buffer))
+	n := len(buffer)
+
+	if self.Closed() {
+		return ErrWriteClosed
+	}
+
+	if self.Options.Mtu == 0 {
+		return self.sendUnchunkedBuffer(buffer, headers, ctx)
+	}
+
+	first := true
+	chunked := false
+	var err error
+
+	for len(buffer) > 0 || (first && len(headers) > 0) {
+		seq := self.nextReceiveSequence()
+
+		chunk := make([]byte, self.Options.Mtu)
+
+		flagsHeader := VersionMask & (PayloadProtocolV1 << PayloadProtocolOffset)
+		var sizesHeader byte
+		if self.originator == Terminator {
+			flagsHeader |= TerminatorFlagMask
+		}
+
+		written := 2
+		rest := chunk[2:]
+		includeRtt := seq%5 == 0
+		if includeRtt {
+			flagsHeader |= RttFlagMask
+			written += 2
+			rest = rest[2:]
+		}
+
+		size := copy(rest, self.circuitId)
+		sizesHeader |= CircuitIdSizeMask & uint8(size)
+		written += size
+		rest = rest[size:]
+		size = binary.PutUvarint(rest, seq)
+		rest = rest[size:]
+		written += size
+
+		if first && len(headers) > 0 {
+			flagsHeader |= HeadersFlagMask
+			size, err = writeU8ToBytesMap(headers, rest)
+			if err != nil {
+				log.WithError(err).Error("payload encoding error, closing")
+				return err
+			}
+			rest = rest[size:]
+			written += size
+		}
+
+		data := rest
+		dataLen := 0
+		if first && len(rest) < len(buffer) {
+			chunked = true
+			size = binary.PutUvarint(rest, uint64(n))
+			dataLen += size
+			written += size
+			rest = rest[size:]
+		}
+
+		if chunked {
+			flagsHeader |= ChunkFlagMask
+		}
+
+		size = copy(rest, buffer)
+		written += size
+		dataLen += size
+
+		buffer = buffer[size:]
+
+		// check if there's room for a heartbeat
+		if written+8 <= len(chunk) {
+			flagsHeader |= HeartbeatFlagMask
+			written += 8
+		}
+
+		chunk[0] = flagsHeader
+		chunk[1] = sizesHeader
+
+		payload := &Payload{
+			CircuitId: self.circuitId,
+			Flags:     SetOriginatorFlag(0, self.originator),
+			Sequence:  int32(seq),
+			Data:      data[:dataLen],
+			raw:       chunk[:written],
+		}
+
+		if chunked {
+			payload.Flags = setPayloadFlag(payload.Flags, PayloadFlagChunk)
+		}
+
+		if first {
+			payload.Headers = headers
+		}
+
+		log.Debugf("sending payload chunk. seq: %d, first: %v, chunk size: %d, payload size: %d, remainder: %d", payload.Sequence, first, len(payload.Data), n, len(buffer))
+		first = false
+
+		// if the payload buffer is closed, we can't forward any more data, so might as well exit the rx loop
+		// The txer will still have a chance to flush any already received data
+		if err = self.forwardPayload(payload, ctx); err != nil {
+			return err
+		}
+
+		payloadLogger := log.WithFields(payload.GetLoggerFields())
+		payloadLogger.Debugf("forwarded [%s]", info.ByteCount(int64(n)))
+	}
+
+	logrus.Debugf("received payload for [%d] bytes", n)
+	return nil
+}
+
+func (self *Xgress) sendUnchunkedBuffer(buf []byte, headers map[uint8][]byte, ctx context.Context) error {
 	log := pfxlog.ContextLogger(self.Label())
 
 	payload := &Payload{
@@ -775,30 +846,39 @@ func (self *Xgress) sendUnchunkedBuffer(buf []byte, headers map[uint8][]byte) bo
 
 	// if the payload buffer is closed, we can't forward any more data, so might as well exit the rx loop
 	// The txer will still have a chance to flush any already received data
-	if !self.forwardPayload(payload) {
-		return false
+	if err := self.forwardPayload(payload, ctx); err != nil {
+		return err
 	}
 
 	payloadLogger := log.WithFields(payload.GetLoggerFields())
 	payloadLogger.Debugf("forwarded [%s]", info.ByteCount(int64(len(buf))))
-	return true
+	return nil
 }
 
-func (self *Xgress) forwardPayload(payload *Payload) bool {
-	sendCallback, err := self.payloadBuffer.BufferPayload(payload)
+func (self *Xgress) forwardPayload(payload *Payload, ctx context.Context) error {
+	var sendCallback func()
+	var err error
+
+	if ctx == nil {
+		sendCallback, err = self.payloadBuffer.BufferPayload(payload)
+	} else {
+		sendCallback, err = self.payloadBuffer.BufferPayloadWithDeadline(payload, ctx)
+	}
 
 	if err != nil {
-		pfxlog.ContextLogger(self.Label()).WithError(err).Error("failure to buffer payload")
-		return false
+		if !payload.IsCircuitEndFlagSet() && !payload.IsFlagEOFSet() {
+			pfxlog.ContextLogger(self.Label()).WithError(err).Error("failure to buffer payload")
+		}
+		return err
 	}
 
 	for _, peekHandler := range self.peekHandlers {
 		peekHandler.Rx(self, payload)
 	}
 
-	self.dataPlane.ForwardPayload(payload, self)
+	self.dataPlane.ForwardPayload(payload, self, ctx)
 	sendCallback()
-	return true
+	return nil
 }
 
 func (self *Xgress) nextReceiveSequence() uint64 {
@@ -825,7 +905,7 @@ func (self *Xgress) PayloadReceived(payload *Payload) {
 		ack.Sequence = append(ack.Sequence, payload.Sequence)
 		ack.RTT = payload.RTT
 
-		atomic.StoreUint32(&self.linkRxBuffer.lastBufferSizeSent, ack.RecvBufferSize)
+		atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
 		self.dataPlane.ForwardAcknowledgement(ack, self.address)
 	} else {
 		log.Debug("dropped")
@@ -836,14 +916,18 @@ func (self *Xgress) SendEmptyAck() {
 	pfxlog.ContextLogger(self.Label()).WithField("circuit", self.circuitId).Debug("sending empty ack")
 	ack := NewAcknowledgement(self.circuitId, self.originator)
 	ack.RecvBufferSize = self.linkRxBuffer.Size()
-	atomic.StoreUint32(&self.linkRxBuffer.lastBufferSizeSent, ack.RecvBufferSize)
+	atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
 	self.dataPlane.ForwardAcknowledgement(ack, self.address)
 }
 
 func (self *Xgress) GetSequence() uint64 {
 	self.rxSequenceLock.Lock()
 	defer self.rxSequenceLock.Unlock()
-	return uint64(self.rxSequence)
+	return self.rxSequence
+}
+
+func (self *Xgress) getLastBufferSizeSent() uint32 {
+	return atomic.LoadUint32(&self.lastBufferSizeSent)
 }
 
 func (self *Xgress) InspectCircuit(detail *CircuitInspectDetail) {
@@ -857,11 +941,12 @@ func (self *Xgress) GetInspectDetail(includeGoroutines bool) *InspectDetail {
 		Originator:            self.originator.String(),
 		TimeSinceLastLinkRx:   timeSinceLastRxFromLink.String(),
 		SendBufferDetail:      self.payloadBuffer.Inspect(),
-		RecvBufferDetail:      self.linkRxBuffer.Inspect(self),
+		RecvBufferDetail:      self.linkRxBuffer.Inspect(),
 		XgressPointer:         fmt.Sprintf("%p", self),
 		LinkSendBufferPointer: fmt.Sprintf("%p", self.payloadBuffer),
 		Sequence:              self.GetSequence(),
 		Flags:                 strconv.FormatUint(uint64(self.flags.Load()), 2),
+		LastSizeSent:          self.getLastBufferSizeSent(),
 	}
 
 	if includeGoroutines {
@@ -1045,4 +1130,91 @@ func readU8ToBytesMap(buf []byte) (map[uint8][]byte, []byte, error) {
 	}
 
 	return result, buf, nil
+}
+
+func NewWriteAdapter(x *Xgress) *WriteAdapter {
+	result := &WriteAdapter{
+		x: x,
+	}
+	result.doneNotify.Store(make(chan struct{}))
+	return result
+}
+
+type WriteAdapter struct {
+	x                *Xgress
+	deadline         concurrenz.AtomicValue[time.Time]
+	doneNotify       concurrenz.AtomicValue[chan struct{}]
+	doneNotifyClosed bool
+	lock             sync.Mutex
+}
+
+func (self *WriteAdapter) Deadline() (deadline time.Time, ok bool) {
+	deadline = self.deadline.Load()
+	return deadline, !deadline.IsZero()
+}
+
+func (self *WriteAdapter) Done() <-chan struct{} {
+	return self.doneNotify.Load()
+}
+
+func (self *WriteAdapter) Err() error {
+	return nil
+}
+
+func (self *WriteAdapter) Value(any) any {
+	return nil
+}
+
+func (self *WriteAdapter) SetWriteDeadline(t time.Time) error {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+
+	self.deadline.Store(t)
+	if t.IsZero() {
+		if self.doneNotifyClosed {
+			self.doneNotify.Store(make(chan struct{}))
+			self.doneNotifyClosed = false
+		}
+		return nil
+	}
+	d := time.Until(t)
+	if d > 0 {
+		if self.doneNotifyClosed {
+			self.doneNotify.Store(make(chan struct{}))
+			self.doneNotifyClosed = false
+		}
+
+		time.AfterFunc(d, func() {
+			self.lock.Lock()
+			defer self.lock.Unlock()
+
+			if t.Equal(self.deadline.Load()) {
+				if !self.doneNotifyClosed {
+					close(self.doneNotify.Load())
+					self.doneNotifyClosed = true
+				}
+			}
+		})
+	} else {
+		if !self.doneNotifyClosed {
+			close(self.doneNotify.Load())
+			self.doneNotifyClosed = true
+		}
+	}
+
+	return nil
+}
+
+func (self *WriteAdapter) Write(b []byte) (n int, err error) {
+	if err = self.x.Write(b, nil, self); err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+func (self *WriteAdapter) WriteToXgress(b []byte, header map[uint8][]byte) (n int, err error) {
+	if err = self.x.Write(b, header, self); err != nil {
+		return 0, err
+	}
+	return len(b), nil
 }

@@ -1,6 +1,7 @@
 package xgress
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -177,7 +178,7 @@ func (self *testIntermediary) ForwardAcknowledgement(ack *Acknowledgement, addre
 	self.acker.SendAck(ack, address)
 }
 
-func (self *testIntermediary) ForwardPayload(payload *Payload, x *Xgress) {
+func (self *testIntermediary) ForwardPayload(payload *Payload, x *Xgress, ctx context.Context) {
 	m := payload.Marshall()
 	self.payloadTransformer.Tx(m, nil)
 	b, err := self.msgs.GetMarshaller()(m)

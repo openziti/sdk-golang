@@ -1,3 +1,147 @@
+# Release notes 1.2.5
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.4 -> v1.2.5](https://github.com/openziti/sdk-golang/compare/v1.2.4...v1.2.5)
+    * [Issue #804](https://github.com/openziti/sdk-golang/issues/804): Simplify OIDC flow for applications
+    * [PR #797](https://github.com/openziti/sdk-golang/pull/797): Add.generic.msg.sink
+
+
+# Release notes 1.2.4
+
+## What's New
+
+* Updates Go version to 1.24, in-line with Go's supported version policy
+* Dependency updates and a minor logging fix
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.3 -> v1.2.4](https://github.com/openziti/sdk-golang/compare/v1.2.3...v1.2.4)
+    * [Issue #800](https://github.com/openziti/sdk-golang/issues/800) - Tidy create service session logging
+
+* github.com/openziti/channel/v4: [v4.2.21 -> v4.2.31](https://github.com/openziti/channel/compare/v4.2.21...v4.2.31)
+* github.com/openziti/foundation/v2: [v2.0.70 -> v2.0.73](https://github.com/openziti/foundation/compare/v2.0.70...v2.0.73)
+* github.com/openziti/identity: [v1.0.109 -> v1.0.112](https://github.com/openziti/identity/compare/v1.0.109...v1.0.112)
+* github.com/openziti/secretstream: [v0.1.38 -> v0.1.39](https://github.com/openziti/secretstream/compare/v0.1.38...v0.1.39)
+* github.com/openziti/transport/v2: [v2.0.183 -> v2.0.189](https://github.com/openziti/transport/compare/v2.0.183...v2.0.189)
+* github.com/stretchr/testify: v1.10.0 -> v1.11.1
+* golang.org/x/oauth2: v0.30.0 -> v0.31.0
+* golang.org/x/sys: v0.35.0 -> v0.36.0
+* google.golang.org/protobuf: v1.36.7 -> v1.36.9
+
+# Release notes 1.2.3
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.2 -> v1.2.3](https://github.com/openziti/sdk-golang/compare/v1.2.2...v1.2.3)
+    * [Issue #779](https://github.com/openziti/sdk-golang/issues/779) - Remove need to EnableHA flag in Go SDK
+
+* github.com/openziti/channel/v4: [v4.2.19 -> v4.2.21](https://github.com/openziti/channel/compare/v4.2.19...v4.2.21)
+
+# Release notes 1.2.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.1 -> v1.2.2](https://github.com/openziti/sdk-golang/compare/v1.2.1...v1.2.2)
+    * [Issue #786](https://github.com/openziti/sdk-golang/issues/786) - Slow down dials to an ER if they happen too quickly
+    * [Issue #784](https://github.com/openziti/sdk-golang/issues/784) - Drop retransmit error to debug
+
+* github.com/golang-jwt/jwt/v5: v5.2.3 -> v5.3.0
+* github.com/openziti/channel/v4: [v4.2.18 -> v4.2.19](https://github.com/openziti/channel/compare/v4.2.18...v4.2.19)
+    * [Issue #203](https://github.com/openziti/channel/issues/203) - Track last dial time in UnderlayConstraints
+
+* github.com/openziti/edge-api: [v0.26.46 -> v0.26.47](https://github.com/openziti/edge-api/compare/v0.26.46...v0.26.47)
+* github.com/openziti/secretstream: [v0.1.37 -> v0.1.38](https://github.com/openziti/secretstream/compare/v0.1.37...v0.1.38)
+* github.com/openziti/transport/v2: [v2.0.182 -> v2.0.183](https://github.com/openziti/transport/compare/v2.0.182...v2.0.183)
+* github.com/rcrowley/go-metrics: v0.0.0-20201227073835-cf1acfcdf475 -> v0.0.0-20250401214520-65e299d6c5c9
+* github.com/zitadel/oidc/v3: v3.42.0 -> v3.44.0
+* golang.org/x/sys: v0.34.0 -> v0.35.0
+* google.golang.org/protobuf: v1.36.6 -> v1.36.7
+* github.com/fsnotify/fsnotify: v1.8.0 -> v1.9.0
+* github.com/go-logr/logr: v1.4.2 -> v1.4.3
+* go.opentelemetry.io/auto/sdk: v1.1.0 (new)
+* go.opentelemetry.io/otel: v1.29.0 -> v1.37.0
+* go.opentelemetry.io/otel/metric: v1.29.0 -> v1.37.0
+* go.opentelemetry.io/otel/trace: v1.29.0 -> v1.37.0
+* golang.org/x/crypto: v0.40.0 -> v0.41.0
+* golang.org/x/net: v0.42.0 -> v0.43.0
+* golang.org/x/term: v0.33.0 -> v0.34.0
+* golang.org/x/text: v0.27.0 -> v0.28.0
+
+# Release notes 1.2.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.0 -> v1.2.1](https://github.com/openziti/sdk-golang/compare/v1.2.0...v1.2.1)
+    * [Issue #777](https://github.com/openziti/sdk-golang/issues/777) - OIDC auth token refresh doesn't fall back to re-auth if token has expired
+    * [Issue #772](https://github.com/openziti/sdk-golang/issues/772) - xgress close tweaks
+    * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
+
+* github.com/openziti/channel/v4: [v4.2.16 -> v4.2.18](https://github.com/openziti/channel/compare/v4.2.16...v4.2.18)
+    * [Issue #201](https://github.com/openziti/channel/issues/201) - SendAndWait methods should return an error if the channel closes instead of blocking
+    * [Issue #199](https://github.com/openziti/channel/issues/199) - Reject multi-underlay connections that are the first connection for a channel, but aren't marked as such.
+
+# Release notes 1.2.0
+
+## What's New
+
+This release contains substantial revisions to the SDK flow control feature first released in v1.1.0.
+See the v1.1.0 release notes for more details.
+
+It has now received a substantial amount of testing including long running tests and backwards compability testing. 
+
+These features should be used with version 1.6.6 or newer of OpenZiti.
+
+It is still considered experimental, and the feature and APIs may still change, however Go SDK
+users who are multi-plexing connections, are encouraged to try it out.
+
+Once it has undergone sufficient soak time in a production environment, it will marked as stable.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.1.2 -> v1.2.0](https://github.com/openziti/sdk-golang/compare/v1.1.2...v1.2.0)
+    * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
+    * [Issue #765](https://github.com/openziti/sdk-golang/issues/765) - Allow independent close of xgress send and receive
+    * [Issue #763](https://github.com/openziti/sdk-golang/issues/763) - Use a go-routine pool for payload ingest
+    * [Issue #761](https://github.com/openziti/sdk-golang/issues/761) - Use cmap.ConcurrentMap for message multiplexer
+    * [Issue #754](https://github.com/openziti/sdk-golang/issues/754) - panic: unaligned 64-bit atomic operation when running on 32-bit raspberry pi
+    * [Issue #757](https://github.com/openziti/sdk-golang/issues/757) - Not authenticated check fails on session create when using OIDC
+
+* github.com/golang-jwt/jwt/v5: v5.2.2 -> v5.2.3
+* github.com/openziti/channel/v4: [v4.2.0 -> v4.2.15](https://github.com/openziti/channel/compare/v4.2.0...v4.2.15)
+    * [Issue #194](https://github.com/openziti/channel/issues/194) - Add GetUnderlays and GetUnderlayCountsByType to Channel
+
+* github.com/openziti/edge-api: [v0.26.45 -> v0.26.46](https://github.com/openziti/edge-api/compare/v0.26.45...v0.26.46)
+    * [Issue #155](https://github.com/openziti/edge-api/issues/155) - Add network interface list to routers and identities
+
+* github.com/openziti/foundation/v2: [v2.0.63 -> v2.0.70](https://github.com/openziti/foundation/compare/v2.0.63...v2.0.70)
+    * [Issue #443](https://github.com/openziti/foundation/issues/443) - Allow injecting custom method into go-routine pools, to allow identifying them in stack dumps
+
+* github.com/openziti/identity: [v1.0.101 -> v1.0.109](https://github.com/openziti/identity/compare/v1.0.101...v1.0.109)
+* github.com/openziti/metrics: [v1.4.1 -> v1.4.2](https://github.com/openziti/metrics/compare/v1.4.1...v1.4.2)
+* github.com/openziti/secretstream: [v0.1.34 -> v0.1.37](https://github.com/openziti/secretstream/compare/v0.1.34...v0.1.37)
+* github.com/openziti/transport/v2: [v2.0.171 -> v2.0.182](https://github.com/openziti/transport/compare/v2.0.171...v2.0.182)
+* github.com/zitadel/oidc/v3: v3.39.0 -> v3.41.0
+* golang.org/x/sys: v0.33.0 -> v0.34.0
+* golang.org/x/crypto: v0.38.0 -> v0.40.0
+* golang.org/x/net: v0.40.0 -> v0.42.0
+* golang.org/x/sync: v0.14.0 -> v0.16.0
+* golang.org/x/term: v0.32.0 -> v0.33.0
+* golang.org/x/text: v0.25.0 -> v0.27.0
+
+# Release notes 1.1.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.1.1 -> v1.1.2](https://github.com/openziti/sdk-golang/compare/v1.1.1...v1.1.2)
+    * [Issue #742](https://github.com/openziti/sdk-golang/issues/742) - Additional CtrlId and GetDestinationType for inspect support
+    * [Issue #739](https://github.com/openziti/sdk-golang/issues/739) - go-jose v2.6.3 CVE-2025-27144 resolution
+
+* github.com/zitadel/oidc/v3: v2.12.2 -> v3.39.0
+* github.com/go-jose/go-jose/v4: v4.0.5 (new)
+* github.com/zitadel/logging: v0.6.2 (new)
+* github.com/zitadel/schema: v1.3.1 (new)
+
 # Release notes 1.1.1
 
 ## Multi-underlay channel group secret

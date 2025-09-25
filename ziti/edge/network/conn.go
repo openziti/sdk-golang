@@ -17,76 +17,205 @@
 package network
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/xgress"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/binary"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 var unsupportedCrypto = errors.New("unsupported crypto")
 
-type ConnType byte
-
-const (
-	ConnTypeDial ConnType = 1
-	ConnTypeBind ConnType = 2
-)
-
 var _ edge.Conn = &edgeConn{}
 
+// edgeConn represents an individual connection in the Ziti edge network.
+// It implements both edge.Conn (providing standard network connection semantics) and edge.MsgSink
+// (handling connection-specific messages from the edge router).
+//
+// Use Cases:
+//   - Service Hosting: Created by edgeHostConn when a client dials a hosted service
+//   - Service Consumption: Created when this SDK dials a service hosted elsewhere
+//
+// Architecture:
+//   - Registered with a msgMux to receive connection-specific messages
+//   - Handles data transfer, flow control, and encryption for a single session
+//   - Provides standard Read/Write interface while managing underlying message protocols
+//   - Manages connection lifecycle from establishment to termination
+//
+// Message Flow:
+//   1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.Accept()
+//   2. edgeConn.Accept() processes message based on content type (data, state, ack, etc.)
+//   3. Application reads data via Read() method from internal buffer
+//   4. Application writes data via Write() method, which sends to edge router
+//
+// Lifecycle:
+//   1. Created during connection establishment (dial or accept)
+//   2. Added to msgMux for message routing
+//   3. Handles session until Close() or remote disconnect
+//   4. Removed from msgMux and cleaned up
+//
+// Thread Safety: All methods are safe for concurrent use.
 type edgeConn struct {
+	// MsgChannel provides the underlying channel communication capabilities
+	// for sending messages back to the edge router (data, state changes, acks, etc.)
 	edge.MsgChannel
-	readQ                 *noopSeq[*channel.Message]
-	inBuffer              [][]byte
-	msgMux                edge.MsgMux
-	hosting               cmap.ConcurrentMap[string, *edgeListener]
-	flags                 uint32
-	closed                atomic.Bool
-	closeNotify           chan struct{}
-	readFIN               atomic.Bool
-	sentFIN               atomic.Bool
-	serviceName           string
-	sourceIdentity        string
-	acceptCompleteHandler *newConnHandler
-	connType              ConnType
-	marker                string
-	circuitId             string
-	customState           map[int32][]byte
 
-	crypto   bool
-	keyPair  *kx.KeyPair
-	rxKey    []byte
+	// readQ sequences incoming messages for ordered delivery to the application.
+	// Ensures data messages are delivered in the correct order even with
+	// concurrent message processing.
+	readQ *noopSeq[*channel.Message]
+
+	// inBuffer stores message data that has been received but not yet read
+	// by the application. Acts as a buffer between network messages and Read() calls.
+	inBuffer [][]byte
+
+	// msgMux is the parent connection multiplexer that manages this connection.
+	// Used to remove this connection when it closes.
+	msgMux edge.ConnMux[any]
+
+	// flags stores various connection state flags for internal protocol handling.
+	flags uint32
+
+	// closed indicates whether this connection has been terminated.
+	// Used to prevent operations on closed connections.
+	closed atomic.Bool
+
+	// closeNotify is used to signal connection closure to waiting goroutines.
+	// Closed when the connection is terminated.
+	closeNotify chan struct{}
+
+	// readFIN indicates that the remote side has finished sending data.
+	// When true, no more data will be received from the client.
+	readFIN atomic.Bool
+
+	// sentFIN indicates that this side has finished sending data.
+	// When true, no more data can be sent to the client.
+	sentFIN atomic.Bool
+
+	// serviceName is the name of the service this connection is accessing.
+	// Used for logging and debugging purposes.
+	serviceName string
+
+	// sourceIdentity identifies the remote peer that established this connection.
+	// For hosted services: identifies the client dialing the service
+	// For consumed services: identifies the service host
+	// Used for authorization, logging, and audit purposes.
+	sourceIdentity string
+
+	// acceptCompleteHandler handles the completion of the connection handshake.
+	// Set during connection establishment and cleared after handshake completion.
+	acceptCompleteHandler *newConnHandler
+
+	// marker is a unique identifier for this connection instance.
+	// Used for tracing and debugging across the distributed system.
+	marker string
+
+	// circuitId identifies the network circuit used for this connection.
+	// Used for routing and network-level debugging.
+	circuitId string
+
+	// customState stores protocol-specific state information as key-value pairs.
+	// Used by the edge protocol for managing connection-level metadata.
+	customState map[int32][]byte
+
+	// crypto indicates whether end-to-end encryption is enabled for this connection.
+	// When true, all data is encrypted/decrypted using the sender/receiver.
+	crypto bool
+
+	// keyPair contains the cryptographic keys for this connection's encryption.
+	// Used during encryption setup and for deriving session keys.
+	keyPair *kx.KeyPair
+
+	// rxKey is the derived key used for decrypting incoming data.
+	// Generated during the encryption handshake process.
+	rxKey []byte
+
+	// receiver handles decryption of incoming encrypted data from the client.
+	// Only used when crypto is enabled.
 	receiver secretstream.Decryptor
-	sender   secretstream.Encryptor
-	appData  []byte
+
+	// sender handles encryption of outgoing data to the client.
+	// Only used when crypto is enabled.
+	sender secretstream.Encryptor
+
+	// appData contains application-specific data sent during connection establishment.
+	// Available to the hosting application for connection-specific context.
+	appData []byte
+
+	// Mutex protects concurrent access to encryption/decryption operations
+	// and other critical sections that modify connection state.
 	sync.Mutex
 
-	dataSink  io.Writer
+	// dataSink is an optional writer that receives a copy of all data
+	// sent through this connection. Used for logging or monitoring purposes.
+	dataSink io.Writer
+
+	// xgCircuit manages the underlying transport circuit for this connection.
+	// Handles flow control, acknowledgments, and low-level data transfer.
 	xgCircuit *XgAdapter
+
+	// data stores arbitrary connection-specific context information that can be
+	// accessed by the application. This might include session data, authentication
+	// state, request context, or other per-connection metadata.
+	// For hosted services: stores client-specific context
+	// For consumed services: stores connection-specific application state
+	data atomic.Value
+}
+
+// GetData retrieves arbitrary connection-specific context data associated with this connection.
+// This allows applications to store and retrieve per-connection state, session information,
+// or metadata that applies to this individual connection.
+//
+// Returns:
+//   - any: the stored connection context data, or nil if none has been set
+//
+// Examples of connection-specific data:
+//   - User authentication state and session tokens
+//   - Request context and correlation IDs
+//   - Connection-specific configuration or feature flags
+//   - Per-connection metrics or rate limiting state
+//   - Custom connection handlers or middleware
+//   - Application-specific connection state
+func (conn *edgeConn) GetData() any {
+	return conn.data.Load()
+}
+
+// SetData stores arbitrary connection-specific context data for this connection.
+// This data persists for the lifetime of this connection and can be accessed
+// during message processing or other connection operations.
+//
+// Parameters:
+//   - data: arbitrary context data to associate with this connection
+//
+// Thread Safety: This method is safe for concurrent use.
+func (conn *edgeConn) SetData(data any) {
+	conn.data.Store(data)
 }
 
 func (conn *edgeConn) Write(data []byte) (int, error) {
 	if conn.sentFIN.Load() {
+		if conn.IsClosed() {
+			return 0, errors.New("connection closed")
+		}
 		return 0, errors.New("calling Write() after CloseWrite()")
 	}
 
@@ -113,7 +242,12 @@ func (conn *edgeConn) CloseWrite() error {
 	if conn.sentFIN.CompareAndSwap(false, true) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
-		_, err := conn.MsgChannel.WriteTraced(nil, nil, headers)
+		_, err := conn.WriteTraced(nil, nil, headers)
+
+		if conn.xgCircuit != nil {
+			conn.xgCircuit.xg.CloseRxTimeout()
+		}
+
 		return err
 	}
 
@@ -121,32 +255,34 @@ func (conn *edgeConn) CloseWrite() error {
 }
 
 func (conn *edgeConn) Inspect() string {
+	state := conn.getBaseState()
+	jsonOutput, err := json.Marshal(state)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
+	}
+	return string(jsonOutput)
+}
+
+func (conn *edgeConn) getBaseState() map[string]any {
 	result := map[string]interface{}{}
 	result["id"] = conn.Id()
 	result["serviceName"] = conn.serviceName
 	result["closed"] = conn.closed.Load()
 	result["encryptionRequired"] = conn.crypto
+	result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
+	result["readFIN"] = conn.readFIN.Load()
+	result["sentFIN"] = conn.sentFIN.Load()
+	result["marker"] = conn.marker
+	result["circuitId"] = conn.circuitId
+	return result
+}
 
-	if conn.connType == ConnTypeDial {
-		result["encrypted"] = conn.rxKey != nil || conn.receiver != nil
-		result["readFIN"] = conn.readFIN.Load()
-		result["sentFIN"] = conn.sentFIN.Load()
+func (conn *edgeConn) GetState() string {
+	state := conn.getBaseState()
+	if conn.xgCircuit != nil && conn.xgCircuit.xg != nil {
+		state["xg"] = conn.xgCircuit.xg.GetInspectDetail(true)
 	}
-
-	if conn.connType == ConnTypeBind {
-		hosting := map[string]interface{}{}
-		for entry := range conn.hosting.IterBuffered() {
-			hosting[entry.Key] = map[string]interface{}{
-				"closed":      entry.Val.closed.Load(),
-				"manualStart": entry.Val.manualStart,
-				"serviceId":   *entry.Val.service.ID,
-				"serviceName": *entry.Val.service.Name,
-			}
-		}
-		result["hosting"] = hosting
-	}
-
-	jsonOutput, err := json.Marshal(result)
+	jsonOutput, err := json.Marshal(state)
 	if err != nil {
 		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
 	}
@@ -157,7 +293,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 	conn.TraceMsg("Accept", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnType(conn.connType), conn.Inspect())
+		resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
 		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 				Error("failed to send inspect response")
@@ -165,98 +301,79 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		return
 	}
 
-	switch conn.connType {
-	case ConnTypeDial:
-		switch msg.ContentType {
-		case edge.ContentTypeXgPayload:
-			conn.HandleXgPayload(msg)
-			return
+	switch msg.ContentType {
+	case edge.ContentTypeXgPayload:
+		conn.HandleXgPayload(msg)
+		return
 
-		case edge.ContentTypeXgAcknowledgement:
-			conn.HandleXgAcknowledgement(msg)
-			return
+	case edge.ContentTypeXgAcknowledgement:
+		conn.HandleXgAcknowledgement(msg)
+		return
 
-		case edge.ContentTypeStateClosed:
-			if conn.IsClosed() {
-				return
-			}
-			conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
-
-		case edge.ContentTypeInspectRequest:
-			conn.HandleInspect(msg)
-			return
-
-		case edge.ContentTypeTraceRoute:
-			hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
-			if hops > 0 {
-				hops--
-				msg.PutUint32Header(edge.TraceHopCountHeader, hops)
-			}
-
-			ts, _ := msg.GetUint64Header(edge.TimestampHeader)
-			connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-			resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
-
-			sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
-			resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-
-			if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
-				resp.Headers[edge.UUIDHeader] = msgUUID
-			}
-
-			if err := conn.GetControlSender().Send(resp); err != nil {
-				logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-					Error("failed to send trace route response")
-			}
+	case edge.ContentTypeStateClosed:
+		if conn.IsClosed() {
 			return
 		}
+		// routing is not accepting more data, so we need to close the send buffer
+		if conn.xgCircuit != nil {
+			conn.xgCircuit.xg.CloseSendBuffer()
+		}
+		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
-		if err := conn.readQ.PutSequenced(msg); err != nil {
+	case edge.ContentTypeInspectRequest:
+		conn.HandleInspect(msg)
+		return
+
+	case edge.ContentTypeTraceRoute:
+		hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+		if hops > 0 {
+			hops--
+			msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+		}
+
+		ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+		connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+		resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
+
+		sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+		resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+
+		if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+			resp.Headers[edge.UUIDHeader] = msgUUID
+		}
+
+		if err := conn.GetControlSender().Send(resp); err != nil {
 			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("error pushing edge message to sequencer")
-		} else {
-			logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+				Error("failed to send trace route response")
 		}
+		return
+	}
 
-	case ConnTypeBind:
-		if msg.ContentType == edge.ContentTypeDial {
-			newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithField("newConnId", newConnId).Debug("received dial request")
-			go conn.newChildConnection(msg)
-		} else if msg.ContentType == edge.ContentTypeStateClosed {
-			conn.close(true)
-		} else if msg.ContentType == edge.ContentTypeBindSuccess {
-			for entry := range conn.hosting.IterBuffered() {
-				entry.Val.established.Store(true)
-				event := &edge.ListenerEvent{
-					EventType: edge.ListenerEstablished,
-				}
-				select {
-				case entry.Val.eventC <- event:
-				default:
-					logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
-				}
-			}
-		}
-	default:
-		logrus.WithFields(edge.GetLoggerFields(msg)).Errorf("invalid connection type: %v", conn.connType)
+	if err := conn.readQ.PutSequenced(msg); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("error pushing edge message to sequencer")
+	} else {
+		logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 	}
 }
 
 func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
 	adapter := conn.xgCircuit
+
 	if adapter == nil {
-		// TODO: handle
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).Error("can't accept payload, xgress adapter not present")
 		return
 	}
 
 	payload, err := xgress.UnmarshallPayload(msg)
 	if err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error unmarshalling payload")
 		adapter.xg.Close()
 		return
 	}
 
 	if err = adapter.xg.SendPayload(payload, 0, 0); err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error accepting payload")
 		adapter.xg.Close()
 	}
 }
@@ -264,17 +381,19 @@ func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
 func (conn *edgeConn) HandleXgAcknowledgement(msg *channel.Message) {
 	adapter := conn.xgCircuit
 	if adapter == nil {
-		// TODO: handle
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).Error("can't accept ack, xgress adapter not present")
 		return
 	}
 
 	ack, err := xgress.UnmarshallAcknowledgement(msg)
 	if err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error unmarshalling acknowledgement")
 		adapter.xg.Close()
 		return
 	}
 
 	if err = adapter.xg.SendAcknowledgement(ack); err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("error accepting acknowledgement")
 		adapter.xg.Close()
 	}
 	// adapter.env.GetAckIngester().Ingest(msg, adapter.xg)
@@ -314,22 +433,19 @@ func (conn *edgeConn) HandleInspect(msg *channel.Message) {
 }
 
 func (conn *edgeConn) GetCircuitDetail() *xgress.CircuitDetail {
-	if conn.connType == ConnTypeDial {
-		detail := &xgress.CircuitDetail{
-			CircuitId: conn.circuitId,
-			ConnId:    conn.Id(),
-		}
-
-		if conn.xgCircuit != nil {
-			detail.IsXgress = true
-			detail.Originator = conn.xgCircuit.xg.Originator().String()
-			detail.Address = string(conn.xgCircuit.xg.Address())
-		}
-
-		return detail
+	detail := &xgress.CircuitDetail{
+		CircuitId: conn.circuitId,
+		ConnId:    conn.Id(),
 	}
 
-	return nil
+	if conn.xgCircuit != nil {
+		detail.IsXgress = true
+		detail.Originator = conn.xgCircuit.xg.Originator().String()
+		detail.Address = string(conn.xgCircuit.xg.Address())
+		detail.CtrlId = conn.xgCircuit.xg.CtrlId()
+	}
+
+	return detail
 }
 
 func (conn *edgeConn) returnInspectResponse(msg *channel.Message, resp *inspect.SdkInspectResponse) {
@@ -376,6 +492,13 @@ func (conn *edgeConn) SetDeadline(t time.Time) error {
 	return conn.SetWriteDeadline(t)
 }
 
+func (conn *edgeConn) SetWriteDeadline(t time.Time) error {
+	if conn.xgCircuit != nil {
+		return conn.xgCircuit.writeAdapter.SetWriteDeadline(t)
+	}
+	return conn.MsgChannel.SetWriteDeadline(t)
+}
+
 func (conn *edgeConn) SetReadDeadline(t time.Time) error {
 	conn.readQ.SetReadDeadline(t)
 	return nil
@@ -400,13 +523,12 @@ func (conn *edgeConn) GetStickinessToken() []byte {
 }
 
 func (conn *edgeConn) HandleClose(channel.Channel) {
-	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
-	if conn.closed.CompareAndSwap(false, true) {
-		close(conn.closeNotify)
+	conn.close(true)
+	if conn.xgCircuit != nil {
+		conn.xgCircuit.xg.CloseSendBuffer()
 	}
-	conn.sentFIN.Store(true)
-	conn.readFIN.Store(true)
 }
 
 func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
@@ -439,6 +561,8 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	}
 
 	conn.circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	logger = logger.WithField("circuitId", conn.circuitId)
+
 	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
 		if conn.customState == nil {
 			conn.customState = map[int32][]byte{}
@@ -489,21 +613,23 @@ func (conn *edgeConn) setupFlowControl(msg *channel.Message, originator xgress.O
 		}
 
 		xgAdapter := &XgAdapter{
-			conn:        conn,
-			readC:       make(chan []byte),
-			closeNotify: conn.closeNotify,
-			env:         envF(),
+			conn:  conn,
+			readC: make(chan []byte),
+			env:   envF(),
 		}
 		conn.xgCircuit = xgAdapter
 		xg := xgress.NewXgress(conn.circuitId, ctrlId, xgress.Address(addr), xgAdapter, originator, xgress.DefaultOptions(), nil)
 		xgAdapter.xg = xg
-		conn.dataSink = xgAdapter
+		xgAdapter.writeAdapter = xg.NewWriteAdapter()
+		xgAdapter.xg.AddCloseHandler(xgAdapter)
+		conn.dataSink = xgAdapter.writeAdapter
 
 		xg.SetDataPlaneAdapter(xgAdapter)
-		xg.AddCloseHandler(xgAdapter)
-
 		xg.Start()
 	} else {
+		if defaultConnections := conn.GetChannel().GetUnderlayCountsByType()[edge.ChannelTypeDefault]; defaultConnections > 1 {
+			return errors.New("edge connections must use sdk flow control when using multiple default connections")
+		}
 		conn.dataSink = &conn.MsgChannel
 	}
 
@@ -561,81 +687,13 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
-func (conn *edgeConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions, envF func() xgress.Env) (*edgeListener, error) {
-	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
-		WithField("connId", conn.Id()).
-		WithField("serviceName", *service.Name).
-		WithField("sessionId", *session.ID)
-
-	listener := &edgeListener{
-		baseListener: baseListener{
-			service: service,
-			acceptC: make(chan edge.Conn, 10),
-			errorC:  make(chan error, 1),
-		},
-		token:       *session.Token,
-		edgeChan:    conn,
-		manualStart: options.ManualStart,
-		eventC:      options.GetEventChannel(),
-		envF:        envF,
-	}
-	logger.Debug("adding listener for session")
-	conn.hosting.Set(*session.Token, listener)
-
-	success := false
-	defer func() {
-		if !success {
-			logger.Debug("removing listener for session")
-			conn.unbind(logger, listener.token)
-		}
-	}()
-
-	logger.Debug("sending bind request to edge router")
-	var pub []byte
-	if conn.crypto {
-		pub = conn.keyPair.Public()
-	}
-	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)
-	conn.TraceMsg("listen", bindRequest)
-	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.GetControlSender())
-	if err != nil {
-		logger.WithError(err).Error("failed to bind")
-		return nil, err
-	}
-
-	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		msg := string(replyMsg.Body)
-		logger.Errorf("bind request resulted in disconnect. msg: (%v)", msg)
-		return nil, errors.Errorf("attempt to use closed connection: %v", msg)
-	}
-
-	if replyMsg.ContentType != edge.ContentTypeStateConnected {
-		logger.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-	}
-
-	success = true
-	logger.Debug("connected")
-
-	return listener, nil
-}
-
-func (conn *edgeConn) unbind(logger *logrus.Entry, token string) {
-	logger.Debug("starting unbind")
-
-	conn.hosting.Remove(token)
-
-	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
-	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-		logger.WithError(err).Error("unable to send unbind msg for conn")
-	} else {
-		logger.Debug("unbind message sent successfully")
-	}
-}
-
 func (conn *edgeConn) Read(p []byte) (int, error) {
-	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	log := pfxlog.Logger().WithField("connId", conn.Id()).
+		WithField("marker", conn.marker).
+		WithField("circuitId", conn.circuitId)
+
 	if conn.closed.Load() {
+		log.Trace("edgeConn closed, returning EOF")
 		return 0, io.EOF
 	}
 
@@ -655,21 +713,23 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 
 	for {
 		if conn.readFIN.Load() {
+			log.Tracef("readFIN true, returning EOF")
 			return 0, io.EOF
 		}
 
 		msg, err := conn.readQ.GetNext()
 		if errors.Is(err, ErrClosed) {
-			log.Debug("sequencer closed, closing connection")
-			conn.closed.Store(true)
+			log.Debug("sequencer closed, marking readFIN")
+			conn.readFIN.Store(true)
 			return 0, io.EOF
 		} else if err != nil {
-			log.Debugf("unexpected sequencer err (%v)", err)
+			log.WithError(err).Debug("unexpected sequencer err")
 			return 0, err
 		}
 
 		flags, _ := msg.GetUint32Header(edge.FlagsHeader)
 		if flags&edge.FIN != 0 {
+			log.Trace("got fin msg, marking readFIN true")
 			conn.readFIN.Store(true)
 		}
 		conn.flags = conn.flags | (flags & (edge.STREAM | edge.MULTIPART))
@@ -677,8 +737,18 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		switch msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
-			log.Debug("received ConnState_CLOSED message, closing connection")
-			conn.close(true)
+			if conn.xgCircuit != nil {
+				conn.readFIN.Store(true)
+				if conn.sentFIN.Load() {
+					log.Debug("received ConnState_CLOSED message, fin sent, closing connection")
+					conn.close(true)
+				} else {
+					log.Debug("received ConnState_CLOSED message, fin not yet sent")
+				}
+			} else {
+				log.Debug("received ConnState_CLOSED message, closing connection")
+				conn.close(true)
+			}
 			continue
 
 		case edge.ContentTypeData:
@@ -745,6 +815,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 }
 
 func (conn *edgeConn) Close() error {
+	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn")
 	conn.close(false)
 	return nil
 }
@@ -761,157 +832,27 @@ func (conn *edgeConn) close(closedByRemote bool) {
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
 
-	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
+
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
-	if !closedByRemote {
-		msg := edge.NewStateClosedMsg(conn.Id(), "")
-		if err := conn.SendState(msg); err != nil {
-			log.WithError(err).Error("failed to send close message")
-		}
-	}
-
-	// if we're using xgress, wait to remove the conn from the mux until the xgress closes, otherwise it becomes unroutable.
 	if conn.xgCircuit == nil {
-		conn.msgMux.RemoveMsgSink(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
-	}
-
-	if conn.connType == ConnTypeBind {
-		for entry := range conn.hosting.IterBuffered() {
-			listener := entry.Val
-			if err := listener.close(closedByRemote); err != nil {
-				log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
+		if !closedByRemote {
+			msg := edge.NewStateClosedMsg(conn.Id(), "")
+			if err := conn.SendState(msg); err != nil {
+				log.WithError(err).Error("failed to send close message")
 			}
 		}
-	}
-}
 
-func (conn *edgeConn) getListener(token string) (*edgeListener, bool) {
-	return conn.hosting.Get(token)
-}
-
-func (conn *edgeConn) newChildConnection(message *channel.Message) {
-	token := string(message.Body)
-	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
-	logger := pfxlog.Logger().WithField("connId", conn.Id())
-	if circuitId != "" {
-		logger = logger.WithField("circuitId", circuitId)
-	}
-	logger.WithField("token", token).Debug("logging token")
-
-	logger.Debug("looking up listener")
-	listener, found := conn.getListener(token)
-	if !found {
-		logger.Warn("listener not found")
-		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	logger.Debug("listener found. checking for router provided connection id")
-
-	id, routerProvidedConnId := message.GetUint32Header(edge.RouterProvidedConnId)
-	if routerProvidedConnId {
-		logger.Debugf("using router provided connection id %v", id)
+		conn.msgMux.Remove(conn) // if we switch back to ChMsgMux will need to be done async again, otherwise we may deadlock
 	} else {
-		id = conn.msgMux.GetNextId()
-		logger.Debugf("listener found. generating id for new connection: %v", id)
+		// cancel any pending writes
+		_ = conn.xgCircuit.writeAdapter.SetWriteDeadline(time.Now())
+
+		// if we're using xgress, wait to remove the connection from the mux until the xgress closes, otherwise it becomes unroutable.
+		conn.xgCircuit.xg.PeerClosed()
 	}
-
-	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
-	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
-
-	closeNotify := make(chan struct{})
-	edgeCh := &edgeConn{
-		closeNotify:    closeNotify,
-		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:         conn.msgMux,
-		sourceIdentity: sourceIdentity,
-		crypto:         conn.crypto,
-		appData:        message.Headers[edge.AppDataHeader],
-		connType:       ConnTypeDial,
-		marker:         marker,
-		circuitId:      circuitId,
-	}
-
-	newConnLogger := pfxlog.Logger().
-		WithField("marker", marker).
-		WithField("connId", id).
-		WithField("parentConnId", conn.Id()).
-		WithField("token", token).
-		WithField("circuitId", token)
-
-	err := conn.msgMux.AddMsgSink(edgeCh) // duplicate errors only happen on the server side, since client controls ids
-	if err != nil {
-		conn.close(true)
-
-		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	if err = edgeCh.setupFlowControl(message, xgress.Terminator, listener.envF); err != nil {
-		logger.WithError(err).Error("failed to start flow control")
-		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("failed to start flow control (%s)", err.Error()))
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	var txHeader []byte
-	if edgeCh.crypto {
-		newConnLogger.Debug("setting up crypto")
-		clientKey := message.Headers[edge.PublicKeyHeader]
-		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
-
-		if clientKey != nil {
-			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
-				logger.WithError(err).Error("failed to establish crypto session")
-			}
-		} else {
-			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
-		}
-	}
-
-	if err != nil {
-		conn.close(true)
-		newConnLogger.WithError(err).Error("failed to establish connection")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
-	}
-
-	connHandler := &newConnHandler{
-		conn:                 conn,
-		edgeCh:               edgeCh,
-		message:              message,
-		txHeader:             txHeader,
-		routerProvidedConnId: routerProvidedConnId,
-		circuitId:            circuitId,
-	}
-
-	if listener.manualStart {
-		edgeCh.acceptCompleteHandler = connHandler
-	} else if err := connHandler.dialSucceeded(); err != nil {
-		logger.Debug("calling dial succeeded")
-		return
-	}
-
-	listener.acceptC <- edgeCh
 }
 
 func (conn *edgeConn) GetAppData() []byte {
@@ -964,7 +905,7 @@ func (conn *edgeConn) TraceRoute(hops uint32, timeout time.Duration) (*edge.Trac
 }
 
 type newConnHandler struct {
-	conn                 *edgeConn
+	conn                 *edgeHostConn
 	edgeCh               *edgeConn
 	message              *channel.Message
 	txHeader             []byte
@@ -1006,7 +947,7 @@ func (self *newConnHandler) dialSucceeded() error {
 	if !self.routerProvidedConnId {
 		startMsg, err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendForReply(self.conn.GetControlSender())
 		if err != nil {
-			logger.WithError(err).Error("Failed to send reply to dial request")
+			logger.WithError(err).Error("failed to send reply to dial request")
 			return err
 		}
 
@@ -1015,7 +956,7 @@ func (self *newConnHandler) dialSucceeded() error {
 			return errors.Errorf("failed to receive start after dial. got %v", startMsg)
 		}
 	} else if err := reply.WithPriority(channel.Highest).WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
-		logger.WithError(err).Error("Failed to send reply to dial request")
+		logger.WithError(err).Error("failed to send reply to dial request")
 		return err
 	}
 

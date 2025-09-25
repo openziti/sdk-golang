@@ -62,10 +62,12 @@ type InspectDetail struct {
 	Goroutines            []string          `json:"goroutines"`
 	Sequence              uint64            `json:"sequence"`
 	Flags                 string            `json:"flags"`
+	LastSizeSent          uint32            `json:"lastSizeSent"`
 }
 
 type SendBufferDetail struct {
 	WindowSize            uint32  `json:"windowSize"`
+	QueuedPayloadCount    int     `json:"queuedPayloadCount"`
 	LinkSendBufferSize    uint32  `json:"linkSendBufferSize"`
 	LinkRecvBufferSize    uint32  `json:"linkRecvBufferSize"`
 	Accumulator           uint32  `json:"accumulator"`
@@ -85,7 +87,6 @@ type SendBufferDetail struct {
 type RecvBufferDetail struct {
 	Size           uint32 `json:"size"`
 	PayloadCount   uint32 `json:"payloadCount"`
-	LastSizeSent   uint32 `json:"lastSizeSent"`
 	Sequence       int32  `json:"sequence"`
 	MaxSequence    int32  `json:"maxSequence"`
 	NextPayload    string `json:"nextPayload"`
@@ -102,4 +103,5 @@ type CircuitDetail struct {
 	Address    string `json:"address"`
 	Originator string `json:"originator"`
 	IsXgress   bool   `json:"isXgress"`
+	CtrlId     string `json:"ctrlId"`
 }

@@ -6,7 +6,7 @@ const (
 	PayloadFlagsHeader uint8 = 0x10
 )
 
-// headers to pass through fabric to the other side
+// HeadersToFabric tracks the headers to pass through fabric to the other side
 var HeadersToFabric = map[int32]uint8{
 	edge.FlagsHeader: PayloadFlagsHeader,
 }

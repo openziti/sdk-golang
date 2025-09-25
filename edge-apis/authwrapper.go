@@ -3,6 +3,7 @@
 package edge_apis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/go-openapi/runtime"
@@ -24,8 +25,8 @@ import (
 	"github.com/openziti/foundation/v2/errorz"
 	"github.com/openziti/foundation/v2/stringz"
 	"github.com/pkg/errors"
-	"github.com/zitadel/oidc/v2/pkg/client/tokenexchange"
-	"github.com/zitadel/oidc/v2/pkg/oidc"
+	"github.com/zitadel/oidc/v3/pkg/client/tokenexchange"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
@@ -569,11 +570,14 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
 	_, err := clientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
+		timeoutCtx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancelF()
+
 		apiHost := transport.ApiUrl.Host
 		issuer := "https://" + apiHost + "/oidc"
 		tokenEndpoint := "https://" + apiHost + "/oidc/oauth/token"
 
-		te, err := tokenexchange.NewTokenExchangerClientCredentials(issuer, "native", "", tokenexchange.WithHTTPClient(client), tokenexchange.WithStaticTokenEndpoint(issuer, tokenEndpoint))
+		te, err := tokenexchange.NewTokenExchangerClientCredentials(timeoutCtx, issuer, "native", "", tokenexchange.WithHTTPClient(client), tokenexchange.WithStaticTokenEndpoint(issuer, tokenEndpoint))
 
 		if err != nil {
 			return nil, err
@@ -585,16 +589,16 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 
 		switch subjectTokenType {
 		case oidc.RefreshTokenType:
-			tokenResponse, err = tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
+			tokenResponse, err = tokenexchange.ExchangeToken(timeoutCtx, te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.RefreshTokenType)
 		case oidc.AccessTokenType:
-			tokenResponse, err = tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
+			tokenResponse, err = tokenexchange.ExchangeToken(timeoutCtx, te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.AccessTokenType)
 		}
 
 		if err != nil {
 			return nil, err
 		}
 
-		idResp, err := tokenexchange.ExchangeToken(te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
+		idResp, err := tokenexchange.ExchangeToken(timeoutCtx, te, subjectToken, subjectTokenType, "", "", nil, nil, nil, oidc.IDTokenType)
 
 		if err != nil {
 			return nil, err

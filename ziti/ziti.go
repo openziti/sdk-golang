@@ -20,17 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-openapi/strfmt"
-	"github.com/google/uuid"
-	"github.com/kataras/go-events"
-	"github.com/openziti/edge-api/rest_client_api_client/authentication"
-	"github.com/openziti/edge-api/rest_client_api_client/service"
-	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
-	"github.com/openziti/foundation/v2/concurrenz"
-	"github.com/openziti/foundation/v2/stringz"
-	apis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/xgress"
-	"github.com/openziti/secretstream/kx"
 	"math"
 	"math/rand"
 	"net"
@@ -41,6 +30,21 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-openapi/strfmt"
+	"github.com/google/uuid"
+	"github.com/kataras/go-events"
+	"github.com/openziti/edge-api/rest_client_api_client/authentication"
+	"github.com/openziti/edge-api/rest_client_api_client/service"
+	rest_session "github.com/openziti/edge-api/rest_client_api_client/session"
+	"github.com/openziti/edge-api/rest_util"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/errorz"
+	"github.com/openziti/foundation/v2/stringz"
+	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/xgress"
+	"github.com/openziti/secretstream/kx"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
@@ -84,8 +88,14 @@ type Context interface {
 	// creation.
 	Authenticate() error
 
+	// GetExternalSigners retrieves a list of external JWT signers with their details.
+	// Returns an error if the operation fails.
+	GetExternalSigners() ([]*rest_model.ClientExternalJWTSignerDetail, error)
+
 	// SetCredentials sets the credentials used to authenticate against the Edge Client API.
 	SetCredentials(authenticator apis.Credentials)
+
+	LoginWithJWT(jst string)
 
 	// GetCredentials returns the currently set credentials used to authenticate against the Edge Client API.
 	GetCredentials() apis.Credentials
@@ -103,17 +113,17 @@ type Context interface {
 	// DialWithOptions performs the same logic as Dial but allows specification of DialOptions.
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
 
-	// DialAddr finds the service for given address and performs a Dial for it.
+	// DialAddr finds the service for a given address and performs a Dial for it.
 	DialAddr(network string, addr string) (edge.Conn, error)
 
 	// Listen attempts to host a service by the given service name;  authenticating as necessary in order to obtain
 	// a service session, attach to Edge Routers, and bind (host) the service.
 	Listen(serviceName string) (edge.Listener, error)
 
-	// ListenWithOptions performs the same logic as Listen, but allows the specification of ListenOptions.
+	// ListenWithOptions performs the same logic as Listen but allows the specification of ListenOptions.
 	ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error)
 
-	// GetServiceId will return the id of a specific service by service name. If not found, false, will be returned
+	// GetServiceId will return the id of a specific service by service name. If not found, false will be returned
 	// with an empty string.
 	GetServiceId(serviceName string) (string, bool, error)
 
@@ -124,7 +134,7 @@ type Context interface {
 	// GetService will return the service details of a specific service by service name.
 	GetService(serviceName string) (*rest_model.ServiceDetail, bool)
 
-	// GetServiceForAddr finds the service with intercept that matches best to given address
+	// GetServiceForAddr finds the service with intercept that matches best to the given address
 	GetServiceForAddr(network, hostname string, port uint16) (*rest_model.ServiceDetail, int, error)
 
 	// RefreshServices forces the context to refresh the list of services the current authenticating identity has access
@@ -132,7 +142,7 @@ type Context interface {
 	RefreshServices() error
 
 	// RefreshService forces the context to refresh just the service with the given name. If the given service isn't
-	// found, a nil will be returned
+	// found, nil will be returned
 	RefreshService(serviceName string) (*rest_model.ServiceDetail, error)
 
 	// GetServiceTerminators will return a slice of rest_model.TerminatorClientDetail for a specific service name.
@@ -478,6 +488,20 @@ func (context *ContextImpl) SetCredentials(credentials apis.Credentials) {
 	context.CtrlClt.Credentials = credentials
 }
 
+func (context *ContextImpl) LoginWithJWT(jwt string) {
+	cred := context.CtrlClt.Credentials
+	jwtCred := &apis.JwtCredentials{
+		BaseCredentials: apis.BaseCredentials{
+			ConfigTypes: cred.Payload().ConfigTypes,
+			EnvInfo:     cred.Payload().EnvInfo,
+			SdkInfo:     cred.Payload().SdkInfo,
+			CaPool:      context.CtrlClt.CaPool,
+		},
+		JWT: jwt,
+	}
+	context.SetCredentials(jwtCred)
+}
+
 func (context *ContextImpl) GetCredentials() apis.Credentials {
 	return context.CtrlClt.Credentials
 }
@@ -664,6 +688,11 @@ func (context *ContextImpl) refreshSessions() {
 	}
 }
 
+func (context *ContextImpl) GetExternalSigners() ([]*rest_model.ClientExternalJWTSignerDetail, error) {
+	result, err := context.CtrlClt.GetExternalSigners()
+	return result, err
+}
+
 func (context *ContextImpl) RefreshServices() error {
 	return context.refreshServices(true, false)
 }
@@ -686,11 +715,11 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 		if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 			log.WithError(err).Error("failed to check if service list update is available")
 			target := &current_api_session.ListServiceUpdatesUnauthorized{}
-			if errors.As(err, &target) {
+			if !errors.As(err, &target) {
 				checkService = true
 			} else {
 				if err = context.Authenticate(); err != nil {
-					log.WithError(err).Error("unable to re-authenticate during session refresh")
+					log.WithError(err).Error("unable to re-authenticate during service list refresh")
 				} else {
 					if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 						checkService = true
@@ -988,7 +1017,14 @@ func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 			logrus.Info("previous apiSession expired")
 			return backoff.Permanent(err)
 		}
-		logrus.WithError(err).Info("unable to refresh apiSession, will retry")
+
+		oidcErr := &oidc.Error{}
+		if errors.As(err, &oidcErr) {
+			logrus.Info("oidc error, re-authenticating")
+			return backoff.Permanent(err)
+		}
+
+		logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
 		return err
 	}
 
@@ -1276,7 +1312,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 		edgeListenOptions.MaxTerminators = 1
 	}
 
-	edgeListenOptions.SdkFlowControl = options.SdkFlowControl != nil && *options.SdkFlowControl
+	edgeListenOptions.SdkFlowControl = (options.SdkFlowControl != nil && *options.SdkFlowControl) || context.maxDefaultConnections > 1
 
 	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
 		return nil, err
@@ -1439,6 +1475,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	if context.maxControlConnections > 0 || context.maxDefaultConnections > 1 {
 		headers.PutBoolHeader(channel.IsGroupedHeader, true)
 		headers.PutStringHeader(channel.TypeHeader, edge.ChannelTypeDefault)
+		headers.PutBoolHeader(channel.IsFirstGroupConnection, true)
 	}
 	underlay, err := dialer.CreateWithHeaders(options.ConnectTimeout, headers)
 	if err != nil {
@@ -1497,16 +1534,17 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 
 	useConn := context.routerConnections.Upsert(ingressUrl, edgeConn,
 		func(exist bool, oldV edge.RouterConn, newV edge.RouterConn) edge.RouterConn {
-			if exist { // use the routerConnection already in the map, close new one
+			if exist && !oldV.IsClosed() { // use the routerConnection already in the map, close new one
 				pfxlog.Logger().Infof("connection to %s already established, closing duplicate connection", ingressUrl)
 
 				go func() {
-					if err := newV.Close(); err != nil {
-						pfxlog.Logger().Errorf("unable to close router connection (%v)", err)
+					if closeErr := newV.Close(); closeErr != nil {
+						pfxlog.Logger().Errorf("unable to close router connection (%v)", closeErr)
 					}
 				}()
 				return oldV
 			}
+
 			h := context.metrics.Histogram("latency." + ingressUrl)
 			h.Update(int64(connectTime))
 
@@ -1603,7 +1641,7 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 	cache := string(sessionType) == string(SessionDial)
 
 	// Can't cache Bind sessions, as we use session tokens for routing. If there are multiple binds on a single
-	// session routing information will get overwritten
+	// session, routing information will get overwritten
 	if cache {
 		session, ok := context.sessions.Get(sessionKey)
 		if ok {
@@ -1661,6 +1699,14 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	return session, backoff.Retry(operation, expBackoff)
 }
 
+func (context *ContextImpl) isUnauthorizedApiError(err error) bool {
+	apiFormattedErr := &rest_util.APIFormattedError{}
+	if errors.As(err, &apiFormattedErr) {
+		return apiFormattedErr.APIError != nil && apiFormattedErr.Code == errorz.UnauthorizedCode
+	}
+	return false
+}
+
 func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, sessionType SessionType) (*rest_model.SessionDetail, error) {
 	start := time.Now()
 	logger := pfxlog.Logger()
@@ -1669,7 +1715,13 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 	if err != nil {
 		logger.WithError(err).WithField("errorType", fmt.Sprintf("%T", err)).Warnf("failure creating %s session to service %s", sessionType, *service.Name)
 		var createSessionUnauthorized = &rest_session.CreateSessionUnauthorized{}
-		if errors.As(err, &createSessionUnauthorized) {
+		isUnauthorized := errors.As(err, &createSessionUnauthorized)
+
+		if !isUnauthorized {
+			isUnauthorized = context.isUnauthorizedApiError(err)
+		}
+
+		if isUnauthorized {
 			if err := context.Authenticate(); err != nil {
 				var authenticateUnauthorized = &authentication.AuthenticateUnauthorized{}
 				if errors.As(err, &authenticateUnauthorized) {
@@ -1714,10 +1766,10 @@ func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionD
 	sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
 
 	if *session.Type == SessionDial {
-		if op == "create" {
+		switch op {
+		case "create":
 			context.sessions.Set(sessionKey, session)
-		} else if op == "refresh" {
-			// N.B.: refreshed sessions do not contain token so update stored session object with updated edgeRouters
+		case "refresh":
 			isUpdate := false
 			val := context.sessions.Upsert(sessionKey, session, func(exist bool, valueInMap *rest_model.SessionDetail, newValue *rest_model.SessionDetail) *rest_model.SessionDetail {
 				isUpdate = exist
@@ -2163,11 +2215,10 @@ func (mgr *listenerManager) refreshSession() {
 }
 
 func (mgr *listenerManager) createSessionWithBackoff() {
+	log := pfxlog.Logger().WithField("serviceName", *mgr.service.Name)
 	latestSvc, _ := mgr.context.services.Get(*mgr.service.Name)
 	if latestSvc != nil && *latestSvc.ID != *mgr.service.ID {
-		pfxlog.Logger().
-			WithField("serviceName", *mgr.service.Name).
-			WithField("oldServiceId", *mgr.service.ID).
+		log.WithField("oldServiceId", *mgr.service.ID).
 			WithField("newServiceId", *latestSvc.ID).
 			Info("service id changed, service was recreated")
 		mgr.service = latestSvc
@@ -2176,9 +2227,9 @@ func (mgr *listenerManager) createSessionWithBackoff() {
 	session, err := mgr.context.createSessionWithBackoff(mgr.service, SessionType(SessionBind), mgr.options)
 	if session != nil {
 		mgr.sessionRefreshed(session)
-		pfxlog.Logger().WithField("session token", *session.Token).Info("new service session")
+		log.Debug("new service session created")
 	} else {
-		pfxlog.Logger().WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
+		log.WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
 	}
 }
 

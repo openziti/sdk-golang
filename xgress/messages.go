@@ -78,6 +78,8 @@ const (
 	PayloadFlagCircuitStart Flag = 4
 	PayloadFlagChunk        Flag = 8
 	PayloadFlagRetransmit   Flag = 16
+	PayloadFlagEOF          Flag = 32
+	PayloadFlagWriteFailed  Flag = 64
 )
 
 func NewAcknowledgement(circuitId string, originator Originator) *Acknowledgement {
@@ -306,6 +308,14 @@ func (payload *Payload) GetFlags() uint32 {
 
 func (payload *Payload) IsCircuitEndFlagSet() bool {
 	return isFlagSet(payload.Flags, PayloadFlagCircuitEnd)
+}
+
+func (payload *Payload) IsFlagEOFSet() bool {
+	return isFlagSet(payload.Flags, PayloadFlagEOF)
+}
+
+func (payload *Payload) IsFlagWriteFailedSet() bool {
+	return isFlagSet(payload.Flags, PayloadFlagWriteFailed)
 }
 
 func (payload *Payload) IsCircuitStartFlagSet() bool {
