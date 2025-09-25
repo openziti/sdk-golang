@@ -117,7 +117,7 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
 	}
 
-	c.RouterProxy = routerProxyFromEnvironment
+	c.RouterProxy = RouterProxyFromEnvironment
 
 	return &c, nil
 }
@@ -131,8 +131,8 @@ func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error)
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
 }
 
-// routerProxyFromEnvironment will return a ProxyConfiguration for the given address based on the environment variables
-func routerProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
+// RouterProxyFromEnvironment will return a ProxyConfiguration for the given address based on the environment variables
+func RouterProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
 	// Create a request with the address to parse
 	parsedURL, errParse := parseTLS(addr)
 	if errParse != nil {
