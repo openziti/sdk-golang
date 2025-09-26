@@ -30,7 +30,7 @@ jobs:
           || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved'))
         with:
           zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
-          webhookUrl: ${{ secrets.ZHOOK_URL }}
+          webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
           eventJson: ${{ toJson(github.event) }}
           senderUsername: "GitHubZ"
           destChannel: "dev-notifications"
@@ -42,7 +42,7 @@ jobs:
           || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved'))
         with:
           zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
-          webhookUrl: ${{ secrets.ZHOOK_URL }}
+          webhookUrl: ${{ secrets.ZHOOK_URL_GITHUB_SIG_CORE }}
           eventJson: ${{ toJson(github.event) }}
           senderUsername: "GitHubZ"
           destChannel: "github-sig-core"
