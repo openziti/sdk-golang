@@ -847,7 +847,11 @@ func (context *ContextImpl) runRefreshes() {
 				refreshAt = exp.Add(-10 * time.Second)
 				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
 
-				context.updateTokenOnAllErs(newApiSession)
+				updateErr := context.updateTokenOnAllErs(newApiSession)
+
+				if updateErr != nil {
+					pfxlog.Logger().WithError(updateErr).Warn("error updating current api session token on edge routers")
+				}
 			}
 
 		case <-svcRefreshTick.C:
@@ -1132,7 +1136,12 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 	if err != nil {
 		return err
 	}
-	context.updateTokenOnAllErs(newApiSession)
+
+	updateErr := context.updateTokenOnAllErs(newApiSession)
+
+	if updateErr != nil {
+		pfxlog.Logger().WithError(updateErr).Warn("error updating current api session token on edge routers")
+	}
 
 	apiSession := context.CtrlClt.GetCurrentApiSession()
 
