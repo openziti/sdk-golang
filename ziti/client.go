@@ -514,3 +514,24 @@ func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
 	}
 	return self.supportsConfigTypesOnServiceList.Load()
 }
+
+// GetAvailableERs retrieves edge routers accessible to the current identity from the controller.
+// Returns detailed router information including supported protocols and connection addresses
+// for establishing data plane connections.
+func (self *CtrlClient) GetAvailableERs() ([]*rest_model.CurrentIdentityEdgeRouterDetail, error) {
+	params := current_identity.NewGetCurrentIdentityEdgeRoutersParams()
+
+	var ers []*rest_model.CurrentIdentityEdgeRouterDetail
+
+	resp, err := self.API.CurrentIdentity.GetCurrentIdentityEdgeRouters(params, self.GetCurrentApiSession())
+
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	ers = make([]*rest_model.CurrentIdentityEdgeRouterDetail, 0, *resp.Payload.Meta.Pagination.TotalCount)
+
+	ers = append(ers, resp.Payload.Data...)
+
+	return ers, nil
+}

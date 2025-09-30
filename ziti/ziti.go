@@ -793,18 +793,25 @@ func (context *ContextImpl) RefreshService(serviceName string) (*rest_model.Serv
 	return serviceDetail, nil
 }
 
-func (context *ContextImpl) updateTokenOnAllErs(apiSession apis.ApiSession) {
+// updateTokenOnAllErs synchronously propagates API session tokens to all connected edge routers.
+// Collects and returns any router update failures as a combined error rather than logging
+// them individually. This enables callers to determine if token propagation was successful
+// across the entire router connection pool.
+func (context *ContextImpl) updateTokenOnAllErs(apiSession apis.ApiSession) error {
+	var routerErrors []error
 	if apiSession.RequiresRouterTokenUpdate() {
 		for tpl := range context.routerConnections.IterBuffered() {
 			erConn := tpl.Val
 			erKey := tpl.Key
-			go func() {
-				if err := erConn.UpdateToken(apiSession.GetToken(), 10*time.Second); err != nil {
-					pfxlog.Logger().WithError(err).WithField("er", erKey).Warn("error updating apiSession token to connected ER")
-				}
-			}()
+
+			if err := erConn.UpdateToken(apiSession.GetToken(), 10*time.Second); err != nil {
+				routerError := fmt.Errorf("failed to update token on ER %s: %w", erKey, err)
+				routerErrors = append(routerErrors, routerError)
+			}
 		}
 	}
+
+	return errors.Join(routerErrors...)
 }
 
 func (context *ContextImpl) runRefreshes() {
@@ -865,7 +872,11 @@ func (context *ContextImpl) runRefreshes() {
 				refreshAt = exp.Add(-10 * time.Second)
 				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
 
-				context.updateTokenOnAllErs(newApiSession)
+				updateErr := context.updateTokenOnAllErs(newApiSession)
+
+				if updateErr != nil {
+					pfxlog.Logger().WithError(updateErr).Warn("error updating current api session token on edge routers")
+				}
 			}
 
 		case <-svcRefreshTick.C:
@@ -998,6 +1009,87 @@ func (context *ContextImpl) Authenticate() error {
 	return context.authenticate()
 }
 
+// ConnectAllAvailableErs discovers and establishes connections to all edge routers
+// accessible to the current identity. Filters routers by supported protocols and
+// waits for connection attempts to complete. Returns any connection failures
+// as a combined error.
+func (context *ContextImpl) ConnectAllAvailableErs() error {
+	if err := context.ensureApiSession(); err != nil {
+		return fmt.Errorf("failed to establish api session (%w)", err)
+	}
+
+	ers, err := context.CtrlClt.GetAvailableERs()
+
+	if err != nil {
+		return fmt.Errorf("failed to get available edge routers: %w", err)
+	}
+
+	resultCh := make(chan *edgeRouterConnResult, len(ers))
+
+	for _, er := range ers {
+		for _, addr := range er.SupportedProtocols {
+			isSupported := context.options.isEdgeRouterUrlAccepted(addr)
+
+			if isSupported {
+				addr = strings.Replace(addr, "//", "", 1)
+				go context.handleConnectEdgeRouter(*er.Name, addr, resultCh)
+			}
+
+		}
+	}
+
+	expectedResults := len(ers)
+
+	var results []*edgeRouterConnResult
+	select {
+	case result := <-resultCh:
+		results = append(results, result)
+
+		if len(results) == expectedResults {
+			break
+		}
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("timed out waiting for edge router connections got %d expected %d", len(results), expectedResults)
+	}
+
+	var resultErrs []error
+	for _, result := range results {
+		if result.err != nil {
+			resultErrs = append(resultErrs, result.err)
+		}
+	}
+
+	return errors.Join(resultErrs...)
+}
+
+// RefreshApiSession attempts to refresh the API session and propagate the new token
+// to connected edge routers. Returns two separate error values: the first indicates
+// functional refresh failures (session expired, authentication errors) that affect
+// the refresh operation itself, while the second contains edge router token update
+// failures that don't prevent the refresh from succeeding.
+func (context *ContextImpl) RefreshApiSession() (error, error) {
+	newApiSession, err := context.CtrlClt.Refresh()
+	if err == nil {
+		updateErrs := context.updateTokenOnAllErs(newApiSession)
+		return nil, updateErrs
+	}
+
+	unauthorizedErr := &current_api_session.GetCurrentAPISessionUnauthorized{}
+	if errors.As(err, &unauthorizedErr) {
+		logrus.Info("previous apiSession expired")
+		return backoff.Permanent(err), nil
+	}
+
+	oidcErr := &oidc.Error{}
+	if errors.As(err, &oidcErr) {
+		logrus.Info("oidc error, re-authenticating")
+		return backoff.Permanent(err), nil
+	}
+
+	logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
+	return err, nil
+}
+
 func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 	expBackoff := backoff.NewExponentialBackOff()
 
@@ -1006,26 +1098,12 @@ func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 	expBackoff.MaxElapsedTime = 24 * time.Hour
 
 	operation := func() error {
-		newApiSession, err := context.CtrlClt.Refresh()
-		if err == nil {
-			context.updateTokenOnAllErs(newApiSession)
-			return nil
+		functionalErr, erUpdateErrs := context.RefreshApiSession()
+		if erUpdateErrs != nil {
+			pfxlog.Logger().WithError(erUpdateErrs).Warn("errors during api session token update on all connected edge routers")
 		}
 
-		unauthorizedErr := &current_api_session.GetCurrentAPISessionUnauthorized{}
-		if errors.As(err, &unauthorizedErr) {
-			logrus.Info("previous apiSession expired")
-			return backoff.Permanent(err)
-		}
-
-		oidcErr := &oidc.Error{}
-		if errors.As(err, &oidcErr) {
-			logrus.Info("oidc error, re-authenticating")
-			return backoff.Permanent(err)
-		}
-
-		logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
-		return err
+		return functionalErr
 	}
 
 	return backoff.Retry(operation, expBackoff)
@@ -1083,7 +1161,12 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 	if err != nil {
 		return err
 	}
-	context.updateTokenOnAllErs(newApiSession)
+
+	updateErr := context.updateTokenOnAllErs(newApiSession)
+
+	if updateErr != nil {
+		pfxlog.Logger().WithError(updateErr).Warn("error updating current api session token on edge routers")
+	}
 
 	apiSession := context.CtrlClt.GetCurrentApiSession()
 
