@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1757,7 +1758,12 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	var session *rest_model.SessionDetail
 	operation := func() error {
 		latestSvc, _ := context.services.Get(*service.Name)
-		if latestSvc != nil && *latestSvc.ID != *service.ID {
+
+		if latestSvc == nil {
+			return backoff.Permanent(fmt.Errorf("service %v not found", *service.Name))
+		}
+
+		if *latestSvc.ID != *service.ID {
 			pfxlog.Logger().
 				WithField("serviceName", *service.Name).
 				WithField("oldServiceId", *service.ID).
@@ -1780,6 +1786,14 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	}
 
 	return session, backoff.Retry(operation, expBackoff)
+}
+
+func (context *ContextImpl) isNotFoundApiError(err error) bool {
+	apiFormattedErr := &rest_util.APIFormattedError{}
+	if errors.As(err, &apiFormattedErr) {
+		return apiFormattedErr.APIError != nil && apiFormattedErr.Code == errorz.NotFoundCode
+	}
+	return false
 }
 
 func (context *ContextImpl) isUnauthorizedApiError(err error) bool {
@@ -1815,7 +1829,7 @@ func (context *ContextImpl) createSession(service *rest_model.ServiceDetail, ses
 		}
 
 		var createSessionNotFound = &rest_session.CreateSessionNotFound{}
-		if errors.As(err, &createSessionNotFound) {
+		if context.isNotFoundApiError(err) || errors.As(err, &createSessionNotFound) {
 			if refreshErr := context.refreshServices(false, false); refreshErr != nil {
 				logger.WithError(refreshErr).Info("failed to refresh services after create session returned 404 (likely for service)")
 			}
@@ -2022,9 +2036,16 @@ func (mgr *listenerManager) notify(eventType ListenEventType) {
 
 func (mgr *listenerManager) run() {
 	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
+
+	start := time.Now()
 	// need to either establish a session, or fail if we can't create one
 	for mgr.session == nil {
-		mgr.createSessionWithBackoff()
+		if err := mgr.createSessionWithBackoff(); err != nil {
+			if time.Since(start) > mgr.options.ConnectTimeout {
+				log.WithError(err).Error("timed out trying to create session to bind service")
+				return
+			}
+		}
 	}
 
 	mgr.makeMoreListeners()
@@ -2234,6 +2255,17 @@ func (mgr *listenerManager) makeMoreListeners() {
 	}
 }
 
+func (mgr *listenerManager) createSessionWithPermissionCheck() {
+	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
+
+	if err := mgr.createSessionWithBackoff(); err != nil {
+		if IsServiceAccessDeniedError(err) {
+			log.WithError(err).Error("service access lost, closing service listener")
+			mgr.listener.CloseWithError(err)
+		}
+	}
+}
+
 func (mgr *listenerManager) refreshSession() {
 	if time.Since(mgr.lastSessionRefresh) < 30*time.Second {
 		return
@@ -2242,7 +2274,7 @@ func (mgr *listenerManager) refreshSession() {
 	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
 	if mgr.session == nil {
 		log.Debug("establishing initial session")
-		mgr.createSessionWithBackoff()
+		mgr.createSessionWithPermissionCheck()
 		return
 	}
 
@@ -2254,7 +2286,7 @@ func (mgr *listenerManager) refreshSession() {
 		var detailSessionNotFound = &rest_session.DetailSessionNotFound{}
 		if errors.As(err, &detailSessionNotFound) {
 			// try to create new session
-			mgr.createSessionWithBackoff()
+			mgr.createSessionWithPermissionCheck()
 			return
 		}
 
@@ -2286,7 +2318,7 @@ func (mgr *listenerManager) refreshSession() {
 			log.WithError(err).Errorf("failed to to refresh session %v", *mgr.session.ID)
 
 			// try to create new session
-			mgr.createSessionWithBackoff()
+			mgr.createSessionWithPermissionCheck()
 		}
 	}
 
@@ -2297,10 +2329,15 @@ func (mgr *listenerManager) refreshSession() {
 	}
 }
 
-func (mgr *listenerManager) createSessionWithBackoff() {
+func (mgr *listenerManager) createSessionWithBackoff() error {
 	log := pfxlog.Logger().WithField("serviceName", *mgr.service.Name)
 	latestSvc, _ := mgr.context.services.Get(*mgr.service.Name)
-	if latestSvc != nil && *latestSvc.ID != *mgr.service.ID {
+
+	if latestSvc == nil || !slices.Contains(latestSvc.Permissions, rest_model.DialBindBind) {
+		return ServiceAccessDeniedError{serviceName: *mgr.service.Name}
+	}
+
+	if *latestSvc.ID != *mgr.service.ID {
 		log.WithField("oldServiceId", *mgr.service.ID).
 			WithField("newServiceId", *latestSvc.ID).
 			Info("service id changed, service was recreated")
@@ -2311,9 +2348,11 @@ func (mgr *listenerManager) createSessionWithBackoff() {
 	if session != nil {
 		mgr.sessionRefreshed(session)
 		log.Debug("new service session created")
-	} else {
-		log.WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
+		return nil
 	}
+
+	log.WithError(err).Errorf("failed to create bind session for service %v", mgr.service.Name)
+	return err
 }
 
 func (mgr *listenerManager) GetCurrentSession() *rest_model.SessionDetail {
@@ -2400,4 +2439,16 @@ const (
 
 type ListenEventObserver interface {
 	Notify(eventType ListenEventType)
+}
+
+func IsServiceAccessDeniedError(err error) bool {
+	return errors.As(err, &ServiceAccessDeniedError{})
+}
+
+type ServiceAccessDeniedError struct {
+	serviceName string
+}
+
+func (s ServiceAccessDeniedError) Error() string {
+	return fmt.Sprintf("identity does not have permission to bind service '%v', or service does not exist", s.serviceName)
 }
