@@ -1,3 +1,59 @@
+# Release notes 1.2.8
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.7 -> v1.2.8](https://github.com/openziti/sdk-golang/compare/v1.2.7...v1.2.8)
+    * [Issue #736](https://github.com/openziti/sdk-golang/issues/736) - Migrate from github.com/mailru/easyjson
+    * [Issue #807](https://github.com/openziti/sdk-golang/issues/807) - Don't send close from rxer to avoid blocking
+    * [Issue #813](https://github.com/openziti/sdk-golang/issues/813) - SDK doesn't stop close listener when it detects that a service being hosted gets deleted
+
+* github.com/go-openapi/runtime: v0.28.0 -> v0.29.0
+* github.com/go-openapi/strfmt: v0.23.0 -> v0.24.0
+* github.com/michaelquigley/pfxlog: v0.6.10 -> v1.0.0
+* github.com/openziti/channel/v4: [v4.2.31 -> v4.2.37](https://github.com/openziti/channel/compare/v4.2.31...v4.2.37)
+* github.com/openziti/edge-api: [v0.26.47 -> v0.26.48](https://github.com/openziti/edge-api/compare/v0.26.47...v0.26.48)
+* github.com/openziti/foundation/v2: [v2.0.73 -> v2.0.77](https://github.com/openziti/foundation/compare/v2.0.73...v2.0.77)
+    * [Issue #455](https://github.com/openziti/foundation/issues/455) - Correctly close goroutine pool when external close is signaled
+    * [Issue #452](https://github.com/openziti/foundation/issues/452) - Goroutine pool with a min worker count of 1 can drop to 0 workers due to race condition
+
+* github.com/openziti/identity: [v1.0.112 -> v1.0.116](https://github.com/openziti/identity/compare/v1.0.112...v1.0.116)
+    * [Issue #68](https://github.com/openziti/identity/issues/68) - Shutdown file watcher when stopping identity watcher
+
+* github.com/openziti/transport/v2: [v2.0.189 -> v2.0.194](https://github.com/openziti/transport/compare/v2.0.189...v2.0.194)
+* github.com/zitadel/oidc/v3: v3.44.0 -> v3.45.0
+* google.golang.org/protobuf: v1.36.9 -> v1.36.10
+* github.com/go-openapi/analysis: v0.23.0 -> v0.24.0
+* github.com/go-openapi/errors: v0.22.0 -> v0.22.3
+* github.com/go-openapi/jsonpointer: v0.21.0 -> v0.22.1
+* github.com/go-openapi/jsonreference: v0.21.0 -> v0.21.2
+* github.com/go-openapi/loads: v0.22.0 -> v0.23.1
+* github.com/go-openapi/spec: v0.21.0 -> v0.22.0
+* github.com/go-openapi/swag: v0.23.0 -> v0.25.1
+* github.com/go-openapi/swag/cmdutils: v0.25.1 (new)
+* github.com/go-openapi/swag/conv: v0.25.1 (new)
+* github.com/go-openapi/swag/fileutils: v0.25.1 (new)
+* github.com/go-openapi/swag/jsonname: v0.25.1 (new)
+* github.com/go-openapi/swag/jsonutils: v0.25.1 (new)
+* github.com/go-openapi/swag/loading: v0.25.1 (new)
+* github.com/go-openapi/swag/mangling: v0.25.1 (new)
+* github.com/go-openapi/swag/netutils: v0.25.1 (new)
+* github.com/go-openapi/swag/stringutils: v0.25.1 (new)
+* github.com/go-openapi/swag/typeutils: v0.25.1 (new)
+* github.com/go-openapi/swag/yamlutils: v0.25.1 (new)
+* github.com/go-openapi/validate: v0.24.0 -> v0.25.0
+* github.com/go-viper/mapstructure/v2: v2.4.0 (new)
+* go.mongodb.org/mongo-driver: v1.17.0 -> v1.17.4
+* go.opentelemetry.io/auto/sdk: v1.1.0 -> v1.2.1
+* go.opentelemetry.io/otel: v1.37.0 -> v1.38.0
+* go.opentelemetry.io/otel/metric: v1.37.0 -> v1.38.0
+* go.opentelemetry.io/otel/trace: v1.37.0 -> v1.38.0
+* go.yaml.in/yaml/v3: v3.0.4 (new)
+* golang.org/x/crypto: v0.41.0 -> v0.42.0
+* golang.org/x/net: v0.43.0 -> v0.44.0
+* golang.org/x/sync: v0.16.0 -> v0.17.0
+* golang.org/x/term: v0.34.0 -> v0.35.0
+* golang.org/x/text: v0.28.0 -> v0.29.0
+
 # Release notes 1.2.5
 
 ## Issues Fixed and Dependency Updates
