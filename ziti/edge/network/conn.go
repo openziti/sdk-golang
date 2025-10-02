@@ -30,12 +30,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
@@ -62,16 +63,16 @@ var _ edge.Conn = &edgeConn{}
 //   - Manages connection lifecycle from establishment to termination
 //
 // Message Flow:
-//   1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.Accept()
-//   2. edgeConn.Accept() processes message based on content type (data, state, ack, etc.)
-//   3. Application reads data via Read() method from internal buffer
-//   4. Application writes data via Write() method, which sends to edge router
+//  1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.Accept()
+//  2. edgeConn.Accept() processes message based on content type (data, state, ack, etc.)
+//  3. Application reads data via Read() method from internal buffer
+//  4. Application writes data via Write() method, which sends to edge router
 //
 // Lifecycle:
-//   1. Created during connection establishment (dial or accept)
-//   2. Added to msgMux for message routing
-//   3. Handles session until Close() or remote disconnect
-//   4. Removed from msgMux and cleaned up
+//  1. Created during connection establishment (dial or accept)
+//  2. Added to msgMux for message routing
+//  3. Handles session until Close() or remote disconnect
+//  4. Removed from msgMux and cleaned up
 //
 // Thread Safety: All methods are safe for concurrent use.
 type edgeConn struct {
@@ -316,7 +317,7 @@ func (conn *edgeConn) Accept(msg *channel.Message) {
 		}
 		// routing is not accepting more data, so we need to close the send buffer
 		if conn.xgCircuit != nil {
-			conn.xgCircuit.xg.CloseSendBuffer()
+			go conn.xgCircuit.xg.CloseSendBuffer()
 		}
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
