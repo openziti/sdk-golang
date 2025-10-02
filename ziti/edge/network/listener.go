@@ -18,11 +18,6 @@ package network
 
 import (
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/sdk-golang/xgress"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/pkg/errors"
 	"math"
 	"net"
 	"reflect"
@@ -30,12 +25,19 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/sdk-golang/xgress"
+	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/pkg/errors"
 )
 
 type baseListener struct {
 	service *rest_model.ServiceDetail
 	acceptC chan edge.Conn
-	errorC  chan error
+	err     concurrenz.AtomicValue[error]
 	closed  atomic.Bool
 }
 
@@ -79,10 +81,8 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 		}
 	}
 
-	select {
-	case err := <-listener.errorC:
+	if err := listener.err.Load(); err != nil {
 		return nil, fmt.Errorf("listener is closed (%w)", err)
-	default:
 	}
 
 	return nil, errors.New("listener is closed")
@@ -188,7 +188,6 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 		baseListener: baseListener{
 			service: service,
 			acceptC: make(chan edge.Conn),
-			errorC:  make(chan error),
 		},
 		listeners:      map[*edgeListener]struct{}{},
 		getSessionF:    getSessionF,
@@ -405,37 +404,37 @@ func (self *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
 }
 
 func (self *multiListener) Close() error {
-	self.closed.Store(true)
+	if self.closed.CompareAndSwap(false, true) {
+		self.listenerLock.Lock()
+		defer self.listenerLock.Unlock()
 
-	self.listenerLock.Lock()
-	defer self.listenerLock.Unlock()
-
-	var resultErrors []error
-	for child := range self.listeners {
-		if err := child.Close(); err != nil {
-			resultErrors = append(resultErrors, err)
+		var resultErrors []error
+		for child := range self.listeners {
+			if err := child.Close(); err != nil {
+				resultErrors = append(resultErrors, err)
+			}
 		}
+
+		self.listeners = nil
+
+		select {
+		case self.acceptC <- nil:
+		default:
+			// If the queue is full, bail out, we're just popping a nil on the
+			// accept queue to let it return from accept more quickly
+		}
+
+		return self.condenseErrors(resultErrors)
 	}
 
-	self.listeners = nil
-
-	select {
-	case self.acceptC <- nil:
-	default:
-		// If the queue is full, bail out, we're just popping a nil on the
-		// accept queue to let it return from accept more quickly
-	}
-
-	return self.condenseErrors(resultErrors)
+	return nil
 }
 
 func (self *multiListener) CloseWithError(err error) {
-	select {
-	case self.errorC <- err:
-	default:
+	self.err.Store(err)
+	if closeErr := self.Close(); closeErr != nil {
+		pfxlog.Logger().WithError(err).Error("error closing edge listener")
 	}
-
-	self.closed.Store(true)
 }
 
 type MultipleErrors []error

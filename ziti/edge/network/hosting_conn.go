@@ -367,7 +367,6 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 		baseListener: baseListener{
 			service: service,
 			acceptC: make(chan edge.Conn, 10),
-			errorC:  make(chan error, 1),
 		},
 		token:       *session.Token,
 		edgeChan:    conn,
