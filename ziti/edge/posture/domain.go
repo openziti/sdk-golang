@@ -1,5 +1,3 @@
-// +build !windows
-
 /*
 	Copyright 2019 NetFoundry Inc.
 
@@ -18,6 +16,20 @@
 
 package posture
 
-func Domain() string {
-	return ""
+// DomainProvider supplies the Windows domain name that the device is joined to,
+// used for domain membership posture checks.
+type DomainProvider interface {
+	GetDomain() string
+}
+
+// DomainFuncAsProvider converts a simple domain-returning function into a DomainProvider.
+func DomainFuncAsProvider(f func() string) DomainProvider {
+	return DomainProviderFunc(f)
+}
+
+// DomainProviderFunc is a function adapter that implements DomainProvider.
+type DomainProviderFunc func() string
+
+func (f DomainProviderFunc) GetDomain() string {
+	return f()
 }

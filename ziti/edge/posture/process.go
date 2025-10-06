@@ -16,8 +16,24 @@
 
 package posture
 
+// ProcessProvider supplies information about specific processes running on the device,
+// including execution state, binary hash, and code signing details for process posture checks.
+type ProcessProvider interface {
+	GetProcessInfo(path string) ProcessInfo
+}
+
+// ProcessInfo contains details about a specific process including whether it's running,
+// its binary hash, and code signing fingerprints.
 type ProcessInfo struct {
 	IsRunning          bool
 	Hash               string
 	SignerFingerprints []string
+	QueryId            string
+}
+
+// ProcessInfoFunc is a function adapter that implements ProcessProvider.
+type ProcessInfoFunc func(path string) ProcessInfo
+
+func (f ProcessInfoFunc) GetProcessInfo(path string) ProcessInfo {
+	return f(path)
 }

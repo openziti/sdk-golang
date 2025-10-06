@@ -1,3 +1,6 @@
+//go:build !windows
+// +build !windows
+
 /*
 	Copyright 2019 NetFoundry Inc.
 
@@ -16,16 +19,12 @@
 
 package posture
 
-func NewProcessProvider() ProcessProvider {
-	return &EmptyProcessProvider{}
+func NewDomainProvider() DomainProvider {
+	return &EmptyDomainProvider{}
 }
 
-type EmptyProcessProvider struct{}
+type EmptyDomainProvider struct{}
 
-func (p *EmptyProcessProvider) GetProcessInfo(providedPath string) ProcessInfo {
-	return ProcessInfo{
-		IsRunning:          false,
-		Hash:               "",
-		SignerFingerprints: nil,
-	}
+func (p *EmptyDomainProvider) GetDomain() string {
+	return ""
 }

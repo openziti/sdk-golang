@@ -17,26 +17,44 @@
 package posture
 
 import (
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/stringz"
+	"github.com/openziti/sdk-golang/ziti/edge"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"net/http"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
+const (
+	// TotpAttemptDelta defines how far in advance of expiration the cache proactively requests
+	// new TOTP tokens, ensuring tokens remain valid during authentication flows.
+	TotpAttemptDelta = 5 * time.Minute
+
+	// TotpPostureCheckNoTimeout indicates that a TOTP posture check does not expire and
+	// does not require periodic token refresh.
+	TotpPostureCheckNoTimeout = int64(-1)
+)
+
+// CacheData holds the current snapshot of device posture information including running processes,
+// network configuration, operating system details, and authentication state.
 type CacheData struct {
 	Processes    cmap.ConcurrentMap[string, ProcessInfo] // map[processPath]ProcessInfo
 	MacAddresses []string
 	Os           OsInfo
 	Domain       string
-	Evaluated    atomic.Bool //marks whether posture responses for this data have been sent out
+	TotpToken    TotpTokenResult
+	OnWake       WakeEvent
+	OnUnlock     UnlockEvent
+	Index        uint64
+	Responses    []rest_model.PostureResponseCreate
 }
 
+// NewCacheData creates an empty posture cache snapshot with initialized collections.
 func NewCacheData() *CacheData {
 	return &CacheData{
 		Processes:    cmap.New[ProcessInfo](),
@@ -46,66 +64,82 @@ func NewCacheData() *CacheData {
 			Version: "",
 		},
 		Domain: "",
+		Index:  0,
 	}
 }
 
+// ActiveServiceProvider supplies information about services currently in use by the client,
+// enabling the cache to determine which posture checks are relevant.
+type ActiveServiceProvider interface {
+	GetActiveDialServices() []*rest_model.ServiceDetail
+	GetActiveBindServices() []*rest_model.ServiceDetail
+}
+
+// ActiveServiceProviderFunc is a function adapter that implements ActiveServiceProvider
+// for both dial and bind service queries.
+type ActiveServiceProviderFunc func() []*rest_model.ServiceDetail
+
+func (f ActiveServiceProviderFunc) GetActiveDialServices() []*rest_model.ServiceDetail {
+	return f()
+}
+
+// Cache manages device posture data collection, tracking changes over time and coordinating
+// submission of posture responses when device state changes or policies require updates.
 type Cache struct {
 	currentData  *CacheData
 	previousData *CacheData
 
-	watchedProcesses cmap.ConcurrentMap[string, struct{}] //map[processPath]struct{}{}
+	watchedProcesses cmap.ConcurrentMap[string, string] //map[processPath]queryId
 
-	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]rest_model.PostureQuery] //map[serviceId]map[queryId]query
-	activeServices  cmap.ConcurrentMap[string, struct{}]                                  // map[serviceId]
+	serviceProvider ActiveServiceProvider
 
-	lastSent   cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
-	ctrlClient Submitter
+	lastSent  cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
+	submitter Submitter
 
 	startOnce           sync.Once
 	doSingleSubmissions bool
 	closeNotify         <-chan struct{}
 
-	DomainFunc func() string
-	lock       sync.Mutex
+	DomainProvider    DomainProvider
+	MacProvider       MacProvider
+	OsProvider        OsProvider
+	ProcessProvider   ProcessProvider
+	TotpTokenProvider TotpTokenProvider
+
+	lock        sync.Mutex
+	totpTimeout int64
+	eventState  EventState
 }
 
-func NewCache(submitter Submitter, closeNotify <-chan struct{}) *Cache {
+// NewCache creates a posture cache that monitors device state and coordinates posture response
+// submission. The cache uses the provided service provider to determine which posture checks
+// are active, the submitter to send responses, and the token provider for TOTP authentication.
+func NewCache(activeServiceProvider ActiveServiceProvider, submitter Submitter, totpTokenProvider TotpTokenProvider, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
 		currentData:      NewCacheData(),
 		previousData:     NewCacheData(),
-		watchedProcesses: cmap.New[struct{}](),
-		activeServices:   cmap.New[struct{}](),
+		watchedProcesses: cmap.New[string](),
+		serviceProvider:  activeServiceProvider,
 		lastSent:         cmap.New[time.Time](),
-		ctrlClient:       submitter,
+		submitter:        submitter,
 		startOnce:        sync.Once{},
 		closeNotify:      closeNotify,
-		DomainFunc:       Domain,
+		totpTimeout:      TotpPostureCheckNoTimeout,
+
+		TotpTokenProvider: totpTokenProvider,
+		DomainProvider:    NewDomainProvider(),
+		MacProvider:       NewMacProvider(),
+		OsProvider:        NewOsProvider(),
+		ProcessProvider:   NewProcessProvider(),
+
+		eventState: NewEventState(),
 	}
-	cache.serviceQueryMap.Store(map[string]map[string]rest_model.PostureQuery{})
+
+	cache.currentData.Index = 1
+
 	cache.start()
 
 	return cache
-}
-
-// Set the current list of processes paths that are being observed
-func (cache *Cache) setWatchedProcesses(processPaths []string) {
-	processMap := map[string]struct{}{}
-
-	for _, processPath := range processPaths {
-		processMap[processPath] = struct{}{}
-		cache.watchedProcesses.Set(processPath, struct{}{})
-	}
-
-	var processesToRemove []string
-	cache.watchedProcesses.IterCb(func(processPath string, _ struct{}) {
-		if _, ok := processMap[processPath]; !ok {
-			processesToRemove = append(processesToRemove, processPath)
-		}
-	})
-
-	for _, processPath := range processesToRemove {
-		cache.watchedProcesses.Remove(processPath)
-	}
 }
 
 // Evaluate refreshes all posture data and determines if new posture responses should be sent out
@@ -113,42 +147,122 @@ func (cache *Cache) Evaluate() {
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 
-	cache.Refresh()
-	if responses := cache.GetChangedResponses(); len(responses) > 0 {
+	activeDialServices := cache.serviceProvider.GetActiveDialServices()
+	activeBindServices := cache.serviceProvider.GetActiveBindServices()
+
+	activeQueryTypes, activeProcesses := getActiveQueryInfo(activeDialServices, activeBindServices)
+
+	candidateData := NewCacheData()
+	candidateData.Index = cache.currentData.Index + 1
+
+	candidateData.Os = cache.OsProvider.GetOsInfo()
+	candidateData.Domain = cache.DomainProvider.GetDomain()
+	candidateData.MacAddresses = sanitizeMacAddresses(cache.MacProvider.GetMacAddresses())
+
+	for processPath, queryId := range activeProcesses {
+		processInfo := cache.ProcessProvider.GetProcessInfo(processPath)
+		processInfo.QueryId = queryId
+		candidateData.Processes.Set(processPath, processInfo)
+	}
+
+	candidateData.TotpToken = cache.previousData.TotpToken
+
+	if cache.TotpTokenProvider != nil && cache.totpTimeoutWindowEntered() {
+		totpTokenResultCh := cache.TotpTokenProvider.Request()
+
+		if totpTokenResultCh != nil {
+			select {
+			case totpTokenResult := <-totpTokenResultCh:
+				if totpTokenResult.Err != nil {
+					pfxlog.Logger().Errorf("error requesting totp token: %v", totpTokenResult.Err)
+				} else {
+					candidateData.TotpToken = totpTokenResult
+				}
+			case <-cache.closeNotify:
+				return
+			}
+		}
+	}
+
+	responses := cache.GetChangedResponses(cache.currentData, candidateData, activeQueryTypes)
+	if len(responses) > 0 {
+		cache.previousData = cache.currentData
+		cache.currentData = candidateData
+		cache.currentData.Responses = responses
+
 		if err := cache.SendResponses(responses); err != nil {
 			pfxlog.Logger().Error(err)
 		}
 	}
 }
 
-// GetChangedResponses determines if posture responses should be sent out.
-func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
-	if !cache.currentData.Evaluated.CompareAndSwap(false, true) {
-		return nil
-	}
+func getActiveQueryInfo(dialServices []*rest_model.ServiceDetail, bindServices []*rest_model.ServiceDetail) (map[string]string, map[string]string) {
+	activeQueryTypes := map[string]string{} // map[queryType]->queryId'
+	activeProcesses := map[string]string{}  // map[processPath]->queryId'
 
-	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
-	cache.activeServices.IterCb(func(serviceId string, _ struct{}) {
-		queryMap := cache.serviceQueryMap.Load()[serviceId]
-
-		for queryId, query := range queryMap {
-			if *query.QueryType != rest_model.PostureCheckTypePROCESS {
-				activeQueryTypes[string(*query.QueryType)] = queryId
-			} else {
-				activeQueryTypes[query.Process.Path] = queryId
+	for _, service := range dialServices {
+		for _, postureQueryState := range service.PostureQueries {
+			if postureQueryState.PolicyType == rest_model.DialBindDial {
+				addQueryInfoToMaps(activeQueryTypes, activeProcesses, postureQueryState)
 			}
 		}
-	})
+	}
 
-	if len(activeQueryTypes) == 0 {
+	for _, service := range bindServices {
+		for _, postureQueryState := range service.PostureQueries {
+			if postureQueryState.PolicyType == rest_model.DialBindBind {
+				addQueryInfoToMaps(activeQueryTypes, activeProcesses, postureQueryState)
+			}
+		}
+	}
+
+	return activeQueryTypes, activeProcesses
+}
+
+func addQueryInfoToMaps(activeQueryTypes map[string]string, activeProcesses map[string]string, postureQueryState *rest_model.PostureQueries) {
+	for _, query := range postureQueryState.PostureQueries {
+		activeQueryTypes[string(*query.QueryType)] = *query.ID
+
+		if *query.QueryType == rest_model.PostureCheckTypePROCESS {
+			activeQueryTypes[string(rest_model.PostureCheckTypeOS)] = *query.ID
+			activeProcesses[query.Process.Path] = *query.ID
+		} else if *query.QueryType == rest_model.PostureCheckTypePROCESSMULTI {
+			activeQueryTypes[string(rest_model.PostureCheckTypeOS)] = *query.ID
+
+			for _, process := range query.Processes {
+				activeProcesses[process.Path] = *query.ID
+			}
+		}
+	}
+}
+
+// GetChangedResponses determines if posture responses should be sent out.
+func (cache *Cache) GetChangedResponses(currentData, candidateData *CacheData, activeQueryTypes map[string]string) []rest_model.PostureResponseCreate {
+	if len(activeQueryTypes) == 0 && candidateData.Processes.Count() == 0 {
 		return nil
 	}
 
 	var responses []rest_model.PostureResponseCreate
-	if cache.currentData.Domain != cache.previousData.Domain {
+
+	wakeChanged := !currentData.OnWake.At.Equal(candidateData.OnWake.At)
+	unlockChanged := !currentData.OnUnlock.At.Equal(candidateData.OnUnlock.At)
+
+	if wakeChanged || unlockChanged {
+		// TOTP MFA checks are the only checks that care about wake/unlock
+		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeMFA)]; ok {
+			endpointState := &rest_model.PostureResponseEndpointStateCreate{
+				Unlocked: unlockChanged,
+				Woken:    wakeChanged,
+			}
+			endpointState.SetID(&queryId)
+			responses = append(responses, endpointState)
+		}
+	}
+
+	if currentData.Domain != candidateData.Domain {
 		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeDOMAIN)]; ok {
 			domainResponse := &rest_model.PostureResponseDomainCreate{
-				Domain: &cache.currentData.Domain,
+				Domain: &candidateData.Domain,
 			}
 			domainResponse.SetID(&queryId)
 			domainResponse.SetTypeID(rest_model.PostureCheckTypeDOMAIN)
@@ -157,10 +271,22 @@ func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
 		}
 	}
 
-	if !stringz.EqualSlices(cache.currentData.MacAddresses, cache.previousData.MacAddresses) {
+	if currentData.TotpToken.Token != candidateData.TotpToken.Token {
+		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeMFA)]; ok {
+			totpMfaResponse := &edge.PostureResponseTotp{
+				TotpToken: candidateData.TotpToken.Token,
+			}
+			totpMfaResponse.SetID(&queryId)
+			totpMfaResponse.SetTypeID(rest_model.PostureCheckTypeMFA)
+
+			responses = append(responses, totpMfaResponse)
+		}
+	}
+
+	if !stringz.EqualSlices(currentData.MacAddresses, candidateData.MacAddresses) {
 		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeMAC)]; ok {
 			macResponse := &rest_model.PostureResponseMacAddressCreate{
-				MacAddresses: cache.currentData.MacAddresses,
+				MacAddresses: candidateData.MacAddresses,
 			}
 			macResponse.SetID(&queryId)
 			macResponse.SetTypeID(rest_model.PostureCheckTypeMAC)
@@ -169,11 +295,11 @@ func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
 		}
 	}
 
-	if cache.previousData.Os.Version != cache.currentData.Os.Version || cache.previousData.Os.Type != cache.currentData.Os.Type {
+	if candidateData.Os.Version != currentData.Os.Version || candidateData.Os.Type != currentData.Os.Type {
 		if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeOS)]; ok {
 			osResponse := &rest_model.PostureResponseOperatingSystemCreate{
-				Type:    &cache.currentData.Os.Type,
-				Version: &cache.currentData.Os.Version,
+				Type:    &candidateData.Os.Type,
+				Version: &candidateData.Os.Version,
 				Build:   "",
 			}
 			osResponse.SetID(&queryId)
@@ -183,32 +309,26 @@ func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
 		}
 	}
 
-	cache.currentData.Processes.IterCb(func(processPath string, curState ProcessInfo) {
-		queryId, isActive := activeQueryTypes[processPath]
-
-		if !isActive {
-			return
-		}
-
-		prevState, ok := cache.previousData.Processes.Get(processPath)
+	candidateData.Processes.IterCb(func(processPath string, candidateProcessInfo ProcessInfo) {
+		curProcessInfo, ok := currentData.Processes.Get(processPath)
 
 		sendResponse := false
 		if !ok {
 			//no prev state send
 			sendResponse = true
 		} else {
-			sendResponse = prevState.IsRunning != curState.IsRunning || prevState.Hash != curState.Hash || !stringz.EqualSlices(prevState.SignerFingerprints, curState.SignerFingerprints)
+			sendResponse = curProcessInfo.IsRunning != candidateProcessInfo.IsRunning || curProcessInfo.Hash != candidateProcessInfo.Hash || !stringz.EqualSlices(curProcessInfo.SignerFingerprints, candidateProcessInfo.SignerFingerprints)
 		}
 
 		if sendResponse {
 			processResponse := &rest_model.PostureResponseProcessCreate{
 				Path:               processPath,
-				Hash:               curState.Hash,
-				SignerFingerprints: curState.SignerFingerprints,
-				IsRunning:          curState.IsRunning,
+				Hash:               candidateProcessInfo.Hash,
+				SignerFingerprints: candidateProcessInfo.SignerFingerprints,
+				IsRunning:          candidateProcessInfo.IsRunning,
 			}
 
-			processResponse.SetID(&queryId)
+			processResponse.SetID(&candidateProcessInfo.QueryId)
 			processResponse.SetTypeID(rest_model.PostureCheckTypePROCESS)
 			responses = append(responses, processResponse)
 		}
@@ -217,50 +337,35 @@ func (cache *Cache) GetChangedResponses() []rest_model.PostureResponseCreate {
 	return responses
 }
 
-// Refresh refreshes posture data
-func (cache *Cache) Refresh() {
-	cache.previousData = cache.currentData
-
-	cache.currentData = NewCacheData()
-	cache.currentData.Os = Os()
-
-	cache.currentData.Domain = cache.DomainFunc()
-	cache.currentData.MacAddresses = MacAddresses()
-
-	keys := cache.watchedProcesses.Keys()
-	for _, processPath := range keys {
-		cache.currentData.Processes.Set(processPath, Process(processPath))
+func (cache *Cache) totpTimeoutWindowEntered() bool {
+	if cache.totpTimeout == TotpPostureCheckNoTimeout {
+		return false
 	}
-}
 
-// SetServiceQueryMap receives of a list of serviceId -> queryId -> queries. Used to determine which queries are necessary
-// to provide data for on a per-service basis.
-func (cache *Cache) SetServiceQueryMap(serviceQueryMap map[string]map[string]rest_model.PostureQuery) {
-	cache.serviceQueryMap.Store(serviceQueryMap)
-
-	var processPaths []string
-	for _, queryMap := range serviceQueryMap {
-		for _, query := range queryMap {
-			if *query.QueryType == rest_model.PostureCheckTypePROCESS && query.Process != nil {
-				processPaths = append(processPaths, query.Process.Path)
-			}
-		}
+	if cache.previousData.TotpToken.IssuedAt.IsZero() {
+		return true
 	}
-	cache.setWatchedProcesses(processPaths)
-}
 
-func (cache *Cache) AddActiveService(serviceId string) {
-	cache.activeServices.Set(serviceId, struct{}{})
-	cache.Evaluate()
-}
+	if cache.previousData.TotpToken.Token == "" {
+		return true
+	}
 
-func (cache *Cache) RemoveActiveService(serviceId string) {
-	cache.activeServices.Remove(serviceId)
-	cache.Evaluate()
+	effectiveTimeout := time.Duration(cache.totpTimeout)*time.Second - TotpAttemptDelta
+	return cache.previousData.TotpToken.IssuedAt.Add(effectiveTimeout).Before(time.Now())
 }
 
 func (cache *Cache) start() {
 	cache.startOnce.Do(func() {
+		stopWake, err := cache.eventState.ListenForWake(cache.onWake)
+		if err != nil {
+			pfxlog.Logger().WithError(err).Error("error starting wake listener for posture")
+		}
+
+		stopUnlock, err := cache.eventState.ListenForUnlock(cache.OnUnlock)
+		if err != nil {
+			pfxlog.Logger().WithError(err).Error("error starting unlock listener for posture")
+		}
+
 		ticker := time.NewTicker(10 * time.Second)
 		go func() {
 			defer func() {
@@ -272,8 +377,16 @@ func (cache *Cache) start() {
 			for {
 				select {
 				case <-ticker.C:
+
 					cache.Evaluate()
 				case <-cache.closeNotify:
+					if stopWake != nil {
+						stopWake()
+					}
+
+					if stopUnlock != nil {
+						stopUnlock()
+					}
 					return
 				}
 			}
@@ -285,7 +398,7 @@ func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) 
 	if cache.doSingleSubmissions {
 		var allErrors []error
 		for _, response := range responses {
-			err := cache.ctrlClient.SendPostureResponse(response)
+			err := cache.submitter.SendPostureResponse(response)
 
 			if err != nil {
 				allErrors = append(allErrors, err)
@@ -295,17 +408,98 @@ func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) 
 		return allErrors
 
 	} else {
-		err := cache.ctrlClient.SendPostureResponseBulk(responses)
+		err := cache.submitter.SendPostureResponseBulk(responses)
 
-		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusNotFound {
-			cache.doSingleSubmissions = true
-			return cache.SendResponses(responses)
+		if err != nil {
+			if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusNotFound {
+				cache.doSingleSubmissions = true
+				return cache.SendResponses(responses)
+			}
+			return []error{err}
 		}
-		return []error{err}
+		return nil
 	}
 }
 
-type Submitter interface {
-	SendPostureResponse(response rest_model.PostureResponseCreate) error
-	SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error
+func (cache *Cache) InitializePostureOnEdgeRouter(conn edge.RouterConn) error {
+	allResponses := cache.GetAllResponses()
+	return cache.submitter.SendPostureResponseBulk(allResponses)
+}
+
+func (cache *Cache) GetAllResponses() []rest_model.PostureResponseCreate {
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
+
+	var allResponses []rest_model.PostureResponseCreate
+
+	for _, response := range cache.currentData.Responses {
+		allResponses = append(allResponses, response)
+	}
+
+	return allResponses
+}
+
+func (cache *Cache) setTotpTimeout(timeout int64) {
+	cache.totpTimeout = timeout
+}
+
+func (cache *Cache) onWake(event WakeEvent) {
+	cache.currentData.OnWake = event
+}
+
+func (cache *Cache) OnUnlock(event UnlockEvent) {
+	cache.currentData.OnUnlock = event
+}
+
+func (cache *Cache) SimulateWake() {
+	cache.onWake(WakeEvent{At: time.Now().UTC()})
+}
+
+func (cache *Cache) SimulateUnlock() {
+	cache.OnUnlock(UnlockEvent{At: time.Now().UTC()})
+}
+
+func (cache *Cache) SetTotpToken(token *rest_model.TotpToken) {
+	cache.currentData.TotpToken = TotpTokenResult{
+		Token:    *token.Token,
+		IssuedAt: time.Time(*token.IssuedAt),
+	}
+}
+
+func (cache *Cache) SetTotpProviderFunc(f func() <-chan TotpTokenResult) {
+	p := TotpTokenProviderFunc(f)
+	cache.TotpTokenProvider = &p
+}
+
+func (cache *Cache) SetDomainProviderFunc(f func() string) {
+	p := DomainProviderFunc(f)
+	cache.DomainProvider = &p
+}
+
+func (cache *Cache) SetMacProviderFunc(f func() []string) {
+	p := MacProviderFunc(f)
+	cache.MacProvider = &p
+}
+
+func (cache *Cache) SetOsProviderFunc(f func() OsInfo) {
+	p := OsProviderFunc(f)
+	cache.OsProvider = &p
+}
+
+func (cache *Cache) SetProcessProviderFunc(f func(string) ProcessInfo) {
+	p := ProcessInfoFunc(f)
+	cache.ProcessProvider = &p
+}
+
+func sanitizeMacAddresses(addresses []string) []string {
+	result := make([]string, 0, len(addresses))
+
+	for _, address := range addresses {
+		address = strings.TrimSpace(address)
+		address = strings.ToLower(address)
+		address = strings.Replace(address, ":", "", -1)
+		result = append(result, address)
+	}
+
+	return result
 }

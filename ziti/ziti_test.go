@@ -2,13 +2,14 @@ package ziti
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func ToPtr[T any](s T) *T {
@@ -30,13 +31,14 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		options: &Options{
 			OnServiceUpdate: servUpdate,
 		},
-		services:   cmap.New[*rest_model.ServiceDetail](),
-		sessions:   cmap.New[*rest_model.SessionDetail](),
-		intercepts: cmap.New[*edge.InterceptV1Config](),
-		CtrlClt: &CtrlClient{
-			PostureCache: posture.NewCache(nil, closeNotify),
-		},
+		services:     cmap.New[*rest_model.ServiceDetail](),
+		sessions:     cmap.New[*rest_model.SessionDetail](),
+		intercepts:   cmap.New[*edge.InterceptV1Config](),
 		EventEmmiter: events.New(),
+	}
+
+	ctx.CtrlClt = &CtrlClient{
+		PostureCache: posture.NewCache(ctx, nil, nil, closeNotify),
 	}
 
 	var services []*rest_model.ServiceDetail
@@ -177,14 +179,15 @@ func Test_AddressMatch(t *testing.T) {
 	}
 
 	ctx := &ContextImpl{
-		options:    &Options{},
-		services:   cmap.New[*rest_model.ServiceDetail](),
-		sessions:   cmap.New[*rest_model.SessionDetail](),
-		intercepts: cmap.New[*edge.InterceptV1Config](),
-		CtrlClt: &CtrlClient{
-			PostureCache: posture.NewCache(nil, nil),
-		},
+		options:      &Options{},
+		services:     cmap.New[*rest_model.ServiceDetail](),
+		sessions:     cmap.New[*rest_model.SessionDetail](),
+		intercepts:   cmap.New[*edge.InterceptV1Config](),
 		EventEmmiter: events.New(),
+	}
+
+	ctx.CtrlClt = &CtrlClient{
+		PostureCache: posture.NewCache(ctx, nil, nil, nil),
 	}
 	ctx.processServiceUpdates(services)
 

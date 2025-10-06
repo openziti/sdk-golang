@@ -128,6 +128,17 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 	return edgeCh
 }
 
+func (conn *routerConn) SendPosture(responses []rest_model.PostureResponseCreate) error {
+	message := edge.NewPostureResponsesMsg(responses)
+	sendErr := message.Send(conn.ch.GetControlSender())
+
+	if sendErr != nil {
+		return sendErr
+	}
+
+	return nil
+}
+
 func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 	msg := edge.NewUpdateTokenMsg(token)
 	resp, err := msg.WithTimeout(timeout).SendForReply(conn.ch.GetControlSender())

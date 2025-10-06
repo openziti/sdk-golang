@@ -45,7 +45,8 @@ enum ContentType {
   InspectResponse = 60805;
 
   PostureResponseType = 10800;
-  PostureResponseSuccessType = 10801;
+  ServicePostureStateRequestType = 108001;
+  ServicePostureStateResponseType = 108002;
 }
 
 enum HeaderId {
@@ -83,6 +84,7 @@ enum HeaderId {
   XgressCtrlId = 1029;
   XgressAddress = 1030;
   InspectRequestedValues = 1031;
+  SupportsPostureChecks = 1032;
 }
 
 enum Error {
@@ -122,6 +124,55 @@ enum Flag {
   MULTIPART_MSG = 16;
 }
 
+message ServicePostureStateRequest {
+  repeated string serviceIds = 1;
+}
+
+message ServicePostureStateResponse {
+  map<string,ServicePostureState> states = 1;
+}
+
+message ServicePostureState {
+  bool isPassing = 1;
+  repeated string passingPolicyIds = 2;
+  repeated string failingPolicyIds = 3;
+  map<string,Policy> policies = 4;
+}
+
+message Policy {
+  string id = 1;
+  bool isPassing = 2;
+  repeated string passingPostureQueryIds = 3;
+  repeated string failingPostureQueryIds = 4;
+  map<string,PostureQuery> postureQueries = 5;
+}
+
+message PostureQuery {
+  string id = 1;
+  string type = 2;
+  bool isPassing = 3;
+
+  google.protobuf.Timestamp timeoutAt = 4;
+  int32 timeoutSeconds = 5;
+  int32 timeoutRemainingSeconds = 6;
+
+  int32 promptGracePeriodSeconds = 7;
+  bool promptOnUnlock = 8;
+  bool promptOnWake = 9;
+
+  Processes processes = 10;
+
+  message Processes {
+    string semantic = 1;
+    repeated Process processes = 2;
+  }
+
+  message Process {
+    string osType = 1;
+    string path = 2;
+  }
+}
+
 message PostureResponses {
   repeated PostureResponse responses = 1;
 }
@@ -135,7 +186,13 @@ message PostureResponse {
     Woken woken = 5;
     Unlocked unlocked = 6;
     SdkInfo sdkInfo = 7;
+    TotpToken totpToken = 8;
   };
+
+  message TotpToken {
+    string token = 1;
+    string code = 2;
+  }
 
 
   message Macs {

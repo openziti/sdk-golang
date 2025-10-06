@@ -24,12 +24,33 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 )
 
+// OsProvider supplies operating system type and version information for OS posture checks.
+type OsProvider interface {
+	GetOsInfo() OsInfo
+}
+
+// OsInfo contains the operating system type and semantic version.
 type OsInfo struct {
 	Type    string
 	Version string
 }
 
-func Os() OsInfo {
+// OsProviderFunc is a function adapter that implements OsProvider.
+type OsProviderFunc func() OsInfo
+
+func (f OsProviderFunc) GetOsInfo() OsInfo {
+	return f()
+}
+
+// NewOsProvider creates the default OS information provider that queries system details.
+func NewOsProvider() OsProvider {
+	return &DefaultOsProvider{}
+}
+
+// DefaultOsProvider queries platform information to determine OS type and version.
+type DefaultOsProvider struct{}
+
+func (provider DefaultOsProvider) GetOsInfo() OsInfo {
 	osType := runtime.GOOS
 	osVersion := "unknown"
 

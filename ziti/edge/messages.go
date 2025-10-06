@@ -17,14 +17,22 @@
 package edge
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
+
+	"github.com/go-openapi/strfmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
+	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/stringz"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -57,7 +65,9 @@ const (
 	ContentTypeUpdateTokenSuccess = int32(edge_client_pb.ContentType_UpdateTokenSuccessType)
 	ContentTypeUpdateTokenFailure = int32(edge_client_pb.ContentType_UpdateTokenFailureType)
 
-	ContentTypePostureResponse = int32(edge_client_pb.ContentType_PostureResponseType)
+	ContentTypePostureResponse                 = int32(edge_client_pb.ContentType_PostureResponseType)
+	ContentTypeServicePostureStateRequestType  = int32(edge_client_pb.ContentType_ServicePostureStateRequestType)
+	ContentTypeServicePostureStateResponseType = int32(edge_client_pb.ContentType_ServicePostureStateResponseType)
 
 	ContentTypeXgPayload         = int32(edge_client_pb.ContentType_XgPayloadType)
 	ContentTypeXgAcknowledgement = int32(edge_client_pb.ContentType_XgAcknowledgementType)
@@ -101,6 +111,7 @@ const (
 	XgressCtrlIdHeader             = int32(edge_client_pb.HeaderId_XgressCtrlId)
 	XgressAddressHeader            = int32(edge_client_pb.HeaderId_XgressAddress)
 	InspectRequestValuesHeader     = int32(edge_client_pb.HeaderId_InspectRequestedValues)
+	SupportsPostureChecksHeader    = int32(edge_client_pb.HeaderId_SupportsPostureChecks)
 )
 
 const (
@@ -349,6 +360,137 @@ func NewDialSuccessMsg(connId uint32, newConnId uint32) *channel.Message {
 func NewDialFailedMsg(connId uint32, message string) *channel.Message {
 	return newMsg(ContentTypeDialFailed, connId, []byte(message))
 }
+
+func NewPostureResponsesMsg(responses []rest_model.PostureResponseCreate) *channel.Message {
+	protoResponses := &edge_client_pb.PostureResponses{
+		Responses: make([]*edge_client_pb.PostureResponse, 0, len(responses)),
+	}
+
+	for _, response := range responses {
+		curResponses := postureResponseRestModelToProtos(response)
+		protoResponses.Responses = append(protoResponses.Responses, curResponses...)
+	}
+
+	b, _ := proto.Marshal(protoResponses)
+	message := channel.NewMessage(ContentTypePostureResponse, b)
+
+	return message
+}
+
+func postureResponseRestModelToProtos(response rest_model.PostureResponseCreate) []*edge_client_pb.PostureResponse {
+	var protoResponses []*edge_client_pb.PostureResponse
+
+	switch typedResp := response.(type) {
+	case *rest_model.PostureResponseDomainCreate:
+		protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+			Type: &edge_client_pb.PostureResponse_Domain_{
+				Domain: &edge_client_pb.PostureResponse_Domain{
+					Name: stringz.OrEmpty(typedResp.Domain),
+				},
+			},
+		})
+	case *rest_model.PostureResponseMacAddressCreate:
+		protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+			Type: &edge_client_pb.PostureResponse_Macs_{
+				Macs: &edge_client_pb.PostureResponse_Macs{
+					Addresses: typedResp.MacAddresses,
+				},
+			},
+		})
+	case *rest_model.PostureResponseProcessCreate:
+		protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+			Type: &edge_client_pb.PostureResponse_ProcessList_{
+				ProcessList: &edge_client_pb.PostureResponse_ProcessList{
+					Processes: []*edge_client_pb.PostureResponse_Process{
+						{
+							Path:               typedResp.Path,
+							IsRunning:          typedResp.IsRunning,
+							Hash:               typedResp.Hash,
+							SignerFingerprints: typedResp.SignerFingerprints,
+						},
+					},
+				},
+			},
+		})
+	case *rest_model.PostureResponseOperatingSystemCreate:
+		protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+			Type: &edge_client_pb.PostureResponse_Os{
+				Os: &edge_client_pb.PostureResponse_OperatingSystem{
+					Type:    stringz.OrEmpty(typedResp.Type),
+					Version: stringz.OrEmpty(typedResp.Version),
+					Build:   typedResp.Build,
+				},
+			},
+		})
+	case *rest_model.PostureResponseEndpointStateCreate:
+		if typedResp.Woken {
+			protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+				Type: &edge_client_pb.PostureResponse_Woken_{
+					Woken: &edge_client_pb.PostureResponse_Woken{
+						Time: timestamppb.Now(),
+					},
+				},
+			})
+		}
+		if typedResp.Unlocked {
+			protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+				Type: &edge_client_pb.PostureResponse_Unlocked_{
+					Unlocked: &edge_client_pb.PostureResponse_Unlocked{
+						Time: timestamppb.Now(),
+					},
+				},
+			})
+		}
+	case *PostureResponseTotp:
+		protoResponses = append(protoResponses, &edge_client_pb.PostureResponse{
+			Type: &edge_client_pb.PostureResponse_TotpToken_{
+				TotpToken: &edge_client_pb.PostureResponse_TotpToken{
+					Token: typedResp.TotpToken,
+				},
+			},
+		})
+	default:
+		pfxlog.Logger().Errorf("unknown posture response type: %s", response.TypeID())
+	}
+
+	return protoResponses
+}
+
+var _ rest_model.PostureResponseCreate = (*PostureResponseTotp)(nil)
+
+// PostureCheckTypeTOTP mimics rest_api.PostureCheckType*
+const PostureCheckTypeTOTP rest_model.PostureCheckType = "totp"
+
+// PostureResponseTotp is a posture response that contains a TOTP token. Used to track the last time
+// a client has performed TOTP code submission. This exists outside of the REST APIs as it is only
+// needed in HA systems and is not used for legacy API Sessions. It does conform to the REST APIs generated
+// interfaces in order for it to be included in interface typed slices.
+type PostureResponseTotp struct {
+	TotpToken string //should be a signed, API Session scoped JWT. See common.TotpClaims
+	Id        *string
+}
+
+func (p *PostureResponseTotp) Validate(_ strfmt.Registry) error {
+	return nil
+}
+
+func (p *PostureResponseTotp) ContextValidate(_ context.Context, _ strfmt.Registry) error {
+	return nil
+}
+
+func (p *PostureResponseTotp) ID() *string {
+	return p.Id
+}
+
+func (p *PostureResponseTotp) SetID(id *string) {
+	p.Id = id
+}
+
+func (p *PostureResponseTotp) TypeID() rest_model.PostureCheckType {
+	return PostureCheckTypeTOTP
+}
+
+func (p *PostureResponseTotp) SetTypeID(_ rest_model.PostureCheckType) {}
 
 // NewUpdateTokenMsg creates a message sent to edge routers to update the token that
 // allows the client to stay connection. If the token is not update before the current
