@@ -83,6 +83,7 @@ enum HeaderId {
   XgressCtrlId = 1029;
   XgressAddress = 1030;
   InspectRequestedValues = 1031;
+  SupportsPostureChecks = 1032;
 }
 
 enum Error {
@@ -135,7 +136,12 @@ message PostureResponse {
     Woken woken = 5;
     Unlocked unlocked = 6;
     SdkInfo sdkInfo = 7;
+    TotpToken totpToken = 8;
   };
+
+  message TotpToken {
+    string token = 1;
+  }
 
 
   message Macs {

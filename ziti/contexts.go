@@ -164,7 +164,9 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(true)
-	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
+
+	multiSubmitter := posture.NewMultiSubmitter(newContext.CtrlClt, newContext.CtrlClt, newContext)
+	newContext.CtrlClt.PostureCache = posture.NewCache(multiSubmitter, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {
 		newContext.Emit(EventControllerUrlsUpdated, urls)

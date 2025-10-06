@@ -17,16 +17,18 @@
 package posture
 
 import (
+	"net/http"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/stringz"
+	"github.com/openziti/sdk-golang/ziti/edge"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"net/http"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type CacheData struct {
@@ -58,8 +60,8 @@ type Cache struct {
 	serviceQueryMap concurrenz.AtomicValue[map[string]map[string]rest_model.PostureQuery] //map[serviceId]map[queryId]query
 	activeServices  cmap.ConcurrentMap[string, struct{}]                                  // map[serviceId]
 
-	lastSent   cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
-	ctrlClient Submitter
+	lastSent  cmap.ConcurrentMap[string, time.Time] //map[type|processQueryId]time.Time
+	submitter Submitter
 
 	startOnce           sync.Once
 	doSingleSubmissions bool
@@ -76,7 +78,7 @@ func NewCache(submitter Submitter, closeNotify <-chan struct{}) *Cache {
 		watchedProcesses: cmap.New[struct{}](),
 		activeServices:   cmap.New[struct{}](),
 		lastSent:         cmap.New[time.Time](),
-		ctrlClient:       submitter,
+		submitter:        submitter,
 		startOnce:        sync.Once{},
 		closeNotify:      closeNotify,
 		DomainFunc:       Domain,
@@ -285,7 +287,7 @@ func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) 
 	if cache.doSingleSubmissions {
 		var allErrors []error
 		for _, response := range responses {
-			err := cache.ctrlClient.SendPostureResponse(response)
+			err := cache.submitter.SendPostureResponse(response)
 
 			if err != nil {
 				allErrors = append(allErrors, err)
@@ -295,7 +297,7 @@ func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) 
 		return allErrors
 
 	} else {
-		err := cache.ctrlClient.SendPostureResponseBulk(responses)
+		err := cache.submitter.SendPostureResponseBulk(responses)
 
 		if apiErr, ok := err.(*runtime.APIError); ok && apiErr.Code == http.StatusNotFound {
 			cache.doSingleSubmissions = true
@@ -305,7 +307,81 @@ func (cache *Cache) SendResponses(responses []rest_model.PostureResponseCreate) 
 	}
 }
 
-type Submitter interface {
-	SendPostureResponse(response rest_model.PostureResponseCreate) error
-	SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error
+func (cache *Cache) InitializePostureOnEdgeRouter(conn edge.RouterConn) error {
+	allResponses := cache.GetAllResponses()
+	return cache.submitter.SendPostureResponseBulk(allResponses)
+}
+
+func (cache *Cache) GetAllResponses() []rest_model.PostureResponseCreate {
+	activeQueryTypes := map[string]string{} // map[queryType|processPath]->queryId
+	cache.activeServices.IterCb(func(serviceId string, _ struct{}) {
+		queryMap := cache.serviceQueryMap.Load()[serviceId]
+
+		for queryId, query := range queryMap {
+			if *query.QueryType != rest_model.PostureCheckTypePROCESS {
+				activeQueryTypes[string(*query.QueryType)] = queryId
+			} else {
+				activeQueryTypes[query.Process.Path] = queryId
+			}
+		}
+	})
+
+	if len(activeQueryTypes) == 0 {
+		return nil
+	}
+
+	var responses []rest_model.PostureResponseCreate
+
+	if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeDOMAIN)]; ok {
+		domainResponse := &rest_model.PostureResponseDomainCreate{
+			Domain: &cache.currentData.Domain,
+		}
+		domainResponse.SetID(&queryId)
+		domainResponse.SetTypeID(rest_model.PostureCheckTypeDOMAIN)
+
+		responses = append(responses, domainResponse)
+	}
+
+	if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeMAC)]; ok {
+		macResponse := &rest_model.PostureResponseMacAddressCreate{
+			MacAddresses: cache.currentData.MacAddresses,
+		}
+		macResponse.SetID(&queryId)
+		macResponse.SetTypeID(rest_model.PostureCheckTypeMAC)
+
+		responses = append(responses, macResponse)
+	}
+
+	if queryId, ok := activeQueryTypes[string(rest_model.PostureCheckTypeOS)]; ok {
+		osResponse := &rest_model.PostureResponseOperatingSystemCreate{
+			Type:    &cache.currentData.Os.Type,
+			Version: &cache.currentData.Os.Version,
+			Build:   "",
+		}
+		osResponse.SetID(&queryId)
+		osResponse.SetTypeID(rest_model.PostureCheckTypeOS)
+
+		responses = append(responses, osResponse)
+	}
+
+	cache.currentData.Processes.IterCb(func(processPath string, curState ProcessInfo) {
+		queryId, isActive := activeQueryTypes[processPath]
+
+		if !isActive {
+			return
+		}
+
+		processResponse := &rest_model.PostureResponseProcessCreate{
+			Path:               processPath,
+			Hash:               curState.Hash,
+			SignerFingerprints: curState.SignerFingerprints,
+			IsRunning:          curState.IsRunning,
+		}
+
+		processResponse.SetID(&queryId)
+		processResponse.SetTypeID(rest_model.PostureCheckTypePROCESS)
+		responses = append(responses, processResponse)
+	})
+
+	return responses
 }
