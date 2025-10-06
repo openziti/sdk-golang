@@ -49,6 +49,8 @@ type RouterClient interface {
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
 	UpdateToken(token []byte, timeout time.Duration) error
+
+	SendPosture(creates []rest_model.PostureResponseCreate) error
 }
 
 type RouterConn interface {

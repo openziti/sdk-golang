@@ -6,6 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-resty/resty/v2"
@@ -28,10 +33,6 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/client/tokenexchange"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
-	"net/http"
-	"net/url"
-	"sync"
-	"time"
 )
 
 const (
@@ -81,7 +82,16 @@ type ApiSession interface {
 	RequiresRouterTokenUpdate() bool
 
 	GetRequestHeaders() http.Header
+
+	GetType() ApiSessionType
 }
+
+type ApiSessionType string
+
+const (
+	ApiSessionTypeLegacy ApiSessionType = "legacy"
+	ApiSessionTypeOidc   ApiSessionType = "oidc"
+)
 
 var _ ApiSession = (*ApiSessionLegacy)(nil)
 var _ ApiSession = (*ApiSessionOidc)(nil)
@@ -91,6 +101,10 @@ var _ ApiSession = (*ApiSessionOidc)(nil)
 type ApiSessionLegacy struct {
 	Detail         *rest_model.CurrentAPISessionDetail
 	RequestHeaders http.Header
+}
+
+func (a *ApiSessionLegacy) GetType() ApiSessionType {
+	return ApiSessionTypeLegacy
 }
 
 func (a *ApiSessionLegacy) GetRequestHeaders() http.Header {
@@ -168,6 +182,10 @@ func (a *ApiSessionLegacy) GetExpiresAt() *time.Time {
 type ApiSessionOidc struct {
 	OidcTokens     *oidc.Tokens[*oidc.IDTokenClaims]
 	RequestHeaders http.Header
+}
+
+func (a *ApiSessionOidc) GetType() ApiSessionType {
+	return ApiSessionTypeOidc
 }
 
 func (a *ApiSessionOidc) GetRequestHeaders() http.Header {

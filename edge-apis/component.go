@@ -9,15 +9,15 @@ import (
 	"time"
 )
 
-// Components provides the basic shared lower level pieces used to assemble go-swagger/openapi clients. These
-// components are interconnected and have references to each other. This struct is used to set, move, and manage
-// them as a set.
+// Components provides the foundational HTTP client infrastructure for OpenAPI clients,
+// bundling the HTTP client, transport, and certificate pool as a cohesive unit.
 type Components struct {
 	HttpClient    *http.Client
 	HttpTransport *http.Transport
 	CaPool        *x509.CertPool
 }
 
+// ComponentsConfig contains configuration options for creating Components.
 type ComponentsConfig struct {
 	Proxy func(*http.Request) (*url.URL, error)
 }
@@ -29,7 +29,7 @@ func NewComponents() *Components {
 	})
 }
 
-// NewComponentsWithConfig assembles a new set of components with reasonable production defaults.
+// NewComponentsWithConfig assembles a new set of components using the provided configuration.
 func NewComponentsWithConfig(cfg *ComponentsConfig) *Components {
 	tlsClientConfig, _ := rest_util.NewTlsConfig()
 

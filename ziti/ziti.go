@@ -214,6 +214,16 @@ type ContextImpl struct {
 	xgressEnv xgress.Env
 }
 
+func (context *ContextImpl) GetRouterConnections() []edge.RouterConn {
+	var result []edge.RouterConn
+
+	for tuple := range context.routerConnections.IterBuffered() {
+		result = append(result, tuple.Val)
+	}
+
+	return result
+}
+
 func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
 	listener := func(args ...interface{}) {
 		details, ok := args[0].(*rest_model.ServiceDetail)
@@ -1656,6 +1666,15 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 			go latency.ProbeLatencyConfigurable(latencyProbeConfig)
 			return newV
 		})
+
+	apiSession := context.CtrlClt.GetCurrentApiSession()
+	if useConn.GetBoolHeader(edge.SupportsPostureChecks) && apiSession != nil && apiSession.GetType() == apis.ApiSessionTypeOidc {
+		err = context.CtrlClt.PostureCache.InitializePostureOnEdgeRouter(useConn)
+
+		if err != nil {
+			pfxlog.Logger().Errorf("unable to initialize posture on edge router %s: %v", ingressUrl, err)
+		}
+	}
 
 	if useConn == edgeConn {
 		context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
