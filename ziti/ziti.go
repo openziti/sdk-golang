@@ -545,7 +545,6 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 			context.Emit(EventServiceRemoved, svc)
 
 			context.deleteServiceSessions(*svc.ID)
-
 		}
 	})
 
@@ -603,7 +602,9 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 	})
 
 	if isChange {
-		context.Emit(EventServiceChanged, s)
+		if valuesDiffer {
+			context.Emit(EventServiceChanged, s)
+		}
 	} else {
 		context.Emit(EventServiceAdded, s)
 	}
@@ -614,7 +615,6 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 				context.options.OnServiceUpdate(ServiceChanged, s)
 			}
 		} else {
-			context.services.Set(*s.Name, s)
 			context.options.OnServiceUpdate(ServiceAdded, s)
 		}
 	}
@@ -740,17 +740,16 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 			}
 
 			target := &service.ListServicesUnauthorized{}
-			if errors.As(err, &target) {
-				log.Info("attempting to re-authenticate")
-				if authErr := context.Authenticate(); authErr != nil {
-					log.WithError(authErr).Error("unable to re-authenticate during services refresh")
-					return err
-				}
-				if services, err = context.CtrlClt.GetServices(); err != nil {
-					return err
-				}
+			if !errors.As(err, &target) {
+				return err
+			}
 
-			} else {
+			log.Info("attempting to re-authenticate")
+			if authErr := context.Authenticate(); authErr != nil {
+				log.WithError(authErr).Error("unable to re-authenticate during services refresh")
+				return err
+			}
+			if services, err = context.CtrlClt.GetServices(); err != nil {
 				return err
 			}
 		}
@@ -955,9 +954,7 @@ func (context *ContextImpl) setUnauthenticated() {
 
 func (context *ContextImpl) authenticate() error {
 	logrus.Debug("attempting to authenticate")
-	context.services = cmap.New[*rest_model.ServiceDetail]()
-	context.sessions = cmap.New[*rest_model.SessionDetail]()
-	context.intercepts = cmap.New[*edge.InterceptV1Config]()
+	context.sessions.Clear()
 
 	context.setUnauthenticated()
 

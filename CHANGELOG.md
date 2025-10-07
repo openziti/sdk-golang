@@ -1,3 +1,11 @@
+# Release notes 1.2.9
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.8 -> v1.2.9](https://github.com/openziti/sdk-golang/compare/v1.2.8...v1.2.9)
+    * [Issue #818](https://github.com/openziti/sdk-golang/issues/818) - Full re-auth should not clear services list, as that breaks the on-change logic
+    * [Issue #817](https://github.com/openziti/sdk-golang/issues/817) - goroutines can get stuck when iterating over randomized HA controller list
+
 # Release notes 1.2.8
 
 ## Issues Fixed and Dependency Updates

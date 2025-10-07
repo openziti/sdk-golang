@@ -17,16 +17,17 @@
 package edge_apis
 
 import (
-	"github.com/go-openapi/runtime"
-	"github.com/michaelquigley/pfxlog"
-	cmap "github.com/orcaman/concurrent-map/v2"
-	errors "github.com/pkg/errors"
 	"math/rand/v2"
 	"net"
 	"net/url"
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-openapi/runtime"
+	"github.com/michaelquigley/pfxlog"
+	cmap "github.com/orcaman/concurrent-map/v2"
+	errors "github.com/pkg/errors"
 )
 
 type ApiClientTransport struct {
@@ -151,23 +152,14 @@ func (c *ClientTransportPoolRandom) TryTransportsForOp(operation *runtime.Client
 	return result, err
 }
 
-func (c *ClientTransportPoolRandom) IterateRandomTransport() <-chan *ApiClientTransport {
-	var transportsToTry []*cmap.Tuple[string, *ApiClientTransport]
-	for tpl := range c.pool.IterBuffered() {
-		transportsToTry = append(transportsToTry, &tpl)
-	}
+func (c *ClientTransportPoolRandom) IterateRandomTransport() []*ApiClientTransport {
+	var result []*ApiClientTransport
+	c.pool.IterCb(func(_ string, v *ApiClientTransport) {
+		result = append(result, v)
+	})
 
-	ch := make(chan *ApiClientTransport, len(transportsToTry))
-
-	go func() {
-		for len(transportsToTry) > 0 {
-			var transportTpl *cmap.Tuple[string, *ApiClientTransport]
-			transportTpl, transportsToTry = selectAndRemoveRandom(transportsToTry, nil)
-			ch <- transportTpl.Val
-		}
-	}()
-
-	return ch
+	Randomize(result)
+	return result
 }
 
 func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport) (any, error)) (any, error) {
@@ -200,12 +192,12 @@ func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport
 	// either no active or active failed, lets start trying them at random
 	pfxlog.Logger().Debug("trying random transports from pool")
 
-	ch := c.IterateRandomTransport()
+	transports := c.IterateRandomTransport()
 
 	var lastResult any
 	lastErr := errors.New("no transports to try, active transport already failed or was nil") //default err should never be returned
 	attempts := 0
-	for transport := range ch {
+	for _, transport := range transports {
 		// skip the already attempted active key
 		if activeKey != "" && transport.ApiUrl.String() == activeKey {
 			continue
@@ -256,6 +248,16 @@ func errorIndicatesControllerSwap(err error) bool {
 	//others? rate limiting? http timeout?
 
 	return false
+}
+
+func Randomize[T any](s []T) {
+	for i := 0; i < len(s); i++ {
+		idx := rand.IntN(len(s))
+		e1 := s[i]
+		e2 := s[idx]
+		s[i] = e2
+		s[idx] = e1
+	}
 }
 
 func selectAndRemoveRandom[T any](slice []T, zero T) (selected T, modifiedSlice []T) {
