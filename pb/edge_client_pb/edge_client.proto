@@ -45,7 +45,6 @@ enum ContentType {
   InspectResponse = 60805;
 
   PostureResponseType = 10800;
-  PostureResponseSuccessType = 10801;
 }
 
 enum HeaderId {

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 
 	"github.com/go-openapi/strfmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/stringz"
@@ -358,7 +359,23 @@ func NewDialFailedMsg(connId uint32, message string) *channel.Message {
 	return newMsg(ContentTypeDialFailed, connId, []byte(message))
 }
 
-func NewPostureResponseMsg(response rest_model.PostureResponseCreate) []*channel.Message {
+func NewPostureResponsesMsg(responses []rest_model.PostureResponseCreate) *channel.Message {
+	protoResponses := &edge_client_pb.PostureResponses{
+		Responses: make([]*edge_client_pb.PostureResponse, len(responses)),
+	}
+
+	for _, response := range responses {
+		curResponses := postureResponseRestModelToProtos(response)
+		protoResponses.Responses = append(protoResponses.Responses, curResponses...)
+	}
+
+	b, _ := proto.Marshal(protoResponses)
+	message := channel.NewMessage(ContentTypePostureResponse, b)
+
+	return message
+}
+
+func postureResponseRestModelToProtos(response rest_model.PostureResponseCreate) []*edge_client_pb.PostureResponse {
 	var protoResponses []*edge_client_pb.PostureResponse
 
 	switch typedResp := response.(type) {
@@ -430,15 +447,11 @@ func NewPostureResponseMsg(response rest_model.PostureResponseCreate) []*channel
 				},
 			},
 		})
+	default:
+		pfxlog.Logger().Errorf("unknown posture response type: %s", response.TypeID())
 	}
 
-	var messages []*channel.Message
-	for _, protoResponse := range protoResponses {
-		b, _ := proto.Marshal(protoResponse)
-		message := channel.NewMessage(ContentTypePostureResponse, b)
-		messages = append(messages, message)
-	}
-	return messages
+	return protoResponses
 }
 
 var _ rest_model.PostureResponseCreate = (*PostureResponseTotp)(nil)
@@ -455,27 +468,27 @@ type PostureResponseTotp struct {
 	Id        *string
 }
 
-func (p PostureResponseTotp) Validate(_ strfmt.Registry) error {
+func (p *PostureResponseTotp) Validate(_ strfmt.Registry) error {
 	return nil
 }
 
-func (p PostureResponseTotp) ContextValidate(_ context.Context, _ strfmt.Registry) error {
+func (p *PostureResponseTotp) ContextValidate(_ context.Context, _ strfmt.Registry) error {
 	return nil
 }
 
-func (p PostureResponseTotp) ID() *string {
+func (p *PostureResponseTotp) ID() *string {
 	return p.Id
 }
 
-func (p PostureResponseTotp) SetID(id *string) {
+func (p *PostureResponseTotp) SetID(id *string) {
 	p.Id = id
 }
 
-func (p PostureResponseTotp) TypeID() rest_model.PostureCheckType {
+func (p *PostureResponseTotp) TypeID() rest_model.PostureCheckType {
 	return PostureCheckTypeTOTP
 }
 
-func (p PostureResponseTotp) SetTypeID(_ rest_model.PostureCheckType) {}
+func (p *PostureResponseTotp) SetTypeID(_ rest_model.PostureCheckType) {}
 
 // NewUpdateTokenMsg creates a message sent to edge routers to update the token that
 // allows the client to stay connection. If the token is not update before the current

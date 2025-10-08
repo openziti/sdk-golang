@@ -129,15 +129,11 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 }
 
 func (conn *routerConn) SendPosture(responses []rest_model.PostureResponseCreate) error {
-	for _, resp := range responses {
-		messages := edge.NewPostureResponseMsg(resp)
-		for _, message := range messages {
-			sendErr := message.Send(conn.ch.GetControlSender())
+	message := edge.NewPostureResponsesMsg(responses)
+	sendErr := message.Send(conn.ch.GetControlSender())
 
-			if sendErr != nil {
-				return sendErr
-			}
-		}
+	if sendErr != nil {
+		return sendErr
 	}
 
 	return nil
