@@ -16,13 +16,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.2.37
+	github.com/openziti/channel/v4 v4.2.38
 	github.com/openziti/edge-api v0.26.50
-	github.com/openziti/foundation/v2 v2.0.77
-	github.com/openziti/identity v1.0.116
+	github.com/openziti/foundation/v2 v2.0.78
+	github.com/openziti/identity v1.0.117
 	github.com/openziti/metrics v1.4.2
 	github.com/openziti/secretstream v0.1.39
-	github.com/openziti/transport/v2 v2.0.194
+	github.com/openziti/transport/v2 v2.0.195
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
@@ -31,8 +31,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zitadel/oidc/v3 v3.45.0
 	go.mozilla.org/pkcs7 v0.9.0
-	golang.org/x/oauth2 v0.31.0
-	golang.org/x/sys v0.36.0
+	golang.org/x/oauth2 v0.32.0
+	golang.org/x/sys v0.37.0
 	google.golang.org/protobuf v1.36.10
 )
 
