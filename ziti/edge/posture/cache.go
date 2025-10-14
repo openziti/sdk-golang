@@ -150,7 +150,9 @@ func (cache *Cache) Evaluate() {
 	activeDialServices := cache.serviceProvider.GetActiveDialServices()
 	activeBindServices := cache.serviceProvider.GetActiveBindServices()
 
-	activeQueryTypes, activeProcesses := getActiveQueryInfo(activeDialServices, activeBindServices)
+	activeQueryTypes, activeProcesses, lowestTotpTimeout := getActiveQueryInfo(activeDialServices, activeBindServices)
+
+	cache.setTotpTimeout(lowestTotpTimeout)
 
 	candidateData := NewCacheData()
 	candidateData.Index = cache.currentData.Index + 1
@@ -196,14 +198,16 @@ func (cache *Cache) Evaluate() {
 	}
 }
 
-func getActiveQueryInfo(dialServices []*rest_model.ServiceDetail, bindServices []*rest_model.ServiceDetail) (map[string]string, map[string]string) {
+func getActiveQueryInfo(dialServices []*rest_model.ServiceDetail, bindServices []*rest_model.ServiceDetail) (map[string]string, map[string]string, int64) {
 	activeQueryTypes := map[string]string{} // map[queryType]->queryId'
 	activeProcesses := map[string]string{}  // map[processPath]->queryId'
 
+	lowestTotpTimeout := TotpPostureCheckNoTimeout
 	for _, service := range dialServices {
 		for _, postureQueryState := range service.PostureQueries {
 			if postureQueryState.PolicyType == rest_model.DialBindDial {
 				addQueryInfoToMaps(activeQueryTypes, activeProcesses, postureQueryState)
+				lowestTotpTimeout = getLowestTotpTimeout(postureQueryState, lowestTotpTimeout)
 			}
 		}
 	}
@@ -212,21 +216,38 @@ func getActiveQueryInfo(dialServices []*rest_model.ServiceDetail, bindServices [
 		for _, postureQueryState := range service.PostureQueries {
 			if postureQueryState.PolicyType == rest_model.DialBindBind {
 				addQueryInfoToMaps(activeQueryTypes, activeProcesses, postureQueryState)
+				lowestTotpTimeout = getLowestTotpTimeout(postureQueryState, lowestTotpTimeout)
 			}
 		}
 	}
 
-	return activeQueryTypes, activeProcesses
+	return activeQueryTypes, activeProcesses, lowestTotpTimeout
+}
+
+func getLowestTotpTimeout(postureQueryState *rest_model.PostureQueries, curTimeout int64) int64 {
+	for _, query := range postureQueryState.PostureQueries {
+
+		if *query.QueryType == rest_model.PostureCheckTypeMFA {
+			if curTimeout == TotpPostureCheckNoTimeout && query.Timeout != nil && *query.Timeout != TotpPostureCheckNoTimeout {
+				curTimeout = *query.Timeout
+			} else if query.Timeout != nil && *query.Timeout < curTimeout {
+				curTimeout = *query.Timeout
+			}
+		}
+	}
+
+	return curTimeout
 }
 
 func addQueryInfoToMaps(activeQueryTypes map[string]string, activeProcesses map[string]string, postureQueryState *rest_model.PostureQueries) {
 	for _, query := range postureQueryState.PostureQueries {
 		activeQueryTypes[string(*query.QueryType)] = *query.ID
 
-		if *query.QueryType == rest_model.PostureCheckTypePROCESS {
+		switch *query.QueryType {
+		case rest_model.PostureCheckTypePROCESS:
 			activeQueryTypes[string(rest_model.PostureCheckTypeOS)] = *query.ID
 			activeProcesses[query.Process.Path] = *query.ID
-		} else if *query.QueryType == rest_model.PostureCheckTypePROCESSMULTI {
+		case rest_model.PostureCheckTypePROCESSMULTI:
 			activeQueryTypes[string(rest_model.PostureCheckTypeOS)] = *query.ID
 
 			for _, process := range query.Processes {
@@ -432,9 +453,7 @@ func (cache *Cache) GetAllResponses() []rest_model.PostureResponseCreate {
 
 	var allResponses []rest_model.PostureResponseCreate
 
-	for _, response := range cache.currentData.Responses {
-		allResponses = append(allResponses, response)
-	}
+	allResponses = append(allResponses, cache.currentData.Responses...)
 
 	return allResponses
 }
@@ -497,7 +516,7 @@ func sanitizeMacAddresses(addresses []string) []string {
 	for _, address := range addresses {
 		address = strings.TrimSpace(address)
 		address = strings.ToLower(address)
-		address = strings.Replace(address, ":", "", -1)
+		address = strings.ReplaceAll(address, ":", "")
 		result = append(result, address)
 	}
 
