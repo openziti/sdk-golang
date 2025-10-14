@@ -17,8 +17,12 @@ import (
 	"time"
 )
 
+// JwtTokenPrefix is the standard prefix for JWT tokens, representing the first two characters
+// of a Base64URL-encoded JWT header. This prefix is used to identify JWT-format tokens.
 const JwtTokenPrefix = "ey"
 
+// ServiceAccessClaims represents the JWT claims for service-level access tokens, including
+// identity and session binding information specific to a service connection.
 type ServiceAccessClaims struct {
 	jwt.RegisteredClaims
 	ApiSessionId string `json:"z_asid"`
@@ -27,6 +31,8 @@ type ServiceAccessClaims struct {
 	Type         string `json:"z_st"`
 }
 
+// ApiAccessClaims represents the JWT claims for API session access tokens, including
+// identity attributes, administrative status, and configuration bindings.
 type ApiAccessClaims struct {
 	jwt.RegisteredClaims
 	ApiSessionId     string   `json:"z_asid,omitempty"`
@@ -71,6 +77,8 @@ func (r *IdClaims) GetAudience() (jwt.ClaimStrings, error) {
 	return jwt.ClaimStrings(r.Audience), nil
 }
 
+// localRpServer manages a local HTTP server for OpenID Connect relying party operations,
+// handling OAuth callbacks and token exchanges during authentication flows.
 type localRpServer struct {
 	Server       *http.Server
 	Port         string
@@ -81,11 +89,13 @@ type localRpServer struct {
 	LoginUri     string
 }
 
+// Stop shuts down the local server and closes the token channel.
 func (t *localRpServer) Stop() {
 	_ = t.Server.Shutdown(context.Background())
 	close(t.TokenChan)
 }
 
+// Start launches the local server and waits for it to become available.
 func (t *localRpServer) Start() {
 	go func() {
 		_ = t.Server.Serve(t.Listener)
@@ -118,6 +128,8 @@ func (t *localRpServer) Start() {
 	}
 }
 
+// newLocalRpServer creates and configures a local HTTP server for handling OpenID Connect
+// authentication flows, including callback processing and token exchange.
 func newLocalRpServer(apiHost string, authMethod string) (*localRpServer, error) {
 	tokenOutChan := make(chan *oidc.Tokens[*oidc.IDTokenClaims], 1)
 	result := &localRpServer{

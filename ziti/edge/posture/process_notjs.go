@@ -21,15 +21,22 @@ package posture
 import (
 	"crypto/sha512"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/mitchellh/go-ps"
-	"github.com/shirou/gopsutil/v3/process"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/mitchellh/go-ps"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
-func Process(providedPath string) ProcessInfo {
+func NewProcessProvider() ProcessProvider {
+	return &DefaultProcessProvider{}
+}
+
+type DefaultProcessProvider struct{}
+
+func (p *DefaultProcessProvider) GetProcessInfo(providedPath string) ProcessInfo {
 	expectedPath := filepath.Clean(providedPath)
 
 	processes, err := ps.Processes()

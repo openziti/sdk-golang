@@ -30,35 +30,53 @@ import (
 	errors "github.com/pkg/errors"
 )
 
+// ApiClientTransport wraps a runtime.ClientTransport with its associated API URL,
+// enabling tracking of which controller endpoint a transport communicates with.
 type ApiClientTransport struct {
 	runtime.ClientTransport
 	ApiUrl *url.URL
 }
 
-// ClientTransportPool abstracts the concept of multiple `runtime.ClientTransport` (openapi interface) representing one
-// target OpenZiti network. In situations where controllers are running in HA mode (multiple controllers) this
-// interface can attempt to try a different controller during outages or partitioning.
+// ClientTransportPool manages multiple runtime.ClientTransport instances representing
+// different controller endpoints in a high-availability OpenZiti network. It provides
+// automatic failover capabilities when individual controllers become unavailable.
 type ClientTransportPool interface {
 	runtime.ClientTransport
 
+	// Add registers a new transport for the specified API URL.
 	Add(apiUrl *url.URL, transport runtime.ClientTransport)
+
+	// Remove unregisters the transport for the specified API URL.
 	Remove(apiUrl *url.URL)
 
+	// GetActiveTransport returns the currently selected transport.
 	GetActiveTransport() *ApiClientTransport
+
+	// SetActiveTransport designates which transport to use for subsequent operations.
 	SetActiveTransport(*ApiClientTransport)
+
+	// GetApiUrls returns all registered API URLs.
 	GetApiUrls() []*url.URL
+
+	// IterateTransportsRandomly provides a channel for iterating through available transports
+	// in random order.
 	IterateTransportsRandomly() chan<- *ApiClientTransport
 
+	// TryTransportsForOp attempts to execute an operation, trying different transports
+	// on connection failures.
 	TryTransportsForOp(operation *runtime.ClientOperation) (any, error)
+
+	// TryTransportForF executes a callback function, trying different transports
+	// on connection failures.
 	TryTransportForF(cb func(*ApiClientTransport) (any, error)) (any, error)
 }
 
 var _ runtime.ClientTransport = (ClientTransportPool)(nil)
 var _ ClientTransportPool = (*ClientTransportPoolRandom)(nil)
 
-// ClientTransportPoolRandom selects a client transport (controller) at random until it is unreachable. Controllers
-// are tried at random until a controller is reached. The newly connected controller is set for use on future requests
-// until is too becomes unreachable.
+// ClientTransportPoolRandom implements a randomized failover strategy for controller selection.
+// It maintains an active transport and switches to randomly selected alternatives when the active
+// transport becomes unreachable.
 type ClientTransportPoolRandom struct {
 	pool    cmap.ConcurrentMap[string, *ApiClientTransport]
 	current atomic.Pointer[ApiClientTransport]
@@ -107,6 +125,7 @@ func (c *ClientTransportPoolRandom) GetActiveTransport() *ApiClientTransport {
 	return active
 }
 
+// GetApiClientTransports returns a snapshot of all registered transports.
 func (c *ClientTransportPoolRandom) GetApiClientTransports() []*ApiClientTransport {
 	var result []*ApiClientTransport
 
@@ -117,6 +136,7 @@ func (c *ClientTransportPoolRandom) GetApiClientTransports() []*ApiClientTranspo
 	return result
 }
 
+// NewClientTransportPoolRandom creates a new transport pool with randomized failover.
 func NewClientTransportPoolRandom() *ClientTransportPoolRandom {
 	return &ClientTransportPoolRandom{
 		pool:    cmap.New[*ApiClientTransport](),
@@ -215,6 +235,7 @@ func (c *ClientTransportPoolRandom) TryTransportForF(cb func(*ApiClientTransport
 	return lastResult, lastErr
 }
 
+// AnyTransport returns a randomly selected transport from the pool, or nil if empty.
 func (c *ClientTransportPoolRandom) AnyTransport() *ApiClientTransport {
 	transportBuffer := c.pool.Items()
 	var keys []string
@@ -237,6 +258,8 @@ var _ ClientTransportPool = (*ClientTransportPoolRandom)(nil)
 
 var opError = &net.OpError{}
 
+// errorIndicatesControllerSwap determines whether an error suggests the need to
+// switch to a different controller endpoint.
 func errorIndicatesControllerSwap(err error) bool {
 	pfxlog.Logger().WithError(err).Debugf("checking for network errror on type (%T) and its wrapped errors", err)
 

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -24,7 +25,13 @@ import (
 	"unsafe"
 )
 
-func Domain() string {
+func NewDomainProvider() DomainProvider {
+	return &WindowsDomainProvider{}
+}
+
+type WindowsDomainProvider struct{}
+
+func (p *WindowsDomainProvider) GetDomain() string {
 	var domain *uint16
 	var status uint32
 
@@ -32,17 +39,20 @@ func Domain() string {
 	if err != nil {
 		return ""
 	}
-	defer syscall.NetApiBufferFree((*byte)(unsafe.Pointer(domain)))
+	defer func(buf *byte) {
+		_ = syscall.NetApiBufferFree(buf)
+	}((*byte)(unsafe.Pointer(domain)))
+
 	//todo: add this back in so that workgroups aren't allowed: status == syscall.NetSetupDomainName &&
 	if domain != nil {
-		domainName := cstringTostring(domain)
+		domainName := cStringTostring(domain)
 		return domainName
 	}
 
 	return ""
 }
 
-func cstringTostring(cs *uint16) (s string) {
+func cStringTostring(cs *uint16) (s string) {
 	if cs != nil {
 		us := make([]uint16, 0, 256)
 		for p := uintptr(unsafe.Pointer(cs)); ; p += 2 {

@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/golang-jwt/jwt/v5"
@@ -68,6 +69,44 @@ type CtrlClient struct {
 	ConfigTypes                      []string
 	supportsConfigTypesOnServiceList atomic.Bool
 	capabilitiesLoaded               atomic.Bool
+}
+
+func (self *CtrlClient) RequestTotpToken(code string) <-chan posture.TotpTokenResult {
+	totpTokenResultChan := make(chan posture.TotpTokenResult)
+
+	go func() {
+		totpToken, err := self.CreateTotpToken(code)
+
+		if err != nil {
+			totpTokenResultChan <- posture.TotpTokenResult{
+				Err: fmt.Errorf("could not request totp token: %v", err),
+			}
+			return
+		}
+
+		totpTokenResultChan <- posture.TotpTokenResult{
+			Token:    *totpToken.Token,
+			IssuedAt: time.Time(*totpToken.IssuedAt),
+			Err:      nil,
+		}
+	}()
+
+	return totpTokenResultChan
+}
+
+func (self *CtrlClient) CreateTotpToken(code string) (*rest_model.TotpToken, error) {
+	params := current_api_session.NewCreateTotpTokenParams()
+	params.MfaValidation = &rest_model.MfaCode{
+		Code: &code,
+	}
+
+	response, err := self.API.CurrentAPISession.CreateTotpToken(params, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Payload.Data, nil
 }
 
 func (self *CtrlClient) GetExternalSigners() (rest_model.ClientExternalJWTSignerList, error) {
@@ -166,6 +205,10 @@ func (self *CtrlClient) SendPostureResponse(response rest_model.PostureResponseC
 // SendPostureResponseBulk provides the same functionality as SendPostureResponse but allows multiple responses
 // to be sent in a single request.
 func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureResponseCreate) error {
+	if len(responses) == 0 {
+		return nil
+	}
+	
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
 	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, self.GetCurrentApiSession())

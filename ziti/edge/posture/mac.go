@@ -18,7 +18,28 @@ package posture
 
 import "net"
 
-func MacAddresses() []string {
+// MacProvider supplies the list of MAC addresses for network interfaces on the device,
+// used for MAC address posture checks.
+type MacProvider interface {
+	GetMacAddresses() []string
+}
+
+// MacProviderFunc is a function adapter that implements MacProvider.
+type MacProviderFunc func() []string
+
+func (f MacProviderFunc) GetMacAddresses() []string {
+	return f()
+}
+
+// NewMacProvider creates the default MAC address provider that queries system network interfaces.
+func NewMacProvider() MacProvider {
+	return &DefaultMacProvider{}
+}
+
+// DefaultMacProvider queries the system's network interfaces to collect MAC addresses.
+type DefaultMacProvider struct{}
+
+func (p *DefaultMacProvider) GetMacAddresses() []string {
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
 		return nil

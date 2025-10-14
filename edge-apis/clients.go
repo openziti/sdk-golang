@@ -64,10 +64,13 @@ type BaseClient[A ApiType] struct {
 	onControllerListeners []func([]*url.URL)
 }
 
+// Url returns the URL of the currently active controller endpoint.
 func (self *BaseClient[A]) Url() url.URL {
 	return *self.AuthEnabledApi.GetClientTransportPool().GetActiveTransport().ApiUrl
 }
 
+// AddOnControllerUpdateListeners registers a callback that is invoked when the list of
+// available controller endpoints changes.
 func (self *BaseClient[A]) AddOnControllerUpdateListeners(listener func([]*url.URL)) {
 	self.onControllerListeners = append(self.onControllerListeners, listener)
 }
@@ -82,12 +85,15 @@ func (self *BaseClient[A]) GetCurrentApiSession() ApiSession {
 	return *ptr
 }
 
+// SetUseOidc forces the API client to operate in OIDC mode when true, or legacy mode when false.
 func (self *BaseClient[A]) SetUseOidc(use bool) {
 	v := any(self.API)
 	apiType := v.(OidcEnabledApi)
 	apiType.SetUseOidc(use)
 }
 
+// SetAllowOidcDynamicallyEnabled configures whether the client checks the controller for
+// OIDC support and switches modes accordingly.
 func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
 	v := any(self.API)
 	apiType := v.(OidcEnabledApi)
@@ -134,6 +140,7 @@ func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
 	self.Components = *components
 }
 
+// NewRuntime creates an OpenAPI runtime configured for the specified API endpoint.
 func NewRuntime(apiUrl *url.URL, schemes []string, httpClient *http.Client) *openapiclient.Runtime {
 	return openapiclient.NewWithClient(apiUrl.Host, apiUrl.Path, schemes, httpClient)
 }
@@ -170,6 +177,8 @@ func (self *BaseClient[A]) AuthenticateRequest(request runtime.ClientRequest, re
 	return nil
 }
 
+// ProcessControllers queries the authenticated controller for its list of peer controllers
+// and registers them for high-availability failover.
 func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
 	list, err := authEnabledApi.ListControllers()
 
@@ -208,6 +217,7 @@ type ManagementApiClient struct {
 	BaseClient[ZitiEdgeManagement]
 }
 
+// ApiClientConfig contains configuration options for creating API clients.
 type ApiClientConfig struct {
 	ApiUrls      []*url.URL
 	CaPool       *x509.CertPool
@@ -235,6 +245,7 @@ func NewManagementApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallb
 	})
 }
 
+// NewManagementApiClientWithConfig creates a Management API client using the provided configuration.
 func NewManagementApiClientWithConfig(config *ApiClientConfig) *ManagementApiClient {
 	ret := &ManagementApiClient{}
 	ret.Schemes = rest_management_api_client.DefaultSchemes
@@ -264,6 +275,7 @@ func NewManagementApiClientWithConfig(config *ApiClientConfig) *ManagementApiCli
 	return ret
 }
 
+// ClientApiClient provides access to the Ziti Edge Client API for identity operations.
 type ClientApiClient struct {
 	BaseClient[ZitiEdgeClient]
 }
@@ -288,6 +300,7 @@ func NewClientApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback 
 	})
 }
 
+// NewClientApiClientWithConfig creates a Client API client using the provided configuration.
 func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	ret := &ClientApiClient{}
 	ret.ApiBinding = "edge-client"

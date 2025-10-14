@@ -86,7 +86,6 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		Id:                    NewId(),
 		routerConnections:     cmap.New[edge.RouterConn](),
 		options:               options,
-		authQueryHandlers:     map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error{},
 		closeNotify:           make(chan struct{}),
 		EventEmmiter:          events.New(),
 		routerProxy:           cfg.RouterProxy,
@@ -95,6 +94,8 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		services:              cmap.New[*rest_model.ServiceDetail](),
 		sessions:              cmap.New[*rest_model.SessionDetail](),
 		intercepts:            cmap.New[*edge.InterceptV1Config](),
+		activeBinds:           cmap.New[*rest_model.ServiceDetail](),
+		activeDials:           cmap.New[*rest_model.ServiceDetail](),
 	}
 
 	if newContext.maxDefaultConnections < 1 {
@@ -132,25 +133,25 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 			provider := rest_model.MfaProvidersZiti
 
 			authQuery := &rest_model.AuthQueryDetail{
-				Provider: &provider,
+				TypeID:     rest_model.AuthQueryTypeMFA,
+				Format:     rest_model.MfaFormatsAlphaNumeric,
+				HTTPMethod: http.MethodPost,
+				HTTPURL:    EdgeClientTotpAuthEndpoint,
+				MaxLength:  MaxTotpCodeLength,
+				MinLength:  MinTotpCodeLength,
+				Provider:   &provider,
 			}
 
 			newContext.Emit(EventAuthQuery, authQuery)
 
 			if *authQuery.Provider == rest_model.MfaProvidersZiti {
-				handler := newContext.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
-
 				newContext.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(newContext.authenticateMfa))
 
-				if handler == nil {
+				if newContext.Events().ListenerCount(EventMfaTotpCode) == 0 {
 					pfxlog.Logger().Debugf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
 					return
-				}
 
-				_ = handler(authQuery, func(code string) error {
-					codeCh <- code
-					return nil
-				})
+				}
 			}
 		},
 		Proxy: cfg.CtrlProxy,
@@ -167,7 +168,10 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(true)
-	newContext.CtrlClt.PostureCache = posture.NewCache(newContext.CtrlClt, newContext.closeNotify)
+
+	multiSubmitter := posture.NewMultiSubmitter(newContext.CtrlClt, newContext.CtrlClt, newContext)
+	totpTokenProvider := posture.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
+	newContext.CtrlClt.PostureCache = posture.NewCache(newContext, multiSubmitter, totpTokenProvider, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {
 		newContext.Emit(EventControllerUrlsUpdated, urls)

@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"reflect"
 	"slices"
@@ -44,6 +45,7 @@ import (
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/xgress"
+	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/secretstream/kx"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
@@ -76,6 +78,11 @@ const (
 
 	SessionDial = rest_model.DialBindDial
 	SessionBind = rest_model.DialBindBind
+
+	EdgeClientTotpAuthEndpoint  = "/edge/client/v1/authenticate/mfa"
+	EdgeClientTotpTokenEndpoint = "/edge/client/v1/current-api-session/totp-token"
+	MaxTotpCodeLength           = 6
+	MinTotpCodeLength           = 6
 )
 
 // MfaCodeResponse is a handler used to return a string (TOTP) code
@@ -195,13 +202,15 @@ type ContextImpl struct {
 	sessions   cmap.ConcurrentMap[string, *rest_model.SessionDetail] // svcID:type -> Session
 	intercepts cmap.ConcurrentMap[string, *edge.InterceptV1Config]
 
+	activeDials cmap.ConcurrentMap[string, *rest_model.ServiceDetail]
+	activeBinds cmap.ConcurrentMap[string, *rest_model.ServiceDetail]
+
 	metrics metrics.Registry
 
 	firstAuthOnce sync.Once
 
-	closed            atomic.Bool
-	closeNotify       chan struct{}
-	authQueryHandlers map[string]func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error
+	closed      atomic.Bool
+	closeNotify chan struct{}
 
 	events.EventEmmiter
 	authAttemptLock                 sync.Mutex
@@ -213,6 +222,107 @@ type ContextImpl struct {
 
 	lock      sync.Mutex
 	xgressEnv xgress.Env
+}
+
+func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
+	var result []*rest_model.ServiceDetail
+
+	services := map[string]struct{}{}
+	context.services.IterCb(func(id string, svc *rest_model.ServiceDetail) {
+		services[*svc.ID] = struct{}{}
+	})
+
+	var toRemove []string
+	context.activeDials.IterCb(func(id string, svc *rest_model.ServiceDetail) {
+		if _, ok := services[id]; !ok {
+			toRemove = append(toRemove, id)
+		} else {
+			result = append(result, svc)
+		}
+	})
+
+	for _, toRemoveId := range toRemove {
+		context.activeDials.Remove(toRemoveId)
+	}
+
+	return result
+}
+
+func (context *ContextImpl) GetActiveBindServices() []*rest_model.ServiceDetail {
+	var result []*rest_model.ServiceDetail
+
+	services := map[string]struct{}{}
+	context.services.IterCb(func(id string, svc *rest_model.ServiceDetail) {
+		services[*svc.ID] = struct{}{}
+	})
+
+	var toRemove []string
+	context.activeBinds.IterCb(func(id string, svc *rest_model.ServiceDetail) {
+		if _, ok := services[id]; !ok {
+			toRemove = append(toRemove, id)
+		} else {
+			result = append(result, svc)
+		}
+	})
+
+	for _, toRemoveId := range toRemove {
+		context.activeBinds.Remove(toRemoveId)
+	}
+
+	return result
+}
+
+func (context *ContextImpl) addActiveDialService(svc *rest_model.ServiceDetail) {
+	context.activeDials.Set(*svc.ID, svc)
+	context.CtrlClt.PostureCache.Evaluate()
+}
+
+func (context *ContextImpl) addActiveBindService(svc *rest_model.ServiceDetail) {
+	context.activeBinds.Set(*svc.ID, svc)
+	context.CtrlClt.PostureCache.Evaluate()
+}
+
+func (context *ContextImpl) GetTotpCode() <-chan posture.TotpCodeResult {
+	totpCodeResultChan := make(chan posture.TotpCodeResult)
+
+	if context.ListenerCount(EventMfaTotpCode) == 0 {
+		totpCodeResultChan <- posture.TotpCodeResult{
+			Code: "",
+			Err:  errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()"),
+		}
+
+		return totpCodeResultChan
+	}
+
+	provider := rest_model.MfaProvidersZiti
+	authQuery := &rest_model.AuthQueryDetail{
+		TypeID:     rest_model.AuthQueryTypeMFA,
+		Format:     rest_model.MfaFormatsAlphaNumeric,
+		HTTPMethod: http.MethodPost,
+		HTTPURL:    EdgeClientTotpTokenEndpoint,
+		MaxLength:  MaxTotpCodeLength,
+		MinLength:  MinTotpCodeLength,
+		Provider:   &provider,
+	}
+
+	context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(func(code string) error {
+		totpCodeResultChan <- posture.TotpCodeResult{
+			Code: code,
+		}
+		return nil
+	}))
+
+	return totpCodeResultChan
+}
+
+func (context *ContextImpl) GetRouterConnections() []edge.RouterConn {
+	var result []edge.RouterConn
+
+	for tuple := range context.routerConnections.IterBuffered() {
+		result = append(result, tuple.Val)
+	}
+
+	return result
 }
 
 func (context *ContextImpl) AddServiceAddedListener(handler func(Context, *rest_model.ServiceDetail)) func() {
@@ -557,8 +667,6 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 	for _, s := range services {
 		context.processServiceAddOrUpdated(s)
 	}
-
-	context.refreshServiceQueryMap()
 }
 
 func (context *ContextImpl) processSingleServiceUpdate(name string, s *rest_model.ServiceDetail) {
@@ -584,8 +692,6 @@ func (context *ContextImpl) processSingleServiceUpdate(name string, s *rest_mode
 		// Adds and Updates
 		context.processServiceAddOrUpdated(s)
 	}
-
-	context.refreshServiceQueryMap()
 }
 
 func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDetail) {
@@ -635,26 +741,6 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 			context.intercepts.Set(*s.Name, intercept)
 		}
 	}
-}
-
-func (context *ContextImpl) refreshServiceQueryMap() {
-	serviceQueryMap := map[string]map[string]rest_model.PostureQuery{} //serviceId -> queryId -> query
-
-	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
-		for _, querySets := range svc.PostureQueries {
-			for _, query := range querySets.PostureQueries {
-				var queryMap map[string]rest_model.PostureQuery
-				var ok bool
-				if queryMap, ok = serviceQueryMap[*svc.ID]; !ok {
-					queryMap = map[string]rest_model.PostureQuery{}
-					serviceQueryMap[*svc.ID] = queryMap
-				}
-				queryMap[*query.ID] = *query
-			}
-		}
-	})
-
-	context.CtrlClt.PostureCache.SetServiceQueryMap(serviceQueryMap)
 }
 
 func (context *ContextImpl) refreshSessions() {
@@ -1146,7 +1232,12 @@ func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
 }
 
 func (context *ContextImpl) AddZitiMfaHandler(handler func(query *rest_model.AuthQueryDetail, response MfaCodeResponse) error) {
-	context.authQueryHandlers[string(rest_model.MfaProvidersZiti)] = handler
+	context.AddMfaTotpCodeListener(func(context Context, detail *rest_model.AuthQueryDetail, response MfaCodeResponse) {
+		err := handler(detail, response)
+		if err != nil {
+			pfxlog.Logger().WithError(err).Error("error while handling TOTP MFA handler added through AddZitiMfaHandler")
+		}
+	})
 }
 
 func (context *ContextImpl) authenticateMfa(code string) error {
@@ -1158,6 +1249,18 @@ func (context *ContextImpl) authenticateMfa(code string) error {
 
 	if err != nil {
 		return err
+	}
+
+	if newApiSession.GetType() == apis.ApiSessionTypeOidc {
+		totpToken, err := context.CtrlClt.CreateTotpToken(code)
+
+		if err != nil {
+			pfxlog.Logger().WithError(err).Error("error while creating totp token after authenticate")
+		}
+
+		if totpToken != nil {
+			context.CtrlClt.PostureCache.SetTotpToken(totpToken)
+		}
 	}
 
 	updateErr := context.updateTokenOnAllErs(newApiSession)
@@ -1183,15 +1286,12 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 	}
 
 	if *authQuery.Provider == rest_model.MfaProvidersZiti {
-		handler := context.authQueryHandlers[string(rest_model.MfaProvidersZiti)]
+
+		if context.ListenerCount(EventMfaTotpCode) == 0 {
+			return errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()")
+		}
 
 		context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(context.authenticateMfa))
-
-		if handler == nil {
-			pfxlog.Logger().Debugf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
-		} else {
-			return handler(authQuery, context.authenticateMfa)
-		}
 
 		return nil
 	}
@@ -1225,7 +1325,7 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 		return nil, fmt.Errorf("service '%s' not found", serviceName)
 	}
 
-	context.CtrlClt.PostureCache.AddActiveService(*svc.ID)
+	context.addActiveDialService(svc)
 
 	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
 
@@ -1372,6 +1472,8 @@ func (context *ContextImpl) ListenWithOptions(serviceName string, options *Liste
 }
 
 func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, options *ListenOptions) (edge.Listener, error) {
+	context.addActiveBindService(service)
+
 	edgeListenOptions := edge.NewListenOptions()
 	edgeListenOptions.Cost = options.Cost
 	edgeListenOptions.Precedence = edge.Precedence(options.Precedence)
@@ -1395,11 +1497,20 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 
 	edgeListenOptions.SdkFlowControl = (options.SdkFlowControl != nil && *options.SdkFlowControl) || context.maxDefaultConnections > 1
 
-	if listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners); err != nil {
+	listenerMgr, err := newListenerManager(service, context, edgeListenOptions, options.WaitForNEstablishedListeners)
+	if err != nil {
 		return nil, err
-	} else {
-		return listenerMgr.listener, nil
 	}
+
+	if listenerMgr == nil {
+		return nil, errors.New("failed to create listener, manager is nil")
+	}
+
+	if listenerMgr.listener == nil {
+		return nil, errors.New("failed to create listener, listener is nil")
+	}
+
+	return listenerMgr.listener, nil
 }
 
 func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
@@ -1655,6 +1766,15 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 			return newV
 		})
 
+	apiSession := context.CtrlClt.GetCurrentApiSession()
+	if useConn.GetBoolHeader(edge.SupportsPostureChecksHeader) && apiSession != nil && apiSession.GetType() == apis.ApiSessionTypeOidc {
+		err = context.CtrlClt.PostureCache.InitializePostureOnEdgeRouter(useConn)
+
+		if err != nil {
+			pfxlog.Logger().Errorf("unable to initialize posture on edge router %s: %v", ingressUrl, err)
+		}
+	}
+
 	if useConn == edgeConn {
 		context.Emit(EventRouterConnected, edgeConn.GetRouterName(), edgeConn.Key())
 	}
@@ -1730,7 +1850,6 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 		}
 	}
 
-	context.CtrlClt.PostureCache.AddActiveService(serviceId)
 	session, err := context.CtrlClt.CreateSession(serviceId, sessionType)
 
 	if err != nil {
@@ -1778,7 +1897,6 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 	}
 
 	if session != nil {
-		context.CtrlClt.PostureCache.AddActiveService(*service.ID)
 		context.cacheSession("create", session)
 	}
 

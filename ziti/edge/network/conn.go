@@ -554,6 +554,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
+		// PIRATE-RAWR
 		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
 	}
 
