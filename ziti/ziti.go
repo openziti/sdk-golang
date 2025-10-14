@@ -285,7 +285,7 @@ func (context *ContextImpl) addActiveBindService(svc *rest_model.ServiceDetail) 
 func (context *ContextImpl) GetTotpCode() <-chan posture.TotpCodeResult {
 	totpCodeResultChan := make(chan posture.TotpCodeResult)
 
-	if context.EventEmmiter.ListenerCount(EventMfaTotpCode) == 0 {
+	if context.ListenerCount(EventMfaTotpCode) == 0 {
 		totpCodeResultChan <- posture.TotpCodeResult{
 			Code: "",
 			Err:  errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()"),
@@ -1287,7 +1287,7 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 
 	if *authQuery.Provider == rest_model.MfaProvidersZiti {
 
-		if context.EventEmmiter.ListenerCount(EventMfaTotpCode) == 0 {
+		if context.ListenerCount(EventMfaTotpCode) == 0 {
 			return errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()")
 		}
 
