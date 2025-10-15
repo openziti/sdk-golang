@@ -1,3 +1,19 @@
+# Release notes 1.2.10
+
+## What's New
+
+* HA Posture Check Support
+
+## HA Posture Check Support
+
+Upcoming releases of the OpenZiti controller and routers will support posture checks that are enforced at the router
+level. This release adds support for that workflow when it is available.
+
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.9 -> v1.2.10](https://github.com/openziti/sdk-golang/compare/v1.2.9...v1.2.10)
+
 # Release notes 1.2.9
 
 ## Issues Fixed and Dependency Updates
