@@ -1288,7 +1288,7 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 	if *authQuery.Provider == rest_model.MfaProvidersZiti {
 
 		if context.ListenerCount(EventMfaTotpCode) == 0 {
-			return errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()")
+			pfxlog.Logger().Warn("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()")
 		}
 
 		context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(context.authenticateMfa))
