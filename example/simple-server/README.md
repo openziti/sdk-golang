@@ -7,9 +7,9 @@ This example demonstrates:
 * Accessing the service via a tunneler
 
 ## Requirements
-* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
+* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://netfoundry.io/docs/openziti/learn/quickstarts/) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
-* Have the appropriate [Ziti Desktop Edge](https://openziti.github.io/ziti/clients/which-client.html) for your operating system
+* Have the appropriate [Ziti Desktop Edge](https://netfoundry.io/docs/openziti/reference/tunnelers/) for your operating system
 
 ## Build the examples
 Refer to the [example README](../README.md) to build the SDK examples
@@ -53,7 +53,7 @@ Steps:
        ./simple-server simple-server.json simpleService
 
 1. Enroll the `simple-client` client identity
-   1. Refer to [enrolling documentation](https://openziti.github.io/ziti/identities/enrolling.html) for details
+   1. Refer to [enrolling documentation](https://netfoundry.io/docs/openziti/learn/core-concepts/identities/enrolling/) for details
 
 1. Issue cURL commands to see the server side responses in action. There are two servers spun up by the `simple-server` 
    binary. One server is a simple HTTP server which is running on the local machine. The second server is a zitified 

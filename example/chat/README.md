@@ -7,7 +7,7 @@ This example demonstrates:
 * Dialing a service and triggering message events
 
 # Requirements
-* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
+* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://netfoundry.io/docs/openziti/learn/quickstarts/) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 
 ## Build the examples

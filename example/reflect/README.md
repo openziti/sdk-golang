@@ -7,7 +7,7 @@ This example demonstrates:
 * Bidirectional communication over the Open Ziti network overlay
 
 ## Requirements
-* an OpenZiti network. If you do not have one, the [quickstart](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) works well
+* an OpenZiti network. If you do not have one, the [quickstarts](https://netfoundry.io/docs/openziti/learn/quickstarts/) works well
 * OpenZiti cli or Zac to create services and identities on the OpenZiti network 
 
 ## Build the examples
