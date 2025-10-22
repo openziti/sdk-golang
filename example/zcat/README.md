@@ -10,7 +10,7 @@ This example demonstrates:
 * Using [addressable terminators](https://github.com/openziti/fabric/wiki/Addressable-Terminators)
 
 ## Requirements
-* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://openziti.github.io/ziti/quickstarts/quickstart-overview.html) to set one up.
+* an OpenZiti network. If you do not have one, you can use one of the [quickstarts](https://netfoundry.io/docs/openziti/learn/quickstarts/) to set one up.
 * OpenZiti CLI to create services and identities on the OpenZiti Network
 * The [netcat](https://netcat.sourceforge.net/) CLI tool
 
@@ -130,7 +130,7 @@ Steps:
        echo Run policy advisor to check
        ziti edge policy-advisor services
 1. Enroll the example.user identity in your local tunneler
-   1. Refer to [enrolling documentation](https://openziti.github.io/ziti/identities/enrolling.html) for details
+   1. Refer to [enrolling documentation](https://netfoundry.io/docs/openziti/learn/core-concepts/identities/enrolling/) for details
 
 1. Run a netcat listener
 
