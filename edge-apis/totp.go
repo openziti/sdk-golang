@@ -1,4 +1,4 @@
-package posture
+package edge_apis
 
 import (
 	"errors"
@@ -23,34 +23,63 @@ type TotpTokenResult struct {
 	Err      error
 }
 
-// TotpCodeProvider defines the interface for obtaining TOTP codes, typically implemented
-// by user interaction handlers that prompt for authenticator app codes.
+// TotpCodeProvider supplies TOTP codes for multi-factor authentication. Implementations typically
+// prompt users to enter codes from authenticator apps.
 type TotpCodeProvider interface {
+	// GetTotpCode returns a channel that delivers the TOTP code result.
 	GetTotpCode() <-chan TotpCodeResult
 }
 
-// TotpTokenRequestor defines the interface for exchanging TOTP codes with the authentication
-// service to obtain session tokens.
+// TotpCodeProviderFunc is a function adapter that implements TotpCodeProvider.
+type TotpCodeProviderFunc func() <-chan TotpCodeResult
+
+// NewTotpCodeProviderFromChStringFunc adapts legacy func(chan string) callbacks to the TotpCodeProvider interface.
+// This enables backward compatibility while allowing a smoother migration path to the new interface.
+func NewTotpCodeProviderFromChStringFunc(stringFunc func(ch chan string)) TotpCodeProvider {
+	return TotpCodeProviderFunc(func() <-chan TotpCodeResult {
+		resultCh := make(chan TotpCodeResult)
+
+		go func() {
+			stringCh := make(chan string)
+			go stringFunc(stringCh)
+
+			code := <-stringCh
+
+			resultCh <- TotpCodeResult{
+				Code: code,
+			}
+		}()
+
+		return resultCh
+	})
+}
+
+func (f TotpCodeProviderFunc) GetTotpCode() <-chan TotpCodeResult {
+	return f()
+}
+
+// TotpTokenRequestor exchanges TOTP codes with the authentication service for session tokens.
 type TotpTokenRequestor interface {
+	// RequestTotpToken exchanges a TOTP code for a session token.
 	RequestTotpToken(code string) <-chan TotpTokenResult
 }
 
-// TotpTokenProvider abstracts the complete TOTP authentication flow, handling both code
-// acquisition and token exchange.
+// TotpTokenProvider coordinates the complete TOTP authentication flow, obtaining codes and exchanging them for tokens.
 type TotpTokenProvider interface {
+	// Request initiates a TOTP token request, returning a channel with the result.
 	Request() <-chan TotpTokenResult
 }
 
-// TotpTokenProviderFunc is a function adapter that implements TotpTokenProvider, allowing
-// simple functions to satisfy the interface.
+// TotpTokenProviderFunc is a function adapter that implements TotpTokenProvider.
 type TotpTokenProviderFunc func() <-chan TotpTokenResult
 
+// Request implements TotpTokenProvider.
 func (f TotpTokenProviderFunc) Request() <-chan TotpTokenResult {
 	return f()
 }
 
-// SingularTokenRequestor ensures only one TOTP token request is active at a time,
-// preventing duplicate authentication attempts when multiple operations require TOTP.
+// SingularTokenRequestor serializes TOTP token requests, ensuring only one is active at a time.
+// This prevents duplicate authentication attempts when multiple operations require TOTP.
 type SingularTokenRequestor struct {
 	isRequesting   sync.Mutex
 	codeProvider   TotpCodeProvider
@@ -60,8 +89,8 @@ type SingularTokenRequestor struct {
 const totpCodeProviderTimeout = 5 * time.Minute
 const totpTokenRequestorTimeout = 30 * time.Second
 
-// NewSingularTokenRequestor creates a requestor that coordinates TOTP code collection
-// and token exchange while preventing concurrent requests.
+// NewSingularTokenRequestor creates a token requestor that coordinates code collection and token exchange.
+// Only one request can be active at a time; subsequent requests return nil if one is already in progress.
 func NewSingularTokenRequestor(codeProvider TotpCodeProvider, tokenRequestor TotpTokenRequestor) *SingularTokenRequestor {
 	return &SingularTokenRequestor{
 		codeProvider:   codeProvider,
@@ -69,9 +98,8 @@ func NewSingularTokenRequestor(codeProvider TotpCodeProvider, tokenRequestor Tot
 	}
 }
 
-// Request initiates a TOTP token request if none is in progress, returning nil if a request
-// is already active. The returned channel delivers the token result once the code is
-// collected and exchanged, or an error if the process times out or fails.
+// Request initiates a TOTP token request, returning nil if a request is already in progress.
+// The returned channel delivers the token result once the code is collected and exchanged.
 func (r *SingularTokenRequestor) Request() <-chan TotpTokenResult {
 	if lockObtained := r.isRequesting.TryLock(); !lockObtained {
 		//outstanding request don't do anything

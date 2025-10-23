@@ -17,6 +17,7 @@
 package edge_apis
 
 import (
+	"errors"
 	"math/rand/v2"
 	"net"
 	"net/url"
@@ -27,7 +28,6 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/michaelquigley/pfxlog"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	errors "github.com/pkg/errors"
 )
 
 // ApiClientTransport wraps a runtime.ClientTransport with its associated API URL,

@@ -45,7 +45,6 @@ import (
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/xgress"
-	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/secretstream/kx"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
@@ -282,11 +281,11 @@ func (context *ContextImpl) addActiveBindService(svc *rest_model.ServiceDetail) 
 	context.CtrlClt.PostureCache.Evaluate()
 }
 
-func (context *ContextImpl) GetTotpCode() <-chan posture.TotpCodeResult {
-	totpCodeResultChan := make(chan posture.TotpCodeResult)
+func (context *ContextImpl) GetTotpCode() <-chan apis.TotpCodeResult {
+	totpCodeResultChan := make(chan apis.TotpCodeResult)
 
 	if context.ListenerCount(EventMfaTotpCode) == 0 {
-		totpCodeResultChan <- posture.TotpCodeResult{
+		totpCodeResultChan <- apis.TotpCodeResult{
 			Code: "",
 			Err:  errors.New("no MFA TOTP code providers have been added via zitiContext.Events().AddMfaTotpCodeListener()"),
 		}
@@ -306,7 +305,7 @@ func (context *ContextImpl) GetTotpCode() <-chan posture.TotpCodeResult {
 	}
 
 	context.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(func(code string) error {
-		totpCodeResultChan <- posture.TotpCodeResult{
+		totpCodeResultChan <- apis.TotpCodeResult{
 			Code: code,
 		}
 		return nil
