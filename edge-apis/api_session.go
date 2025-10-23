@@ -74,6 +74,35 @@ const (
 	ApiSessionTypeOidc ApiSessionType = "oidc"
 )
 
+func UnmarshalApiSession(data []byte) (ApiSession, error) {
+	apiSessionJson := &ApiSessionJson{}
+
+	err := json.Unmarshal(data, apiSessionJson)
+
+	if err != nil {
+		return nil, err
+	}
+
+	switch apiSessionJson.Type {
+	case string(ApiSessionTypeLegacy):
+		result := &ApiSessionLegacy{}
+		err := result.setFromJson(apiSessionJson)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	case string(ApiSessionTypeOidc):
+		result := &ApiSessionOidc{}
+		err := result.setFromJson(apiSessionJson)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	return nil, fmt.Errorf("unsupported api session type %s", apiSessionJson.Type)
+}
+
 var _ ApiSession = (*ApiSessionLegacy)(nil)
 var _ ApiSession = (*ApiSessionOidc)(nil)
 
@@ -82,35 +111,6 @@ var _ ApiSession = (*ApiSessionOidc)(nil)
 type ApiSessionLegacy struct {
 	Detail         *rest_model.CurrentAPISessionDetail
 	RequestHeaders http.Header
-}
-
-func (a *ApiSessionLegacy) MarshalJSON() ([]byte, error) {
-	apiSessionJson := ApiSessionJson{
-		Type:           string(a.GetType()),
-		ZtSessionToken: string(a.GetToken()),
-	}
-
-	return json.Marshal(apiSessionJson)
-}
-
-func (a *ApiSessionLegacy) UnmarshalJSON(bytes []byte) error {
-	apiSessionJson := ApiSessionJson{}
-	err := json.Unmarshal(bytes, &apiSessionJson)
-	if err != nil {
-		return err
-	}
-
-	if apiSessionJson.Type != string(ApiSessionTypeLegacy) {
-		return fmt.Errorf("unsupported api session type %s", apiSessionJson.Type)
-	}
-
-	a.Detail = &rest_model.CurrentAPISessionDetail{
-		APISessionDetail: rest_model.APISessionDetail{
-			Token: &apiSessionJson.ZtSessionToken,
-		},
-	}
-
-	return nil
 }
 
 func NewApiSessionLegacy(token string) *ApiSessionLegacy {
@@ -208,42 +208,43 @@ func (a *ApiSessionLegacy) GetExpiresAt() *time.Time {
 	return nil
 }
 
-// ApiSessionOidc represents an authenticated session backed by OIDC tokens.
-type ApiSessionOidc struct {
-	OidcTokens     *oidc.Tokens[*oidc.IDTokenClaims]
-	RequestHeaders http.Header
-}
-
-func (a *ApiSessionOidc) MarshalJSON() ([]byte, error) {
-	apiSessionJson := &ApiSessionJson{
-		Type:             string(a.GetType()),
-		OidcAccessToken:  a.OidcTokens.AccessToken,
-		OidcRefreshToken: a.OidcTokens.RefreshToken,
+func (a *ApiSessionLegacy) MarshalJSON() ([]byte, error) {
+	apiSessionJson := ApiSessionJson{
+		Type:           string(a.GetType()),
+		ZtSessionToken: string(a.GetToken()),
 	}
 
 	return json.Marshal(apiSessionJson)
 }
 
-func (a *ApiSessionOidc) UnmarshalJSON(bytes []byte) error {
-	apiSessionJson := &ApiSessionJson{}
-
+func (a *ApiSessionLegacy) UnmarshalJSON(bytes []byte) error {
+	apiSessionJson := ApiSessionJson{}
 	err := json.Unmarshal(bytes, &apiSessionJson)
 	if err != nil {
 		return err
 	}
 
-	if apiSessionJson.Type != string(ApiSessionTypeOidc) {
+	return a.setFromJson(&apiSessionJson)
+}
+
+func (a *ApiSessionLegacy) setFromJson(apiSessionJson *ApiSessionJson) error {
+	if apiSessionJson.Type != string(ApiSessionTypeLegacy) {
 		return fmt.Errorf("unsupported api session type %s", apiSessionJson.Type)
 	}
 
-	a.OidcTokens = &oidc.Tokens[*oidc.IDTokenClaims]{
-		Token: &oauth2.Token{
-			AccessToken:  apiSessionJson.OidcAccessToken,
-			RefreshToken: apiSessionJson.OidcRefreshToken,
+	a.Detail = &rest_model.CurrentAPISessionDetail{
+		APISessionDetail: rest_model.APISessionDetail{
+			Token: &apiSessionJson.ZtSessionToken,
 		},
 	}
 
 	return nil
+}
+
+// ApiSessionOidc represents an authenticated session backed by OIDC tokens.
+type ApiSessionOidc struct {
+	OidcTokens     *oidc.Tokens[*oidc.IDTokenClaims]
+	RequestHeaders http.Header
 }
 
 func NewApiSessionOidc(accessToken, refreshToken string) *ApiSessionOidc {
@@ -363,5 +364,41 @@ func (a *ApiSessionOidc) GetExpiresAt() *time.Time {
 	if a.OidcTokens != nil {
 		return &a.OidcTokens.Expiry
 	}
+	return nil
+}
+
+func (a *ApiSessionOidc) MarshalJSON() ([]byte, error) {
+	apiSessionJson := &ApiSessionJson{
+		Type:             string(a.GetType()),
+		OidcAccessToken:  a.OidcTokens.AccessToken,
+		OidcRefreshToken: a.OidcTokens.RefreshToken,
+	}
+
+	return json.Marshal(apiSessionJson)
+}
+
+func (a *ApiSessionOidc) UnmarshalJSON(bytes []byte) error {
+	apiSessionJson := &ApiSessionJson{}
+
+	err := json.Unmarshal(bytes, &apiSessionJson)
+	if err != nil {
+		return err
+	}
+
+	if apiSessionJson.Type != string(ApiSessionTypeOidc) {
+		return fmt.Errorf("unsupported api session type %s", apiSessionJson.Type)
+	}
+
+	return a.setFromJson(apiSessionJson)
+}
+
+func (a *ApiSessionOidc) setFromJson(apiSessionJson *ApiSessionJson) error {
+	a.OidcTokens = &oidc.Tokens[*oidc.IDTokenClaims]{
+		Token: &oauth2.Token{
+			AccessToken:  apiSessionJson.OidcAccessToken,
+			RefreshToken: apiSessionJson.OidcRefreshToken,
+		},
+	}
+
 	return nil
 }
