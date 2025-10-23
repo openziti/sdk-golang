@@ -26,6 +26,8 @@
 package ziti
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -37,7 +39,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/pkg/errors"
 )
 
 var idCount = 0
@@ -120,7 +121,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		apiUrl, err := url.Parse(cfg.ZtAPI)
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not parse ZtAPI from configuration as URI: %s", apiStr)
+			return nil, fmt.Errorf("could not parse ZtAPI from configuration as URI: %s: %w", apiStr, err)
 		}
 
 		apiUrls = append(apiUrls, apiUrl)

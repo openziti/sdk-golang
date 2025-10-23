@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -49,7 +50,6 @@ import (
 	apis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	"github.com/openziti/transport/v2"
-	"github.com/pkg/errors"
 )
 
 // CtrlClient is a stateful version of ZitiEdgeClient that simplifies operations
@@ -208,7 +208,7 @@ func (self *CtrlClient) SendPostureResponseBulk(responses []rest_model.PostureRe
 	if len(responses) == 0 {
 		return nil
 	}
-	
+
 	params := posture_checks.NewCreatePostureResponseBulkParams()
 	params.PostureResponse = responses
 	_, err := self.API.PostureChecks.CreatePostureResponseBulk(params, self.GetCurrentApiSession())

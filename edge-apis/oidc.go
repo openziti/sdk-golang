@@ -5,16 +5,17 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 	httphelper "github.com/zitadel/oidc/v3/pkg/http"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
-	"time"
 )
 
 // JwtTokenPrefix is the standard prefix for JWT tokens, representing the first two characters
