@@ -16,6 +16,31 @@ import (
 	"golang.org/x/oauth2"
 )
 
+var _ json.Marshaler = (*ApiSessionJsonWrapper)(nil)
+var _ json.Unmarshaler = (*ApiSessionJsonWrapper)(nil)
+
+// ApiSessionJsonWrapper provides JSON marshaling and unmarshaling capabilities for ApiSession
+// interface types. It allows polymorphic ApiSession implementations (ApiSessionLegacy and
+// ApiSessionOidc) to be correctly serialized and deserialized by delegating to the underlying
+// ApiSession's JSON methods.
+//
+// This wrapper enables ApiSession instances to be embedded in structs and marshaled to/from
+// JSON.
+type ApiSessionJsonWrapper struct {
+	ApiSession ApiSession
+}
+
+func (a *ApiSessionJsonWrapper) UnmarshalJSON(bytes []byte) error {
+	var err error
+	a.ApiSession, err = UnmarshalApiSession(bytes)
+
+	return err
+}
+
+func (a *ApiSessionJsonWrapper) MarshalJSON() ([]byte, error) {
+	return a.ApiSession.MarshalJSON()
+}
+
 type ApiSession interface {
 	//GetAccessHeader returns the HTTP header name and value that should be used to represent this ApiSession
 	GetAccessHeader() (string, string)

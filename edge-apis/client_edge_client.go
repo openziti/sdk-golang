@@ -3,6 +3,7 @@ package edge_apis
 import (
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -143,8 +144,12 @@ func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypesOve
 func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	params := clientAuth.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
-	params.Method = credentials.Method()
+	params.Method = string(credentials.Method())
 	params.Auth.ConfigTypes = append(params.Auth.ConfigTypes, configTypes...)
+
+	if credentials.Method() == AuthMethodEmpty {
+		return nil, fmt.Errorf("auth method %s cannot be used for authentication, please provide alternate credentials", AuthMethodEmpty)
+	}
 
 	certs := credentials.TlsCerts()
 	if len(certs) != 0 {

@@ -4,13 +4,23 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"net/http"
+
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/edge/network"
 	"github.com/openziti/sdk-golang/ziti/sdkinfo"
-	"net/http"
+)
+
+type AuthMethod string
+
+const (
+	AuthMethodCert   AuthMethod = "cert"
+	AuthMethodUpdb   AuthMethod = "password"
+	AuthMethodEmpty  AuthMethod = "empty"
+	AuthMethodJwtExt AuthMethod = "ext-jwt"
 )
 
 // Credentials represents the minimal information needed across all authentication mechanisms to authenticate an identity
@@ -26,7 +36,7 @@ type Credentials interface {
 	GetCaPool() *x509.CertPool
 
 	// Method returns the authentication necessary to complete an authentication request.
-	Method() string
+	Method() AuthMethod
 
 	// AddAuthHeader adds a header for all authentication requests.
 	AddAuthHeader(key, value string)
@@ -225,8 +235,8 @@ func NewCertCredentials(certs []*x509.Certificate, key crypto.PrivateKey) *CertC
 	}
 }
 
-func (c *CertCredentials) Method() string {
-	return "cert"
+func (c *CertCredentials) Method() AuthMethod {
+	return AuthMethodCert
 }
 
 func (c *CertCredentials) TlsCerts() []tls.Certificate {
@@ -264,8 +274,8 @@ func (c *IdentityCredentials) GetIdentity() identity.Identity {
 	return c.Identity
 }
 
-func (c *IdentityCredentials) Method() string {
-	return "cert"
+func (c *IdentityCredentials) Method() AuthMethod {
+	return AuthMethodCert
 }
 
 func (c *IdentityCredentials) GetCaPool() *x509.CertPool {
@@ -301,8 +311,8 @@ func NewJwtCredentials(jwt string) *JwtCredentials {
 	}
 }
 
-func (c *JwtCredentials) Method() string {
-	return "ext-jwt"
+func (c *JwtCredentials) Method() AuthMethod {
+	return AuthMethodJwtExt
 }
 
 func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
@@ -330,8 +340,8 @@ type UpdbCredentials struct {
 	Password string
 }
 
-func (c *UpdbCredentials) Method() string {
-	return "password"
+func (c *UpdbCredentials) Method() AuthMethod {
+	return AuthMethodUpdb
 }
 
 // NewUpdbCredentials creates a Credentials instance based on a username/passwords combination.
@@ -353,4 +363,14 @@ func (c *UpdbCredentials) Payload() *rest_model.Authenticate {
 
 func (c *UpdbCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
 	return c.BaseCredentials.AuthenticateRequest(request, reg)
+}
+
+var _ Credentials = (*EmptyCredentials)(nil)
+
+type EmptyCredentials struct {
+	BaseCredentials
+}
+
+func (e EmptyCredentials) Method() AuthMethod {
+	return AuthMethodEmpty
 }

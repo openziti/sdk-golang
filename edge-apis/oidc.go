@@ -131,7 +131,7 @@ func (t *localRpServer) Start() {
 
 // newLocalRpServer creates and configures a local HTTP server for handling OpenID Connect
 // authentication flows, including callback processing and token exchange.
-func newLocalRpServer(apiHost string, authMethod string) (*localRpServer, error) {
+func newLocalRpServer(apiHost string, authMethod AuthMethod) (*localRpServer, error) {
 	tokenOutChan := make(chan *oidc.Tokens[*oidc.IDTokenClaims], 1)
 	result := &localRpServer{
 		CallbackPath: "/auth/callback",
@@ -198,7 +198,7 @@ func newLocalRpServer(apiHost string, authMethod string) (*localRpServer, error)
 	}
 	serverMux := http.NewServeMux()
 
-	authHandler := rp.AuthURLHandler(state, provider, rp.WithPromptURLParam("Welcome back!"), rp.WithURLParam("method", authMethod))
+	authHandler := rp.AuthURLHandler(state, provider, rp.WithPromptURLParam("Welcome back!"), rp.WithURLParam("method", string(authMethod)))
 	loginHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authHandler.ServeHTTP(writer, request)
 	})

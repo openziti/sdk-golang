@@ -217,6 +217,10 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 	}
 	method := credentials.Method()
 
+	if method == AuthMethodEmpty {
+		return nil, fmt.Errorf("auth method %s cannot be used for authentication, please provide alternate credentials", AuthMethodEmpty)
+	}
+
 	if configTypeOverrides != nil {
 		payload.ConfigTypes = configTypeOverrides
 	}
@@ -261,7 +265,7 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 			return nil, errors.New("could not find auth request id header")
 		}
 
-		opLoginUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/" + method
+		opLoginUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/" + string(method)
 		totpUri := "https://" + resp.RawResponse.Request.URL.Host + "/oidc/login/totp"
 
 		formData := payload.toValues()
