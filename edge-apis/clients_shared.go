@@ -63,12 +63,21 @@ type ApiClientConfig struct {
 }
 
 func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	subjectToken := curTokens.RefreshToken
-	subjectTokenType := oidc.RefreshTokenType
+	subjectToken := ""
+	var subjectTokenType oidc.TokenType
 
-	// if subjectToken is "", then we don't have a refresh token, attempt to exchange a non-expired access token
-	if subjectToken == "" {
-		if curTokens.Expiry.Before(time.Now()) {
+	if curTokens.RefreshToken != "" {
+		subjectToken = curTokens.RefreshToken
+		subjectTokenType = oidc.RefreshTokenType
+	} else if curTokens.AccessToken != "" {
+		// if subjectToken is "", then we don't have a refresh token, attempt to exchange a non-expired access token
+		expired, err := isAccessTokenExpired(curTokens)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if expired {
 			return nil, errors.New("cannot exchange token: refresh token not found, access token expired")
 		}
 
@@ -77,6 +86,10 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 		}
 		subjectToken = curTokens.AccessToken
 		subjectTokenType = oidc.AccessTokenType
+	}
+
+	if subjectToken == "" {
+		return nil, errors.New("cannot exchange token: refresh token not found, access token not found or expired")
 	}
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
@@ -144,6 +157,27 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 	}
 
 	return outTokens, nil
+}
+
+func isAccessTokenExpired(tokens *oidc.Tokens[*oidc.IDTokenClaims]) (bool, error) {
+	if tokens.Expiry.IsZero() {
+		//meta data isn't set, we need to parse the token
+		idClaims := &IdClaims{}
+		_, _, err := jwt.NewParser().ParseUnverified(tokens.AccessToken, idClaims)
+
+		if err != nil {
+			return true, fmt.Errorf("token meta data is empty, could not parse token to determine token validity: %w", err)
+		}
+
+		//failed to parse out a required exp field for oAuth2, we have no idea of this token is good
+		if idClaims.GetExpiration().IsZero() {
+			return true, errors.New("token meta data is empty, parsed token does not have an expiration value")
+		}
+
+		return idClaims.GetExpiration().Before(time.Now()), nil
+	}
+
+	return tokens.Expiry.Before(time.Now()), nil
 }
 
 type authPayload struct {
