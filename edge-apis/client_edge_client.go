@@ -71,6 +71,8 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	ret.API = &api
 	ret.AuthEnabledApi = &api
 
+	api.doOnceCacheVersionInfo()
+
 	return ret
 }
 
@@ -115,26 +117,16 @@ func (self *ZitiEdgeClient) ListControllers() (*rest_model.ControllersList, erro
 }
 
 func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypesOverrides []string, httpClient *http.Client) (ApiSession, error) {
-	self.versionOnce.Do(func() {
-		if self.useOidcExplicitlySet {
-			return
-		}
+	self.doOnceCacheVersionInfo()
+	useOidc := false
 
-		if self.oidcDynamicallyEnabled {
-			versionParams := clientInfo.NewListVersionParams()
+	if self.useOidcExplicitlySet {
+		useOidc = self.useOidc
+	} else if self.oidcDynamicallyEnabled {
+		useOidc = self.ControllerSupportsOidc()
+	}
 
-			versionResp, _ := self.Informational.ListVersion(versionParams)
-
-			if versionResp != nil {
-				self.versionInfo = versionResp.Payload.Data
-				self.useOidc = stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
-			}
-		} else {
-			self.useOidc = false
-		}
-	})
-
-	if self.useOidc {
+	if useOidc {
 		return self.oidcAuth(credentials, configTypesOverrides, httpClient)
 	}
 
@@ -215,4 +207,36 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient 
 
 func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 	return exchangeTokens(self.ClientTransportPool, curTokens, httpClient)
+}
+
+func (self *ZitiEdgeClient) ControllerSupportsHa() bool {
+	self.doOnceCacheVersionInfo()
+
+	if self.versionInfo != nil && self.versionInfo.Capabilities != nil {
+		return stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesHACONTROLLER))
+	}
+
+	return false
+}
+
+func (self *ZitiEdgeClient) ControllerSupportsOidc() bool {
+	self.doOnceCacheVersionInfo()
+
+	if self.versionInfo != nil && self.versionInfo.Capabilities != nil {
+		return stringz.Contains(self.versionInfo.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+	}
+
+	return false
+}
+
+func (self *ZitiEdgeClient) doOnceCacheVersionInfo() {
+	self.versionOnce.Do(func() {
+		versionParams := clientInfo.NewListVersionParams()
+
+		versionResp, _ := self.Informational.ListVersion(versionParams)
+
+		if versionResp != nil {
+			self.versionInfo = versionResp.Payload.Data
+		}
+	})
 }
