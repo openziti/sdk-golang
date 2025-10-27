@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/kataras/go-events"
 	"github.com/michaelquigley/pfxlog"
@@ -40,13 +41,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-var idCount = 0
+var idCount atomic.Int32
 
 // NewId will return a unique string id suitable for ziti.Context Id functionality.
 func NewId() string {
-	idCount = idCount + 1
+	new := idCount.Add(1)
 
-	return strconv.Itoa(idCount)
+	return strconv.Itoa(int(new))
 }
 
 // NewContextFromFile attempts to load a new Config from the provided path and then uses that
