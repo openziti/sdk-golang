@@ -1,3 +1,22 @@
+# Release notes 1.2.11
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.2.10 -> v1.2.11](https://github.com/openziti/sdk-golang/compare/v1.2.10...v1.2.11)
+    * [Issue #824](https://github.com/openziti/sdk-golang/pull/824) - release notes and hard errors on no TOTP handler breaks partial auth events
+
+* github.com/openziti/channel/v4: [v4.2.37 -> v4.2.41](https://github.com/openziti/channel/compare/v4.2.37...v4.2.41)
+* github.com/openziti/edge-api: [v0.26.50 -> v0.26.51](https://github.com/openziti/edge-api/compare/v0.26.50...v0.26.51)
+* github.com/openziti/foundation/v2: [v2.0.77 -> v2.0.79](https://github.com/openziti/foundation/compare/v2.0.77...v2.0.79)
+* github.com/openziti/identity: [v1.0.116 -> v1.0.118](https://github.com/openziti/identity/compare/v1.0.116...v1.0.118)
+* github.com/openziti/secretstream: [v0.1.39 -> v0.1.42](https://github.com/openziti/secretstream/compare/v0.1.39...v0.1.42)
+* github.com/openziti/transport/v2: [v2.0.194 -> v2.0.198](https://github.com/openziti/transport/compare/v2.0.194...v2.0.198)
+* golang.org/x/sys: v0.36.0 -> v0.37.0
+* golang.org/x/crypto: v0.42.0 -> v0.43.0
+* golang.org/x/net: v0.44.0 -> v0.45.0
+* golang.org/x/term: v0.35.0 -> v0.36.0
+* golang.org/x/text: v0.29.0 -> v0.30.0
+
 # Release notes 1.2.10
 
 ## What's New

@@ -10,17 +10,17 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
-	github.com/openziti/edge-api v0.26.50
-	github.com/openziti/foundation/v2 v2.0.77
+	github.com/openziti/edge-api v0.26.51
+	github.com/openziti/foundation/v2 v2.0.79
 	github.com/openziti/runzmd v1.0.83
 	github.com/openziti/sdk-golang v1.2.6
-	github.com/openziti/transport/v2 v2.0.194
+	github.com/openziti/transport/v2 v2.0.198
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.17.0
 	github.com/zitadel/oidc v1.13.5
-	golang.org/x/text v0.29.0
+	golang.org/x/text v0.30.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/grpc/examples v0.0.0-20231107231549-482de2224942
 	gopkg.in/resty.v1 v1.12.0
@@ -87,11 +87,11 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/openziti/channel/v4 v4.2.37 // indirect
+	github.com/openziti/channel/v4 v4.2.41 // indirect
 	github.com/openziti/go-term-markdown v1.0.1 // indirect
-	github.com/openziti/identity v1.0.116 // indirect
+	github.com/openziti/identity v1.0.118 // indirect
 	github.com/openziti/metrics v1.4.2 // indirect
-	github.com/openziti/secretstream v0.1.39 // indirect
+	github.com/openziti/secretstream v0.1.42 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -124,13 +124,13 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/term v0.35.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/term v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231106174013-bbf56f31fb17 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
