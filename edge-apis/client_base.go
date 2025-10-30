@@ -144,7 +144,9 @@ func (self *BaseClient[A]) AuthenticateWithPreviousSession(credentials Credentia
 // initializeComponents assembles HTTP client infrastructure, either using provided Components or creating new ones.
 // If Components are provided with nil transport/client, they are initialized with warnings logged.
 func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
-	if config.Components != nil {
+	//have a config and either the client or transport are set, verify them, else an empty components was supplied
+	// then initialize them with defaults
+	if config.Components != nil && (config.Components.HttpClient != nil || config.Components.TlsAwareTransport != nil) {
 		config.Components.assertComponents(config)
 		self.Components = *config.Components
 
