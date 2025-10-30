@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_util"
 )
 
@@ -17,6 +18,36 @@ type Components struct {
 	HttpClient        *http.Client
 	TlsAwareTransport TlsAwareTransport
 	CaPool            *x509.CertPool
+}
+
+// assertComponents ensures that the components are initialized properly.
+func (c Components) assertComponents(config *ApiClientConfig) {
+	if config.Components.HttpClient == nil {
+		pfxlog.Logger().Warn("components were provided but the http client was nil, it is being initialized")
+
+		if config.Components.TlsAwareTransport == nil {
+			config.Components.TlsAwareTransport = NewTlsAwareHttpTransport(nil)
+			pfxlog.Logger().Warn("components were provided but the client and transport are nil, they are being initialized with a default")
+		}
+
+		config.Components.HttpClient = NewHttpClient(config.Components.TlsAwareTransport)
+	}
+
+	if config.Components.TlsAwareTransport == nil {
+		if tlsAwareTransport, ok := config.Components.HttpClient.Transport.(TlsAwareTransport); ok {
+			config.Components.TlsAwareTransport = tlsAwareTransport
+			pfxlog.Logger().Warn("components were provided but the transport was nil, it is being initialized with the transport from the http client")
+		} else {
+			pfxlog.Logger().Warn("components were provided but the transport was nil and the client did not have a suitable transport, it is being initialized with a default")
+			config.Components.TlsAwareTransport = NewTlsAwareHttpTransport(nil)
+			config.Components.HttpClient.Transport = config.Components.TlsAwareTransport
+		}
+	}
+
+	if config.Components.HttpClient.Transport != config.Components.TlsAwareTransport {
+		pfxlog.Logger().Warn("components were provided but the http client transport was not the same as the transport in components, it is being initialized")
+		config.Components.HttpClient.Transport = config.Components.TlsAwareTransport
+	}
 }
 
 // ComponentsConfig contains configuration options for creating Components.

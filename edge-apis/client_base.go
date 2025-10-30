@@ -145,18 +145,9 @@ func (self *BaseClient[A]) AuthenticateWithPreviousSession(credentials Credentia
 // If Components are provided with nil transport/client, they are initialized with warnings logged.
 func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
 	if config.Components != nil {
-
-		if config.Components.TlsAwareTransport == nil {
-			pfxlog.Logger().Warn("components were provided but the transport was nil, it is being initialized")
-			config.Components.TlsAwareTransport = NewTlsAwareHttpTransport(nil)
-		}
-
-		if config.Components.HttpClient == nil {
-			pfxlog.Logger().Warn("components were provided but the http client was nil, it is being initialized")
-			config.Components.HttpClient = NewHttpClient(config.Components.TlsAwareTransport)
-		}
-
+		config.Components.assertComponents(config)
 		self.Components = *config.Components
+
 		if config.Proxy != nil {
 			pfxlog.Logger().Warn("components were provided along with a proxy function on the ApiClientConfig, it is being ignored, if needed properly set on components")
 		}
