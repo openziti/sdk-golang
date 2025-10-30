@@ -29,24 +29,24 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/kataras/go-events"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
-	edge_apis "github.com/openziti/sdk-golang/edge-apis"
+	edgeApis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 )
 
-var idCount = 0
+var idCount atomic.Int64
 
 // NewId will return a unique string id suitable for ziti.Context Id functionality.
 func NewId() string {
-	idCount = idCount + 1
-
-	return strconv.Itoa(idCount)
+	id := idCount.Add(1)
+	return strconv.Itoa(int(id))
 }
 
 // NewContextFromFile attempts to load a new Config from the provided path and then uses that
@@ -103,7 +103,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	if cfg.Credentials == nil {
-		idCredentials := edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+		idCredentials := edgeApis.NewIdentityCredentialsFromConfig(cfg.ID)
 		idCredentials.ConfigTypes = cfg.ConfigTypes
 		cfg.Credentials = idCredentials
 	}
@@ -126,7 +126,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		apiUrls = append(apiUrls, apiUrl)
 	}
 
-	apiClientConfig := &edge_apis.ApiClientConfig{
+	apiClientConfig := &edgeApis.ApiClientConfig{
 		ApiUrls: apiUrls,
 		CaPool:  cfg.Credentials.GetCaPool(),
 		TotpCallback: func(codeCh chan string) {
@@ -162,7 +162,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	newContext.CtrlClt = &CtrlClient{
-		ClientApiClient: edge_apis.NewClientApiClientWithConfig(apiClientConfig),
+		ClientApiClient: edgeApis.NewClientApiClientWithConfig(apiClientConfig),
 		Credentials:     cfg.Credentials,
 		ConfigTypes:     cfg.ConfigTypes,
 	}
