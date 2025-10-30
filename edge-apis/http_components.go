@@ -101,7 +101,7 @@ var _ TlsAwareTransport = (*TlsAwareHttpTransport)(nil)
 
 // TlsAwareHttpTransport is a concrete implementation of TlsAwareTransport that wraps http.Transport.
 type TlsAwareHttpTransport struct {
-	http.Transport
+	*http.Transport
 }
 
 // NewTlsAwareHttpTransport creates a TlsAwareHttpTransport with default HTTP/2 and TLS settings.
@@ -109,7 +109,7 @@ func NewTlsAwareHttpTransport(cfg *ComponentsConfig) *TlsAwareHttpTransport {
 	tlsClientConfig, _ := rest_util.NewTlsConfig()
 
 	authAwareTransport := &TlsAwareHttpTransport{
-		http.Transport{
+		&http.Transport{
 			TLSClientConfig:       tlsClientConfig,
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          10,
