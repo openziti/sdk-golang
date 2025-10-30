@@ -217,7 +217,7 @@ func (conn *edgeConn) Write(data []byte) (int, error) {
 		if conn.IsClosed() {
 			return 0, errors.New("connection closed")
 		}
-		return 0, errors.New("calling Write() after CloseWrite()")
+		return 0, errors.New("connection closed for writes")
 	}
 
 	if conn.sender != nil {
