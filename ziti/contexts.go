@@ -130,7 +130,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	apiClientConfig := &edge_apis.ApiClientConfig{
 		ApiUrls: apiUrls,
 		CaPool:  cfg.Credentials.GetCaPool(),
-		TotpCallback: func(codeCh chan string) {
+		TotpCodeProvider: edge_apis.NewTotpCodeProviderFromChStringFunc(func(codeCh chan string) {
 			provider := rest_model.MfaProvidersZiti
 
 			authQuery := &rest_model.AuthQueryDetail{
@@ -154,7 +154,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 
 				}
 			}
-		},
+		}),
 		Proxy: cfg.CtrlProxy,
 	}
 
@@ -171,7 +171,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(true)
 
 	multiSubmitter := posture.NewMultiSubmitter(newContext.CtrlClt, newContext.CtrlClt, newContext)
-	totpTokenProvider := posture.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
+	totpTokenProvider := edge_apis.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext, multiSubmitter, totpTokenProvider, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {

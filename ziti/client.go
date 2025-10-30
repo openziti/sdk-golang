@@ -71,20 +71,21 @@ type CtrlClient struct {
 	capabilitiesLoaded               atomic.Bool
 }
 
-func (self *CtrlClient) RequestTotpToken(code string) <-chan posture.TotpTokenResult {
-	totpTokenResultChan := make(chan posture.TotpTokenResult)
+// RequestTotpToken implements TotpTokenRequestor, exchanging a TOTP code for a TOTP token.
+func (self *CtrlClient) RequestTotpToken(code string) <-chan apis.TotpTokenResult {
+	totpTokenResultChan := make(chan apis.TotpTokenResult)
 
 	go func() {
 		totpToken, err := self.CreateTotpToken(code)
 
 		if err != nil {
-			totpTokenResultChan <- posture.TotpTokenResult{
+			totpTokenResultChan <- apis.TotpTokenResult{
 				Err: fmt.Errorf("could not request totp token: %v", err),
 			}
 			return
 		}
 
-		totpTokenResultChan <- posture.TotpTokenResult{
+		totpTokenResultChan <- apis.TotpTokenResult{
 			Token:    *totpToken.Token,
 			IssuedAt: time.Time(*totpToken.IssuedAt),
 			Err:      nil,
@@ -94,6 +95,7 @@ func (self *CtrlClient) RequestTotpToken(code string) <-chan posture.TotpTokenRe
 	return totpTokenResultChan
 }
 
+// CreateTotpToken submits a TOTP code to the controller and returns a TOTP token.
 func (self *CtrlClient) CreateTotpToken(code string) (*rest_model.TotpToken, error) {
 	params := current_api_session.NewCreateTotpTokenParams()
 	params.MfaValidation = &rest_model.MfaCode{
@@ -306,7 +308,8 @@ func (self *CtrlClient) GetIdentity() (identity.Identity, error) {
 		}
 	}
 
-	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{self.ApiSessionCertificate}, self.ApiSessionPrivateKey, self.HttpTransport.TLSClientConfig.RootCAs), nil
+	rootCaPool := self.TlsAwareTransport.GetTlsClientConfig().RootCAs
+	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{self.ApiSessionCertificate}, self.ApiSessionPrivateKey, rootCaPool), nil
 }
 
 // EnsureApiSessionCertificate will create an ApiSessionCertificate if one does not already exist.

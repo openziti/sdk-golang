@@ -56,12 +56,15 @@ type OidcEnabledApi interface {
 
 // ApiClientConfig contains configuration options for creating API clients.
 type ApiClientConfig struct {
-	ApiUrls      []*url.URL
-	CaPool       *x509.CertPool
-	TotpCallback func(chan string)
-	Proxy        func(r *http.Request) (*url.URL, error)
+	ApiUrls          []*url.URL
+	CaPool           *x509.CertPool
+	TotpCodeProvider TotpCodeProvider
+	Components       *Components
+	Proxy            func(r *http.Request) (*url.URL, error)
 }
 
+// exchangeTokens exchanges OIDC tokens for refreshed tokens. It uses refresh tokens preferentially,
+// falling back to non-expired access tokens if refresh is unavailable.
 func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tokens[*oidc.IDTokenClaims], client *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 	subjectToken := ""
 	var subjectTokenType oidc.TokenType
@@ -159,6 +162,8 @@ func exchangeTokens(clientTransportPool ClientTransportPool, curTokens *oidc.Tok
 	return outTokens, nil
 }
 
+// isAccessTokenExpired checks if an access token is expired. If token metadata is unavailable,
+// it parses the JWT claims to determine expiration.
 func isAccessTokenExpired(tokens *oidc.Tokens[*oidc.IDTokenClaims]) (bool, error) {
 	if tokens.Expiry.IsZero() {
 		//meta data isn't set, we need to parse the token
@@ -211,7 +216,9 @@ func (a *authPayload) toValues() url.Values {
 	return result
 }
 
-func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, configTypeOverrides []string, httpClient *http.Client, totpCallback func(chan string)) (ApiSession, error) {
+// oidcAuth performs OIDC authentication using OAuth flow. It starts a local RP server, initiates OIDC login,
+// handles TOTP if required, and returns an OIDC session with tokens.
+func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, configTypeOverrides []string, httpClient *http.Client, totpCodeProvider TotpCodeProvider) (ApiSession, error) {
 	payload := &authPayload{
 		Authenticate: credentials.Payload(),
 	}
@@ -228,8 +235,9 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 	certs := credentials.TlsCerts()
 
 	if len(certs) != 0 {
-		if transport, ok := httpClient.Transport.(*http.Transport); ok {
-			transport.TLSClientConfig.Certificates = certs
+		if transport, ok := httpClient.Transport.(TlsAwareTransport); ok {
+			tlsClientConf := transport.GetTlsClientConfig()
+			tlsClientConf.Certificates = certs
 			transport.CloseIdleConnections()
 		}
 	}
@@ -296,17 +304,20 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 
 		if totpRequired {
 
-			if totpCallback == nil {
+			if totpCodeProvider == nil {
 				return nil, errors.New("totp is required but not totp callback was defined")
 			}
-			codeChan := make(chan string)
-			go totpCallback(codeChan)
+
+			totpCodeResultCh := totpCodeProvider.GetTotpCode()
 
 			select {
-			case code := <-codeChan:
-				totpCode = code
+			case totpCodeResult := <-totpCodeResultCh:
+				if totpCodeResult.Err != nil {
+					return nil, fmt.Errorf("error getting totp code: %w", totpCodeResult.Err)
+				}
+				totpCode = totpCodeResult.Code
 			case <-time.After(30 * time.Minute):
-				return nil, fmt.Errorf("timedout waiting for totpT callback")
+				return nil, fmt.Errorf("timeout waiting for totp code provider")
 			}
 
 			resp, err = client.R().SetBody(&totpCodePayload{

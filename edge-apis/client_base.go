@@ -18,22 +18,25 @@ const (
 	TotpRequiredHeader  = "totp-required"
 )
 
-// AuthEnabledApi is used as a sentinel interface to detect APIs that support authentication and to work around a golang
-// limitation dealing with accessing field of generically typed fields.
+// AuthEnabledApi is a sentinel interface that detects APIs supporting authentication.
+// It provides methods for authenticating, managing sessions, and discovering controllers for high-availability.
 type AuthEnabledApi interface {
-	//Authenticate will attempt to issue an authentication request using the provided credentials and http client.
-	//These functions act as abstraction around the underlying go-swagger generated client and will use the default
-	//http client if not provided.
+	// Authenticate authenticates using the provided credentials and returns an ApiSession for subsequent authenticated requests.
 	Authenticate(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error)
+	// SetUseOidc forces OIDC mode (true) or legacy mode (false).
 	SetUseOidc(bool)
+	// ListControllers returns the list of available controllers for HA failover.
 	ListControllers() (*rest_model.ControllersList, error)
+	// GetClientTransportPool returns the transport pool managing multiple controller endpoints.
 	GetClientTransportPool() ClientTransportPool
+	// SetClientTransportPool sets the transport pool.
 	SetClientTransportPool(ClientTransportPool)
+	// RefreshApiSession refreshes an existing session.
 	RefreshApiSession(apiSession ApiSession, httpClient *http.Client) (ApiSession, error)
 }
 
-// BaseClient implements the Client interface specifically for the types specified in the ApiType constraint. It
-// provides shared functionality that all ApiType types require.
+// BaseClient provides shared authentication and session management for OpenZiti API clients.
+// It handles credential-based authentication, TLS configuration, session storage, and controller failover.
 type BaseClient[A ApiType] struct {
 	API            *A
 	AuthEnabledApi AuthEnabledApi
@@ -84,18 +87,19 @@ func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
 	apiType.SetAllowOidcDynamicallyEnabled(allow)
 }
 
-// Authenticate will attempt to use the provided credentials to authenticate via the underlying ApiType. On success
-// the API Session details will be returned and the current client will make authenticated requests on future
-// calls. On an error the API Session in use will be cleared and subsequent requests will become/continue to be
-// made in an unauthenticated fashion.
+// Authenticate authenticates using provided credentials, updating the TLS configuration based on the credential's CA pool.
+// On success, stores the session and processes controller endpoints for HA failover.
+// On failure, clears the session and credentials.
 func (self *BaseClient[A]) Authenticate(credentials Credentials, configTypesOverride []string) (ApiSession, error) {
 	self.Credentials = nil
 	self.ApiSession.Store(nil)
 
+	tlsClientConfig := self.TlsAwareTransport.GetTlsClientConfig()
+
 	if credCaPool := credentials.GetCaPool(); credCaPool != nil {
-		self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
+		tlsClientConfig.RootCAs = credCaPool
 	} else {
-		self.HttpTransport.TLSClientConfig.RootCAs = self.CaPool
+		tlsClientConfig.RootCAs = self.CaPool
 	}
 
 	apiSession, err := self.AuthEnabledApi.Authenticate(credentials, configTypesOverride, self.HttpClient)
@@ -116,10 +120,11 @@ func (self *BaseClient[A]) AuthenticateWithPreviousSession(credentials Credentia
 	self.Credentials = nil
 	self.ApiSession.Store(nil)
 
+	tlsClientConfig := self.TlsAwareTransport.GetTlsClientConfig()
 	if credCaPool := credentials.GetCaPool(); credCaPool != nil {
-		self.HttpTransport.TLSClientConfig.RootCAs = credCaPool
+		tlsClientConfig.RootCAs = credCaPool
 	} else {
-		self.HttpTransport.TLSClientConfig.RootCAs = self.CaPool
+		tlsClientConfig.RootCAs = self.CaPool
 	}
 
 	refreshedSession, refreshErr := self.AuthEnabledApi.RefreshApiSession(prevApiSession, self.HttpClient)
@@ -136,24 +141,46 @@ func (self *BaseClient[A]) AuthenticateWithPreviousSession(credentials Credentia
 	return refreshedSession, nil
 }
 
-// initializeComponents assembles the lower level components necessary for the go-swagger/openapi facilities.
+// initializeComponents assembles HTTP client infrastructure, either using provided Components or creating new ones.
+// If Components are provided with nil transport/client, they are initialized with warnings logged.
 func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
+	if config.Components != nil {
+
+		if config.Components.TlsAwareTransport == nil {
+			pfxlog.Logger().Warn("components were provided but the transport was nil, it is being initialized")
+			config.Components.TlsAwareTransport = NewTlsAwareHttpTransport(nil)
+		}
+
+		if config.Components.HttpClient == nil {
+			pfxlog.Logger().Warn("components were provided but the http client was nil, it is being initialized")
+			config.Components.HttpClient = NewHttpClient(config.Components.TlsAwareTransport)
+		}
+
+		self.Components = *config.Components
+		if config.Proxy != nil {
+			pfxlog.Logger().Warn("components were provided along with a proxy function on the ApiClientConfig, it is being ignored, if needed properly set on components")
+		}
+		return
+	}
+
 	components := NewComponentsWithConfig(&ComponentsConfig{
 		Proxy: config.Proxy,
 	})
-	components.HttpTransport.TLSClientConfig.RootCAs = config.CaPool
+
+	tlsClientConfig := components.TlsAwareTransport.GetTlsClientConfig()
+	tlsClientConfig.RootCAs = config.CaPool
 	components.CaPool = config.CaPool
 
 	self.Components = *components
 }
 
-// NewRuntime creates an OpenAPI runtime configured for the specified API endpoint.
+// NewRuntime creates an OpenAPI runtime for communicating with a controller endpoint. Used for HA failover to add multiple controller endpoints.
 func NewRuntime(apiUrl *url.URL, schemes []string, httpClient *http.Client) *openapiclient.Runtime {
 	return openapiclient.NewWithClient(apiUrl.Host, apiUrl.Path, schemes, httpClient)
 }
 
-// AuthenticateRequest implements the openapi runtime.ClientAuthInfoWriter interface from the OpenAPI libraries. It is used
-// to authenticate outgoing requests.
+// AuthenticateRequest authenticates outgoing API requests using the current session or credentials.
+// It implements the openapi runtime.ClientAuthInfoWriter interface.
 func (self *BaseClient[A]) AuthenticateRequest(request runtime.ClientRequest, registry strfmt.Registry) error {
 	if self.AuthInfoWriter != nil {
 		return self.AuthInfoWriter.AuthenticateRequest(request, registry)
@@ -184,8 +211,7 @@ func (self *BaseClient[A]) AuthenticateRequest(request runtime.ClientRequest, re
 	return nil
 }
 
-// ProcessControllers queries the authenticated controller for its list of peer controllers
-// and registers them for high-availability failover.
+// ProcessControllers discovers peer controllers and registers them for HA failover. Called after successful authentication.
 func (self *BaseClient[A]) ProcessControllers(authEnabledApi AuthEnabledApi) {
 	list, err := authEnabledApi.ListControllers()
 

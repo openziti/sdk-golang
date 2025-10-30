@@ -1,20 +1,22 @@
 package edge_apis
 
 import (
+	"crypto/tls"
 	"crypto/x509"
-	"github.com/openziti/edge-api/rest_util"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"time"
+
+	"github.com/openziti/edge-api/rest_util"
 )
 
 // Components provides the foundational HTTP client infrastructure for OpenAPI clients,
 // bundling the HTTP client, transport, and certificate pool as a cohesive unit.
 type Components struct {
-	HttpClient    *http.Client
-	HttpTransport *http.Transport
-	CaPool        *x509.CertPool
+	HttpClient        *http.Client
+	TlsAwareTransport TlsAwareTransport
+	CaPool            *x509.CertPool
 }
 
 // ComponentsConfig contains configuration options for creating Components.
@@ -22,41 +24,93 @@ type ComponentsConfig struct {
 	Proxy func(*http.Request) (*url.URL, error)
 }
 
-// NewComponents assembles a new set of components with reasonable production defaults.
-func NewComponents() *Components {
-	return NewComponentsWithConfig(&ComponentsConfig{
-		Proxy: http.ProxyFromEnvironment,
-	})
-}
-
 // NewComponentsWithConfig assembles a new set of components using the provided configuration.
 func NewComponentsWithConfig(cfg *ComponentsConfig) *Components {
-	tlsClientConfig, _ := rest_util.NewTlsConfig()
+	tlsAwareHttpTransport := NewTlsAwareHttpTransport(cfg)
+	httpClient := NewHttpClient(tlsAwareHttpTransport)
 
-	httpTransport := &http.Transport{
-		TLSClientConfig:       tlsClientConfig,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          10,
-		IdleConnTimeout:       10 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+	return &Components{
+		HttpClient:        httpClient,
+		TlsAwareTransport: tlsAwareHttpTransport,
 	}
+}
 
-	if cfg != nil && cfg.Proxy != nil {
-		httpTransport.Proxy = cfg.Proxy
-	}
-
+// NewHttpClient creates an HTTP client with the given transport.
+func NewHttpClient(tlsAwareHttpTransport TlsAwareTransport) *http.Client {
 	jar, _ := cookiejar.New(nil)
-
-	httpClient := &http.Client{
-		Transport:     httpTransport,
+	return &http.Client{
+		Transport:     tlsAwareHttpTransport,
 		CheckRedirect: nil,
 		Jar:           jar,
 		Timeout:       10 * time.Second,
 	}
+}
 
-	return &Components{
-		HttpClient:    httpClient,
-		HttpTransport: httpTransport,
+// TlsAwareTransport abstracts HTTP transport to allow API implementations to dynamically
+// configure TLS settings during authentication (e.g., adding client certificates) and manage
+// proxy configuration.
+type TlsAwareTransport interface {
+	http.RoundTripper
+
+	// GetTlsClientConfig returns the current TLS configuration.
+	GetTlsClientConfig() *tls.Config
+	// SetTlsClientConfig updates the TLS configuration.
+	SetTlsClientConfig(*tls.Config)
+
+	// SetProxy sets the proxy function for HTTP requests.
+	SetProxy(func(*http.Request) (*url.URL, error))
+	// GetProxy returns the current proxy function.
+	GetProxy() func(*http.Request) (*url.URL, error)
+
+	// CloseIdleConnections closes all idle HTTP connections.
+	CloseIdleConnections()
+}
+
+var _ TlsAwareTransport = (*TlsAwareHttpTransport)(nil)
+
+// TlsAwareHttpTransport is a concrete implementation of TlsAwareTransport that wraps http.Transport.
+type TlsAwareHttpTransport struct {
+	http.Transport
+}
+
+// NewTlsAwareHttpTransport creates a TlsAwareHttpTransport with default HTTP/2 and TLS settings.
+func NewTlsAwareHttpTransport(cfg *ComponentsConfig) *TlsAwareHttpTransport {
+	tlsClientConfig, _ := rest_util.NewTlsConfig()
+
+	authAwareTransport := &TlsAwareHttpTransport{
+		http.Transport{
+			TLSClientConfig:       tlsClientConfig,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          10,
+			IdleConnTimeout:       10 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
 	}
+
+	if cfg != nil && cfg.Proxy != nil {
+		authAwareTransport.Proxy = cfg.Proxy
+	}
+
+	return authAwareTransport
+}
+
+// GetProxy returns the proxy function currently set on the transport.
+func (a *TlsAwareHttpTransport) GetProxy() func(*http.Request) (*url.URL, error) {
+	return a.Proxy
+}
+
+// SetProxy sets the proxy function for the transport.
+func (a *TlsAwareHttpTransport) SetProxy(proxyFunc func(*http.Request) (*url.URL, error)) {
+	a.Proxy = proxyFunc
+}
+
+// GetTlsClientConfig returns the TLS configuration from the underlying transport.
+func (a *TlsAwareHttpTransport) GetTlsClientConfig() *tls.Config {
+	return a.Transport.TLSClientConfig
+}
+
+// SetTlsClientConfig updates the TLS configuration on the underlying transport.
+func (a *TlsAwareHttpTransport) SetTlsClientConfig(config *tls.Config) {
+	a.Transport.TLSClientConfig = config
 }

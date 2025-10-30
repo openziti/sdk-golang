@@ -26,6 +26,7 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/stringz"
+	"github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	cmap "github.com/orcaman/concurrent-map/v2"
 )
@@ -47,7 +48,7 @@ type CacheData struct {
 	MacAddresses []string
 	Os           OsInfo
 	Domain       string
-	TotpToken    TotpTokenResult
+	TotpToken    edge_apis.TotpTokenResult
 	OnWake       WakeEvent
 	OnUnlock     UnlockEvent
 	Index        uint64
@@ -104,7 +105,7 @@ type Cache struct {
 	MacProvider       MacProvider
 	OsProvider        OsProvider
 	ProcessProvider   ProcessProvider
-	TotpTokenProvider TotpTokenProvider
+	TotpTokenProvider edge_apis.TotpTokenProvider
 
 	lock        sync.Mutex
 	totpTimeout int64
@@ -114,7 +115,7 @@ type Cache struct {
 // NewCache creates a posture cache that monitors device state and coordinates posture response
 // submission. The cache uses the provided service provider to determine which posture checks
 // are active, the submitter to send responses, and the token provider for TOTP authentication.
-func NewCache(activeServiceProvider ActiveServiceProvider, submitter Submitter, totpTokenProvider TotpTokenProvider, closeNotify <-chan struct{}) *Cache {
+func NewCache(activeServiceProvider ActiveServiceProvider, submitter Submitter, totpTokenProvider edge_apis.TotpTokenProvider, closeNotify <-chan struct{}) *Cache {
 	cache := &Cache{
 		currentData:      NewCacheData(),
 		previousData:     NewCacheData(),
@@ -479,14 +480,14 @@ func (cache *Cache) SimulateUnlock() {
 }
 
 func (cache *Cache) SetTotpToken(token *rest_model.TotpToken) {
-	cache.currentData.TotpToken = TotpTokenResult{
+	cache.currentData.TotpToken = edge_apis.TotpTokenResult{
 		Token:    *token.Token,
 		IssuedAt: time.Time(*token.IssuedAt),
 	}
 }
 
-func (cache *Cache) SetTotpProviderFunc(f func() <-chan TotpTokenResult) {
-	p := TotpTokenProviderFunc(f)
+func (cache *Cache) SetTotpProviderFunc(f func() <-chan edge_apis.TotpTokenResult) {
+	p := edge_apis.TotpTokenProviderFunc(f)
 	cache.TotpTokenProvider = &p
 }
 

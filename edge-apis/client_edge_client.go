@@ -37,10 +37,10 @@ type ClientApiClient struct {
 // that have not been verified from an outside secret (such as an enrollment token).
 func NewClientApiClient(apiUrls []*url.URL, caPool *x509.CertPool, totpCallback func(chan string)) *ClientApiClient {
 	return NewClientApiClientWithConfig(&ApiClientConfig{
-		ApiUrls:      apiUrls,
-		CaPool:       caPool,
-		TotpCallback: totpCallback,
-		Proxy:        http.ProxyFromEnvironment,
+		ApiUrls:          apiUrls,
+		CaPool:           caPool,
+		TotpCodeProvider: NewTotpCodeProviderFromChStringFunc(totpCallback),
+		Proxy:            http.ProxyFromEnvironment,
 	})
 }
 
@@ -65,7 +65,7 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
 		ZitiEdgeClient:      newApi,
-		TotpCallback:        config.TotpCallback,
+		TotpCodeProvider:    config.TotpCodeProvider,
 		ClientTransportPool: transportPool,
 	}
 	ret.API = &api
@@ -94,18 +94,21 @@ type ZitiEdgeClient struct {
 	versionInfo *rest_model.Version
 	versionOnce sync.Once
 
-	TotpCallback        func(chan string)
+	TotpCodeProvider    TotpCodeProvider
 	ClientTransportPool ClientTransportPool
 }
 
+// GetClientTransportPool returns the transport pool managing multiple controller endpoints for failover.
 func (self *ZitiEdgeClient) GetClientTransportPool() ClientTransportPool {
 	return self.ClientTransportPool
 }
 
+// SetClientTransportPool sets the transport pool.
 func (self *ZitiEdgeClient) SetClientTransportPool(transportPool ClientTransportPool) {
 	self.ClientTransportPool = transportPool
 }
 
+// ListControllers returns the list of available controllers for high-availability failover.
 func (self *ZitiEdgeClient) ListControllers() (*rest_model.ControllersList, error) {
 	params := clientControllers.NewListControllersParams()
 	resp, err := self.Controllers.ListControllers(params, nil)
@@ -133,6 +136,7 @@ func (self *ZitiEdgeClient) Authenticate(credentials Credentials, configTypesOve
 	return self.legacyAuth(credentials, configTypesOverrides, httpClient)
 }
 
+// legacyAuth performs zt-session token based authentication.
 func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []string, httpClient *http.Client) (ApiSession, error) {
 	params := clientAuth.NewAuthenticateParams()
 	params.Auth = credentials.Payload()
@@ -145,8 +149,9 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 
 	certs := credentials.TlsCerts()
 	if len(certs) != 0 {
-		if transport, ok := httpClient.Transport.(*http.Transport); ok {
-			transport.TLSClientConfig.Certificates = certs
+		if transport, ok := httpClient.Transport.(TlsAwareTransport); ok {
+			tlsClientConf := transport.GetTlsClientConfig()
+			tlsClientConf.Certificates = certs
 			transport.CloseIdleConnections()
 		}
 	}
@@ -160,19 +165,23 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 	return &ApiSessionLegacy{Detail: resp.GetPayload().Data, RequestHeaders: credentials.GetRequestHeaders()}, err
 }
 
+// oidcAuth performs OIDC OAuth flow based authentication.
 func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
-	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCallback)
+	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCodeProvider)
 }
 
+// SetUseOidc forces OIDC mode (true) or legacy mode (false), overriding automatic detection.
 func (self *ZitiEdgeClient) SetUseOidc(use bool) {
 	self.useOidcExplicitlySet = true
 	self.useOidc = use
 }
 
+// SetAllowOidcDynamicallyEnabled enables automatic OIDC capability detection on the controller.
 func (self *ZitiEdgeClient) SetAllowOidcDynamicallyEnabled(allow bool) {
 	self.oidcDynamicallyEnabled = allow
 }
 
+// RefreshApiSession refreshes an existing API session (both legacy and OIDC types).
 func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient *http.Client) (ApiSession, error) {
 	switch s := apiSession.(type) {
 	case *ApiSessionLegacy:
@@ -205,10 +214,12 @@ func (self *ZitiEdgeClient) RefreshApiSession(apiSession ApiSession, httpClient 
 	return nil, errors.New("api session is an unknown type")
 }
 
+// ExchangeTokens exchanges OIDC tokens for refreshed tokens.
 func (self *ZitiEdgeClient) ExchangeTokens(curTokens *oidc.Tokens[*oidc.IDTokenClaims], httpClient *http.Client) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 	return exchangeTokens(self.ClientTransportPool, curTokens, httpClient)
 }
 
+// ControllerSupportsHa checks if the controller supports high-availability by inspecting its capabilities.
 func (self *ZitiEdgeClient) ControllerSupportsHa() bool {
 	self.doOnceCacheVersionInfo()
 
@@ -219,6 +230,7 @@ func (self *ZitiEdgeClient) ControllerSupportsHa() bool {
 	return false
 }
 
+// ControllerSupportsOidc checks if the controller supports OIDC authentication by inspecting its capabilities.
 func (self *ZitiEdgeClient) ControllerSupportsOidc() bool {
 	self.doOnceCacheVersionInfo()
 
@@ -229,6 +241,8 @@ func (self *ZitiEdgeClient) ControllerSupportsOidc() bool {
 	return false
 }
 
+// doOnceCacheVersionInfo caches the controller version information including capabilities on first call.
+// Subsequent calls are no-ops due to sync.Once synchronization.
 func (self *ZitiEdgeClient) doOnceCacheVersionInfo() {
 	self.versionOnce.Do(func() {
 		versionParams := clientInfo.NewListVersionParams()
