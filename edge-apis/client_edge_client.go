@@ -19,6 +19,9 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
+var _ OidcEnabledApi = (*ZitiEdgeClient)(nil)
+var _ AuthEnabledApi = (*ZitiEdgeClient)(nil)
+
 // ClientApiClient provides access to the Ziti Edge Client API for identity operations.
 type ClientApiClient struct {
 	BaseClient[ZitiEdgeClient]
@@ -96,6 +99,11 @@ type ZitiEdgeClient struct {
 
 	TotpCodeProvider    TotpCodeProvider
 	ClientTransportPool ClientTransportPool
+	OidcRedirectUri     string
+}
+
+func (self *ZitiEdgeClient) SetOidcRedirectUri(redirectUri string) {
+	self.OidcRedirectUri = redirectUri
 }
 
 // GetClientTransportPool returns the transport pool managing multiple controller endpoints for failover.
@@ -167,7 +175,16 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 
 // oidcAuth performs OIDC OAuth flow based authentication.
 func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
-	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCodeProvider)
+	config := &EdgeOidcAuthConfig{
+		ClientTransportPool: self.ClientTransportPool,
+		Credentials:         credentials,
+		ConfigTypeOverrides: configTypeOverrides,
+		HttpClient:          httpClient,
+		TotpCodeProvider:    self.TotpCodeProvider,
+		RedirectUri:         self.OidcRedirectUri,
+	}
+
+	return oidcAuth(config)
 }
 
 // SetUseOidc forces OIDC mode (true) or legacy mode (false), overriding automatic detection.

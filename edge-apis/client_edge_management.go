@@ -78,6 +78,7 @@ func NewManagementApiClientWithConfig(config *ApiClientConfig) *ManagementApiCli
 }
 
 var _ AuthEnabledApi = (*ZitiEdgeManagement)(nil)
+var _ OidcEnabledApi = (*ZitiEdgeManagement)(nil)
 
 // ZitiEdgeManagement is an alias of the go-swagger generated client that allows this package to add additional
 // functionality to the alias type to implement the AuthEnabledApi interface.
@@ -97,6 +98,11 @@ type ZitiEdgeManagement struct {
 
 	TotpCodeProvider    TotpCodeProvider
 	ClientTransportPool ClientTransportPool
+	OidcRedirectUri     string
+}
+
+func (self *ZitiEdgeManagement) SetOidcRedirectUri(redirectUri string) {
+	self.OidcRedirectUri = redirectUri
 }
 
 // SetClientTransportPool sets the transport pool.
@@ -170,7 +176,15 @@ func (self *ZitiEdgeManagement) legacyAuth(credentials Credentials, configTypes 
 
 // oidcAuth performs OIDC OAuth flow based authentication.
 func (self *ZitiEdgeManagement) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
-	return oidcAuth(self.ClientTransportPool, credentials, configTypeOverrides, httpClient, self.TotpCodeProvider)
+	config := &EdgeOidcAuthConfig{
+		ClientTransportPool: self.ClientTransportPool,
+		Credentials:         credentials,
+		ConfigTypeOverrides: configTypeOverrides,
+		HttpClient:          httpClient,
+		TotpCodeProvider:    self.TotpCodeProvider,
+		RedirectUri:         self.OidcRedirectUri,
+	}
+	return oidcAuth(config)
 }
 
 // SetUseOidc forces OIDC mode (true) or legacy mode (false), overriding automatic detection.

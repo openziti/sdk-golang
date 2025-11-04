@@ -1,6 +1,7 @@
 package edge_apis
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/ziti/edge/network"
@@ -228,6 +230,24 @@ type CertCredentials struct {
 // be provided and the certificate at index zero is assumed to be the leaf client certificate that pairs with the
 // provided private key. All other certificates are assumed to support the leaf client certificate as a chain.
 func NewCertCredentials(certs []*x509.Certificate, key crypto.PrivateKey) *CertCredentials {
+
+	leaf := certs[0]
+
+	leafPub := leaf.PublicKey
+	keySigner, ok := key.(crypto.Signer)
+
+	if ok {
+		keyPub := keySigner.Public()
+
+		leafPubBytes, _ := x509.MarshalPKIXPublicKey(leafPub)
+		keyPubBytes, _ := x509.MarshalPKIXPublicKey(keyPub)
+		if !bytes.Equal(leafPubBytes, keyPubBytes) {
+			pfxlog.Logger().Warn("key and leaf certificates do not match for NewCertCredentials, cannot verify certificate/key match")
+		}
+	} else {
+		pfxlog.Logger().Warn("key is not a crypto.Signer, cannot verify certificate/key match")
+	}
+
 	return &CertCredentials{
 		BaseCredentials: BaseCredentials{},
 		Certs:           certs,

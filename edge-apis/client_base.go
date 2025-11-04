@@ -87,6 +87,12 @@ func (self *BaseClient[A]) SetAllowOidcDynamicallyEnabled(allow bool) {
 	apiType.SetAllowOidcDynamicallyEnabled(allow)
 }
 
+func (self *BaseClient[A]) SetOidcRedirectUri(redirectUri string) {
+	v := any(self.API)
+	apiType := v.(OidcEnabledApi)
+	apiType.SetOidcRedirectUri(redirectUri)
+}
+
 // Authenticate authenticates using provided credentials, updating the TLS configuration based on the credential's CA pool.
 // On success, stores the session and processes controller endpoints for HA failover.
 // On failure, clears the session and credentials.

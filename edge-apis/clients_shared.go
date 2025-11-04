@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,6 +40,11 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
 )
+
+// DefaultOidcRedirectUri is the default redirect URI for the OIDC PKCE flow that satisfies the default OIDC redirects
+// for the Ziti Edge OIDC API. It is not an actual server, rather an intercepted redirect URI that is used to extract
+// the resulting OIDC tokens.
+const DefaultOidcRedirectUri = "http://localhost:8080/auth/callback"
 
 // ApiType is an interface constraint for generics. The underlying go-swagger types only have fields, which are
 // insufficient to attempt to make a generic type from. Instead, this constraint is used that points at the
@@ -55,6 +61,22 @@ type OidcEnabledApi interface {
 	// SetAllowOidcDynamicallyEnabled sets whether clients will check the controller for OIDC support or not. If supported
 	// OIDC is favored over legacy authentication.
 	SetAllowOidcDynamicallyEnabled(allow bool)
+
+	// SetOidcRedirectUri sets the redirect URI for the OIDC PKCE flow. The default value is used if not set.
+	// Should only be necessary to call for custom redirect controller configurations.
+	SetOidcRedirectUri(redirectUri string)
+}
+
+// EdgeOidcAuthConfig represents the options necessary to complete an OAuth 2.0 PKCE authentication flow against an
+// OpenZiti controller.
+type EdgeOidcAuthConfig struct {
+	ClientTransportPool ClientTransportPool
+	Credentials         Credentials
+	ConfigTypeOverrides []string
+	HttpClient          *http.Client
+	TotpCodeProvider    TotpCodeProvider
+	RedirectUri         string
+	ApiHost             string
 }
 
 // ApiClientConfig contains configuration options for creating API clients.
@@ -221,15 +243,15 @@ func (a *authPayload) toValues() url.Values {
 
 // oidcAuth performs OIDC authentication using OAuth flow with PKCE.
 // It handles TOTP if required and returns an OIDC session with tokens.
-func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, configTypeOverrides []string, httpClient *http.Client, totpCodeProvider TotpCodeProvider) (ApiSession, error) {
-	if credentials.Method() == AuthMethodEmpty {
+func oidcAuth(config *EdgeOidcAuthConfig) (ApiSession, error) {
+	if config.Credentials.Method() == AuthMethodEmpty {
 		return nil, fmt.Errorf("auth method %s cannot be used for authentication, please provide alternate credentials", AuthMethodEmpty)
 	}
 
-	certificates := credentials.TlsCerts()
+	certificates := config.Credentials.TlsCerts()
 
 	if len(certificates) != 0 {
-		if transport, ok := httpClient.Transport.(TlsAwareTransport); ok {
+		if transport, ok := config.HttpClient.Transport.(TlsAwareTransport); ok {
 			tlsClientConf := transport.GetTlsClientConfig()
 			tlsClientConf.Certificates = certificates
 			transport.CloseIdleConnections()
@@ -238,12 +260,12 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 
 	var outTokens *oidc.Tokens[*oidc.IDTokenClaims]
 
-	_, err := clientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
-
-		edgeOidcAuth := newEdgeOidcAuthenticator(transport, httpClient)
+	_, err := config.ClientTransportPool.TryTransportForF(func(transport *ApiClientTransport) (any, error) {
+		config.ApiHost = transport.ApiUrl.Host
+		edgeOidcAuth := NewEdgeOidcAuthenticator(config)
 
 		var err error
-		outTokens, err = edgeOidcAuth.Authenticate(credentials, totpCodeProvider, configTypeOverrides)
+		outTokens, err = edgeOidcAuth.Authenticate()
 
 		if err != nil {
 			return nil, err
@@ -258,50 +280,52 @@ func oidcAuth(clientTransportPool ClientTransportPool, credentials Credentials, 
 
 	return &ApiSessionOidc{
 		OidcTokens:     outTokens,
-		RequestHeaders: credentials.GetRequestHeaders(),
+		RequestHeaders: config.Credentials.GetRequestHeaders(),
 	}, nil
 }
 
-// edgeOidcAuthenticator handles the OAuth 2.0 PKCE authentication flow for the Ziti Edge API.
+// EdgeOidcAuthenticator handles the OAuth 2.0 PKCE authentication flow for the Ziti Edge API.
 // It submits user credentials to the authorization endpoint, handles optional TOTP verification,
 // and exchanges the authorization code for OIDC tokens. The HTTP client follows redirects
 // during the authorization flow and extracts the authorization code from the final redirect.
-type edgeOidcAuthenticator struct {
-	httpClient          *http.Client
-	configTypeOverrides []string
-	client              *resty.Client
-	apiHost             string
-	redirectUri         string
+type EdgeOidcAuthenticator struct {
+	*EdgeOidcAuthConfig
+	restyClient *resty.Client
 }
 
-// newEdgeOidcAuthenticator creates a new edgeOidcAuthenticator configured for PKCE authentication.
+// NewEdgeOidcAuthenticator creates a new EdgeOidcAuthenticator configured for PKCE authentication.
 // It sets up an HTTP client with a custom redirect policy that follows redirects during the
 // authorization flow but stops when the callback redirect URI is reached, allowing code extraction
 // from the redirect URL. The redirectUri parameter defines where the authorization server will
 // redirect with the authorization code in the query parameters.
-func newEdgeOidcAuthenticator(transport *ApiClientTransport, httpClient *http.Client) *edgeOidcAuthenticator {
-	const DefaultOidcRedirectUri = "http://localhost/auth/callback"
+func NewEdgeOidcAuthenticator(config *EdgeOidcAuthConfig) *EdgeOidcAuthenticator {
+	client := resty.NewWithClient(config.HttpClient)
 
-	client := resty.NewWithClient(httpClient)
+	if config.RedirectUri == "" {
+		config.RedirectUri = DefaultOidcRedirectUri
+	}
 
 	// allows resty to follow redirects for us during the OAuth flow, but not for the end PKCE callback
 	// there is no server running for that redirect to hit, as it is this code
 	client.SetRedirectPolicy(RedirectUntilUrlPrefix(DefaultOidcRedirectUri))
 
-	apiHost := transport.ApiUrl.Host
-
-	return &edgeOidcAuthenticator{
-		httpClient:  httpClient,
-		client:      client,
-		apiHost:     apiHost,
-		redirectUri: DefaultOidcRedirectUri,
+	return &EdgeOidcAuthenticator{
+		EdgeOidcAuthConfig: config,
+		restyClient:        client,
 	}
+}
+
+// SetRedirectUri sets the redirect URI for the authorization server. The default value is
+// included in the default Edge OIDC controller configuration, but if it has been set to custom
+// values, this function can be used to reflect that configuration.
+func (e *EdgeOidcAuthenticator) SetRedirectUri(redirectUri string) {
+	e.RedirectUri = redirectUri
 }
 
 // Authenticate performs the complete OAuth 2.0 PKCE authentication flow. It initiates authorization
 // with PKCE parameters, submits credentials and handles optional TOTP verification, then exchanges
 // the resulting authorization code for OIDC tokens.
-func (e *edgeOidcAuthenticator) Authenticate(credentials Credentials, totpCodeProvider TotpCodeProvider, configTypeOverrides []string) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+func (e *EdgeOidcAuthenticator) Authenticate() (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 	pkceParams, err := newPkceParameters()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate PKCE parameters: %w", err)
@@ -313,7 +337,7 @@ func (e *edgeOidcAuthenticator) Authenticate(credentials Credentials, totpCodePr
 		return nil, fmt.Errorf("failed to initiate authorization flow: %w", err)
 	}
 
-	redirectResp, err := e.handlePrimaryAndSecondaryAuth(verificationParams, credentials, totpCodeProvider, configTypeOverrides)
+	redirectResp, err := e.handlePrimaryAndSecondaryAuth(verificationParams)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +353,7 @@ func (e *edgeOidcAuthenticator) Authenticate(credentials Credentials, totpCodePr
 // finishOAuthFlow extracts the authorization code from the callback redirect and exchanges it for tokens.
 // The authorization server returns the code as a query parameter in the Location header of the redirect response.
 // The code is then used with the PKCE verifier to obtain OIDC tokens via the token endpoint.
-func (e *edgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, verificationParams *verificationParameters, pkceParams *pkceParameters) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, verificationParams *verificationParameters, pkceParams *pkceParameters) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
 	if redirectResp.StatusCode() != http.StatusFound {
 		return nil, fmt.Errorf("authentication failed, expected a 302, got %d", redirectResp.StatusCode())
 	}
@@ -368,24 +392,24 @@ func (e *edgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 }
 
 // handlePrimaryAndSecondaryAuth submits credentials to the authorization endpoint and handles optional TOTP.
-func (e *edgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams *verificationParameters, credentials Credentials, totpCodeProvider TotpCodeProvider, configTypeOverrides []string) (*resty.Response, error) {
-	loginUri := "https://" + e.apiHost + "/oidc/login/" + string(credentials.Method())
-	totpUri := "https://" + e.apiHost + "/oidc/login/totp"
+func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams *verificationParameters) (*resty.Response, error) {
+	loginUri := "https://" + e.ApiHost + "/oidc/login/" + string(e.Credentials.Method())
+	totpUri := "https://" + e.ApiHost + "/oidc/login/totp"
 
 	payload := &authPayload{
-		Authenticate:  credentials.Payload(),
+		Authenticate:  e.Credentials.Payload(),
 		AuthRequestId: verificationParams.AuthRequestId,
 	}
 
-	if e.configTypeOverrides != nil {
-		payload.ConfigTypes = e.configTypeOverrides
+	if e.ConfigTypeOverrides != nil {
+		payload.ConfigTypes = e.ConfigTypeOverrides
 	}
 
 	formData := payload.toValues()
-	req := e.client.R()
-	clientRequest := asClientRequest(req, e.client)
+	req := e.restyClient.R()
+	clientRequest := asClientRequest(req, e.restyClient)
 
-	err := credentials.AuthenticateRequest(clientRequest, strfmt.Default)
+	err := e.Credentials.AuthenticateRequest(clientRequest, strfmt.Default)
 	if err != nil {
 		return nil, err
 	}
@@ -410,11 +434,11 @@ func (e *edgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 		return nil, errors.New("response was not a redirect and TOTP is not required, unknown additional authentication steps are required but unsupported")
 	}
 
-	if totpCodeProvider == nil {
+	if e.TotpCodeProvider == nil {
 		return nil, errors.New("totp is required but no totp callback was defined")
 	}
 
-	totpCodeResultCh := totpCodeProvider.GetTotpCode()
+	totpCodeResultCh := e.TotpCodeProvider.GetTotpCode()
 	var totpCode string
 
 	select {
@@ -427,7 +451,7 @@ func (e *edgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 		return nil, fmt.Errorf("timeout waiting for totp code provider")
 	}
 
-	resp, err = e.client.R().SetBody(&totpCodePayload{
+	resp, err = e.restyClient.R().SetBody(&totpCodePayload{
 		MfaCode: rest_model.MfaCode{
 			Code: &totpCode,
 		},
@@ -451,28 +475,38 @@ func (e *edgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 }
 
 // initOAuthFlow initiates the OAuth authorization request with PKCE parameters and returns the authorization request ID.
-func (e *edgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*verificationParameters, error) {
+func (e *EdgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*verificationParameters, error) {
 	verificationParams := &verificationParameters{
 		State: generateRandomState(),
 		Nonce: generateNonce(),
 	}
 
-	authUrl := "https://" + e.apiHost + "/oidc/authorize?" + url.Values{
+	authUrl := "https://" + e.ApiHost + "/oidc/authorize?" + url.Values{
 		"client_id":             []string{"native"},
 		"response_type":         []string{"code"},
 		"scope":                 []string{"openid offline_access"},
 		"state":                 []string{verificationParams.State},
 		"code_challenge":        []string{pkceParams.Challenge},
 		"code_challenge_method": []string{pkceParams.Method},
-		"redirect_uri":          []string{e.redirectUri},
+		"redirect_uri":          []string{e.RedirectUri},
 		"nonce":                 []string{verificationParams.Nonce},
 	}.Encode()
 
-	resp, err := e.client.R().SetDoNotParseResponse(true).Get(authUrl)
+	resp, err := e.restyClient.R().SetDoNotParseResponse(true).Get(authUrl)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.RawResponse.Body.Close() }()
+
+	if resp.StatusCode() != http.StatusOK {
+		body, _ := io.ReadAll(resp.RawResponse.Body)
+
+		if len(body) == 0 {
+			body = []byte("<body was empty>")
+		}
+
+		return nil, fmt.Errorf("authentication request start failed with status %d, either a misconfigured request was sent or the expected redirect URL (%s) is not allowed: %s", resp.StatusCode(), e.RedirectUri, body)
+	}
 
 	verificationParams.AuthRequestId = resp.Header().Get(AuthRequestIdHeader)
 	if verificationParams.AuthRequestId == "" {
@@ -498,15 +532,15 @@ func RedirectUntilUrlPrefix(urlPrefixToStopAt ...string) resty.RedirectPolicy {
 }
 
 // exchangeAuthorizationCodeForTokens exchanges an authorization code and PKCE verifier for OIDC tokens.
-func (e *edgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, pkceParams *pkceParameters) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
-	tokenEndpoint := "https://" + e.apiHost + "/oidc/oauth/token"
+func (e *EdgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, pkceParams *pkceParameters) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	tokenEndpoint := "https://" + e.ApiHost + "/oidc/oauth/token"
 
-	tokenResp, err := e.client.R().SetFormData(map[string]string{
+	tokenResp, err := e.restyClient.R().SetFormData(map[string]string{
 		"grant_type":    "authorization_code",
 		"client_id":     "native",
 		"code_verifier": pkceParams.Verifier,
 		"code":          code,
-		"redirect_uri":  "http://localhost/auth/callback",
+		"redirect_uri":  DefaultOidcRedirectUri,
 	}).Post(tokenEndpoint)
 
 	if err != nil {
