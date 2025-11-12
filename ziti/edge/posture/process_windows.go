@@ -1,4 +1,4 @@
-// +build windows
+//go:build windows
 
 /*
 	Copyright 2019 NetFoundry Inc.
@@ -22,9 +22,10 @@ import (
 	"crypto/sha1"
 	"debug/pe"
 	"fmt"
-	"go.mozilla.org/pkcs7"
 	"os"
 	"strings"
+
+	"go.mozilla.org/pkcs7"
 )
 
 func isProcessPath(expectedPath, processPath string) bool {
