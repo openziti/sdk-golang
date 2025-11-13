@@ -1,3 +1,19 @@
+# Release notes 1.3.0
+
+## What's New
+
+* REST API ReEntry Support
+
+## API Session Resumption
+
+The OpenZiti Go SDK supports a `edge_apis` GoLang module. That module now supports API session resumption, enabling 
+API Sessions to be (un)marshalled to storage between runs. Useful for API-driven development like CLIs where operation
+is intemitent or over multiple application runs.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: ReEntry Support
+
 # Release notes 1.2.11
 
 ## Issues Fixed and Dependency Updates

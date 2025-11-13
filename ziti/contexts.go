@@ -26,6 +26,8 @@
 package ziti
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -38,7 +40,6 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/sdk-golang/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/pkg/errors"
 )
 
 var idCount atomic.Int64
@@ -120,7 +121,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		apiUrl, err := url.Parse(cfg.ZtAPI)
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not parse ZtAPI from configuration as URI: %s", apiStr)
+			return nil, fmt.Errorf("could not parse ZtAPI from configuration as URI: %s: %w", apiStr, err)
 		}
 
 		apiUrls = append(apiUrls, apiUrl)
@@ -129,7 +130,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	apiClientConfig := &edgeApis.ApiClientConfig{
 		ApiUrls: apiUrls,
 		CaPool:  cfg.Credentials.GetCaPool(),
-		TotpCallback: func(codeCh chan string) {
+		TotpCodeProvider: edgeApis.NewTotpCodeProviderFromChStringFunc(func(codeCh chan string) {
 			provider := rest_model.MfaProvidersZiti
 
 			authQuery := &rest_model.AuthQueryDetail{
@@ -145,7 +146,10 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 			newContext.Emit(EventAuthQuery, authQuery)
 
 			if *authQuery.Provider == rest_model.MfaProvidersZiti {
-				newContext.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(newContext.authenticateMfa))
+				newContext.Emit(EventMfaTotpCode, authQuery, MfaCodeResponse(func(code string) error {
+					codeCh <- code
+					return nil
+				}))
 
 				if newContext.Events().ListenerCount(EventMfaTotpCode) == 0 {
 					pfxlog.Logger().Debugf("no callback handler registered for provider: %v, event will still be emitted", *authQuery.Provider)
@@ -153,7 +157,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 
 				}
 			}
-		},
+		}),
 		Proxy: cfg.CtrlProxy,
 	}
 
@@ -170,7 +174,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	newContext.CtrlClt.SetAllowOidcDynamicallyEnabled(true)
 
 	multiSubmitter := posture.NewMultiSubmitter(newContext.CtrlClt, newContext.CtrlClt, newContext)
-	totpTokenProvider := posture.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
+	totpTokenProvider := edgeApis.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext, multiSubmitter, totpTokenProvider, newContext.closeNotify)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {
