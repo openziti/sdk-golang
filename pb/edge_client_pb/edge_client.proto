@@ -85,6 +85,7 @@ enum HeaderId {
   XgressAddress = 1030;
   InspectRequestedValues = 1031;
   SupportsPostureChecks = 1032;
+  StructuredError = 1033;
 }
 
 enum Error {
@@ -100,6 +101,7 @@ enum Error {
   InvalidPrecedence = 9;
   InvalidCost = 10;
   EncryptionDataMissing = 11;
+  InvalidApiSessionType = 12;
 }
 
 enum PrecedenceValue {
