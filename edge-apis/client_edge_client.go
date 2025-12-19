@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_client_api_client"
 	clientAuth "github.com/openziti/edge-api/rest_client_api_client/authentication"
 	clientControllers "github.com/openziti/edge-api/rest_client_api_client/controllers"
@@ -65,6 +67,10 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 		transportPool.Add(apiUrl, newRuntime)
 	}
 
+	if len(config.ApiUrls) > 1 {
+		ret.SetUseOidc(true)
+	}
+
 	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
 		ZitiEdgeClient:      newApi,
@@ -74,7 +80,7 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	ret.API = &api
 	ret.AuthEnabledApi = &api
 
-	api.doOnceCacheVersionInfo()
+	go api.doOnceCacheVersionInfo()
 
 	return ret
 }
@@ -262,12 +268,18 @@ func (self *ZitiEdgeClient) ControllerSupportsOidc() bool {
 // Subsequent calls are no-ops due to sync.Once synchronization.
 func (self *ZitiEdgeClient) doOnceCacheVersionInfo() {
 	self.versionOnce.Do(func() {
-		versionParams := clientInfo.NewListVersionParams()
+		for {
+			versionParams := clientInfo.NewListVersionParams()
 
-		versionResp, _ := self.Informational.ListVersion(versionParams)
-
-		if versionResp != nil {
-			self.versionInfo = versionResp.Payload.Data
+			versionResp, err := self.Informational.ListVersion(versionParams)
+			if versionResp != nil && err == nil {
+				self.versionInfo = versionResp.Payload.Data
+				return
+			}
+			if err != nil {
+				pfxlog.Logger().WithError(err).Error("failed to load controller information, trying again in 5s")
+			}
+			time.Sleep(5 * time.Second)
 		}
 	})
 }
