@@ -1,3 +1,42 @@
+# Release notes 1.3.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.3.1 -> v1.3.2](https://github.com/openziti/sdk-golang/compare/v1.3.1...v1.3.2)
+    * [Issue #847](https://github.com/openziti/sdk-golang/issues/847) - Ensure the initial version check succeeds, to ensure we don't legacy sessions on ha or oidc-enabled controllers
+
+* github.com/go-openapi/runtime: v0.29.0 -> v0.29.2
+* github.com/go-openapi/strfmt: v0.24.0 -> v0.25.0
+* github.com/go-resty/resty/v2: v2.16.5 -> v2.17.1
+* github.com/openziti/channel/v4: [v4.2.41 -> v4.2.43](https://github.com/openziti/channel/compare/v4.2.41...v4.2.43)
+* github.com/openziti/edge-api: [v0.26.51 -> v0.26.52](https://github.com/openziti/edge-api/compare/v0.26.51...v0.26.52)
+    * [Issue #164](https://github.com/openziti/edge-api/issues/164) - Add permissions list to identity
+
+* github.com/openziti/foundation/v2: [v2.0.79 -> v2.0.81](https://github.com/openziti/foundation/compare/v2.0.79...v2.0.81)
+    * [Issue #464](https://github.com/openziti/foundation/issues/464) - Add support for -pre in versions
+
+* github.com/openziti/identity: [v1.0.118 -> v1.0.120](https://github.com/openziti/identity/compare/v1.0.118...v1.0.120)
+* github.com/openziti/metrics: [v1.4.2 -> v1.4.3](https://github.com/openziti/metrics/compare/v1.4.2...v1.4.3)
+    * [Issue #56](https://github.com/openziti/metrics/issues/56) - underlying resources of reference counted meters are not cleaned up when reference count hits zero
+
+* github.com/openziti/transport/v2: [v2.0.198 -> v2.0.200](https://github.com/openziti/transport/compare/v2.0.198...v2.0.200)
+* github.com/zitadel/oidc/v3: v3.45.0 -> v3.45.1
+* golang.org/x/oauth2: v0.31.0 -> v0.33.0
+* golang.org/x/sys: v0.37.0 -> v0.38.0
+* google.golang.org/protobuf: v1.36.10 -> v1.36.11
+* github.com/go-openapi/analysis: v0.24.0 -> v0.24.1
+* github.com/go-openapi/errors: v0.22.3 -> v0.22.4
+* github.com/go-openapi/jsonreference: v0.21.2 -> v0.21.3
+* github.com/go-openapi/loads: v0.23.1 -> v0.23.2
+* github.com/go-openapi/spec: v0.22.0 -> v0.22.1
+* github.com/go-openapi/validate: v0.25.0 -> v0.25.1
+* go.mongodb.org/mongo-driver: v1.17.4 -> v1.17.6
+* golang.org/x/crypto: v0.43.0 -> v0.45.0
+* golang.org/x/net: v0.45.0 -> v0.47.0
+* golang.org/x/sync: v0.17.0 -> v0.18.0
+* golang.org/x/term: v0.36.0 -> v0.37.0
+* golang.org/x/text: v0.30.0 -> v0.31.0
+
 # Release notes 1.3.0
 
 ## What's New
