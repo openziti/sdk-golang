@@ -31,8 +31,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zitadel/oidc/v3 v3.45.1
 	go.mozilla.org/pkcs7 v0.9.0
-	golang.org/x/oauth2 v0.33.0
-	golang.org/x/sys v0.38.0
+	golang.org/x/oauth2 v0.34.0
+	golang.org/x/sys v0.39.0
 	google.golang.org/protobuf v1.36.11
 )
 
