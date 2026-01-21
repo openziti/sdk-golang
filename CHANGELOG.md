@@ -8,34 +8,41 @@
 * github.com/go-openapi/runtime: v0.29.0 -> v0.29.2
 * github.com/go-openapi/strfmt: v0.24.0 -> v0.25.0
 * github.com/go-resty/resty/v2: v2.16.5 -> v2.17.1
-* github.com/openziti/channel/v4: [v4.2.41 -> v4.2.43](https://github.com/openziti/channel/compare/v4.2.41...v4.2.43)
+* github.com/openziti/channel/v4: [v4.2.41 -> v4.2.50](https://github.com/openziti/channel/compare/v4.2.41...v4.2.50)
 * github.com/openziti/edge-api: [v0.26.51 -> v0.26.52](https://github.com/openziti/edge-api/compare/v0.26.51...v0.26.52)
     * [Issue #164](https://github.com/openziti/edge-api/issues/164) - Add permissions list to identity
 
-* github.com/openziti/foundation/v2: [v2.0.79 -> v2.0.81](https://github.com/openziti/foundation/compare/v2.0.79...v2.0.81)
+* github.com/openziti/foundation/v2: [v2.0.79 -> v2.0.84](https://github.com/openziti/foundation/compare/v2.0.79...v2.0.84)
     * [Issue #464](https://github.com/openziti/foundation/issues/464) - Add support for -pre in versions
 
-* github.com/openziti/identity: [v1.0.118 -> v1.0.120](https://github.com/openziti/identity/compare/v1.0.118...v1.0.120)
+* github.com/openziti/identity: [v1.0.118 -> v1.0.122](https://github.com/openziti/identity/compare/v1.0.118...v1.0.122)
 * github.com/openziti/metrics: [v1.4.2 -> v1.4.3](https://github.com/openziti/metrics/compare/v1.4.2...v1.4.3)
     * [Issue #56](https://github.com/openziti/metrics/issues/56) - underlying resources of reference counted meters are not cleaned up when reference count hits zero
 
-* github.com/openziti/transport/v2: [v2.0.198 -> v2.0.200](https://github.com/openziti/transport/compare/v2.0.198...v2.0.200)
-* github.com/zitadel/oidc/v3: v3.45.0 -> v3.45.1
-* golang.org/x/oauth2: v0.31.0 -> v0.33.0
-* golang.org/x/sys: v0.37.0 -> v0.38.0
+* github.com/openziti/secretstream: [v0.1.42 -> v0.1.46](https://github.com/openziti/secretstream/compare/v0.1.42...v0.1.46)
+* github.com/openziti/transport/v2: [v2.0.198 -> v2.0.205](https://github.com/openziti/transport/compare/v2.0.198...v2.0.205)
+* github.com/sirupsen/logrus: v1.9.3 -> v1.9.4
+* github.com/zitadel/oidc/v3: v3.45.0 -> v3.45.3
+* golang.org/x/oauth2: v0.31.0 -> v0.34.0
+* golang.org/x/sys: v0.37.0 -> v0.39.0
 * google.golang.org/protobuf: v1.36.10 -> v1.36.11
+* github.com/cespare/xxhash/v2: v2.3.0 (new)
 * github.com/go-openapi/analysis: v0.24.0 -> v0.24.1
 * github.com/go-openapi/errors: v0.22.3 -> v0.22.4
 * github.com/go-openapi/jsonreference: v0.21.2 -> v0.21.3
 * github.com/go-openapi/loads: v0.23.1 -> v0.23.2
 * github.com/go-openapi/spec: v0.22.0 -> v0.22.1
 * github.com/go-openapi/validate: v0.25.0 -> v0.25.1
+* github.com/zitadel/schema: v1.3.1 -> v1.3.2
 * go.mongodb.org/mongo-driver: v1.17.4 -> v1.17.6
-* golang.org/x/crypto: v0.43.0 -> v0.45.0
-* golang.org/x/net: v0.45.0 -> v0.47.0
-* golang.org/x/sync: v0.17.0 -> v0.18.0
-* golang.org/x/term: v0.36.0 -> v0.37.0
-* golang.org/x/text: v0.30.0 -> v0.31.0
+* go.opentelemetry.io/otel: v1.38.0 -> v1.39.0
+* go.opentelemetry.io/otel/metric: v1.38.0 -> v1.39.0
+* go.opentelemetry.io/otel/trace: v1.38.0 -> v1.39.0
+* golang.org/x/crypto: v0.43.0 -> v0.46.0
+* golang.org/x/net: v0.45.0 -> v0.48.0
+* golang.org/x/sync: v0.17.0 -> v0.19.0
+* golang.org/x/term: v0.36.0 -> v0.38.0
+* golang.org/x/text: v0.30.0 -> v0.33.0
 
 # Release notes 1.3.0
 

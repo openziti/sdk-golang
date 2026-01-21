@@ -42,12 +42,13 @@ import (
 const (
 	HeaderKeyUUID = 0
 
-	closedFlag            = 0
-	rxerStartedFlag       = 1
-	endOfCircuitRecvdFlag = 2
-	endOfCircuitSentFlag  = 3
-	closedTxer            = 4
-	rxPushModeFlag        = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
+	closedFlag                = 0
+	rxerStartedFlag           = 1
+	endOfCircuitRecvdFlag     = 2
+	endOfCircuitSentFlag      = 3
+	closedTxer                = 4
+	rxPushModeFlag            = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
+	postCreateAccessCheckDone = 6
 )
 
 var ErrWriteClosed = errors.New("write closed")
@@ -230,6 +231,14 @@ func (self *Xgress) IsCircuitStarted() bool {
 
 func (self *Xgress) firstCircuitStartReceived() bool {
 	return self.flags.CompareAndSet(rxerStartedFlag, false, true)
+}
+
+func (self *Xgress) IsPostCreateAccessCheckDone() bool {
+	return self.flags.IsSet(postCreateAccessCheckDone)
+}
+
+func (self *Xgress) SetPostCreateAccessCheckDone() {
+	self.flags.Set(postCreateAccessCheckDone, true)
 }
 
 func (self *Xgress) NewWriteAdapter() *WriteAdapter {
