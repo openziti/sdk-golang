@@ -29,7 +29,6 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
-	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 )
@@ -74,9 +73,8 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 		case conn, ok := <-listener.acceptC:
 			if ok && conn != nil {
 				return conn, nil
-			} else {
-				listener.closed.Store(true)
 			}
+			listener.closed.Store(true)
 		case <-ticker.C:
 		}
 	}
@@ -88,94 +86,9 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 	return nil, errors.New("listener is closed")
 }
 
-type edgeListener struct {
-	baseListener
-	token       string
-	edgeChan    *edgeHostConn
-	manualStart bool
-	established atomic.Bool
-	eventC      chan *edge.ListenerEvent
-	envF        func() xgress.Env
-}
-
-func (listener *edgeListener) Id() uint32 {
-	return listener.edgeChan.Id()
-}
-
-func (listener *edgeListener) UpdateCost(cost uint16) error {
-	return listener.updateCostAndPrecedence(&cost, nil)
-}
-
-func (listener *edgeListener) UpdatePrecedence(precedence edge.Precedence) error {
-	return listener.updateCostAndPrecedence(nil, &precedence)
-}
-
-func (listener *edgeListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
-	return listener.updateCostAndPrecedence(&cost, &precedence)
-}
-
-func (listener *edgeListener) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
-	logger := pfxlog.Logger().
-		WithField("connId", listener.edgeChan.Id()).
-		WithField("serviceName", listener.edgeChan.serviceName).
-		WithField("session", listener.token)
-
-	logger.Debug("sending update bind request to edge router")
-	request := edge.NewUpdateBindMsg(listener.edgeChan.Id(), listener.token, cost, precedence)
-	listener.edgeChan.TraceMsg("updateCostAndPrecedence", request)
-	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(listener.edgeChan.GetControlSender())
-}
-
-func (listener *edgeListener) SendHealthEvent(pass bool) error {
-	logger := pfxlog.Logger().
-		WithField("connId", listener.edgeChan.Id()).
-		WithField("serviceName", listener.edgeChan.serviceName).
-		WithField("session", listener.token).
-		WithField("health.status", pass)
-
-	logger.Debug("sending health event to edge router")
-	request := edge.NewHealthEventMsg(listener.edgeChan.Id(), listener.token, pass)
-	listener.edgeChan.TraceMsg("healthEvent", request)
-	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(listener.edgeChan.GetControlSender())
-}
-
-func (listener *edgeListener) Close() error {
-	return listener.close(true)
-}
-
-func (listener *edgeListener) close(closedByRemote bool) error {
-	if !listener.closed.CompareAndSwap(false, true) {
-		// already closed
-		return nil
-	}
-
-	edgeChan := listener.edgeChan
-
-	logger := pfxlog.Logger().
-		WithField("connId", listener.edgeChan.Id()).
-		WithField("sessionId", listener.token)
-
-	logger.Debug("removing listener for session")
-	edgeChan.hosting.Remove(listener.token)
-
-	defer func() {
-		edgeChan.close(closedByRemote)
-		listener.acceptC <- nil // signal listeners that listener is closed
-	}()
-
-	unbindRequest := edge.NewUnbindMsg(edgeChan.Id(), listener.token)
-	listener.edgeChan.TraceMsg("close", unbindRequest)
-	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(edgeChan.GetControlSender()); err != nil {
-		logger.WithError(err).Error("unable to unbind session for conn")
-		return err
-	}
-
-	return nil
-}
-
 type MultiListener interface {
 	edge.Listener
-	AddListener(listener edge.Listener, closeHandler func())
+	AddListener(listener edge.RouterHostConn, closeHandler func())
 	NotifyOfChildError(err error)
 	GetServiceName() string
 	GetService() *rest_model.ServiceDetail
@@ -189,7 +102,7 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 			service: service,
 			acceptC: make(chan edge.Conn),
 		},
-		listeners:      map[*edgeListener]struct{}{},
+		listeners:      map[*edgeHostConn]struct{}{},
 		getSessionF:    getSessionF,
 		listenerEventC: make(chan *edge.ListenerEvent, 3),
 	}
@@ -197,7 +110,7 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 
 type multiListener struct {
 	baseListener
-	listeners            map[*edgeListener]struct{}
+	listeners            map[*edgeHostConn]struct{}
 	listenerLock         sync.Mutex
 	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
@@ -221,7 +134,7 @@ func (self *multiListener) GetEstablishedCount() uint {
 	return count
 }
 
-func (self *multiListener) SetConnectionChangeHandler(handler func([]edge.Listener)) {
+func (self *multiListener) SetConnectionChangeHandler(handler func([]edge.RouterHostConn)) {
 	self.listenerEventHandler.Store(handler)
 
 	self.listenerLock.Lock()
@@ -229,12 +142,12 @@ func (self *multiListener) SetConnectionChangeHandler(handler func([]edge.Listen
 	self.notifyOfConnectionChange()
 }
 
-func (self *multiListener) GetConnectionChangeHandler() func([]edge.Listener) {
+func (self *multiListener) GetConnectionChangeHandler() func([]edge.RouterHostConn) {
 	val := self.listenerEventHandler.Load()
 	if val == nil {
 		return nil
 	}
-	return val.(func([]edge.Listener))
+	return val.(func([]edge.RouterHostConn))
 }
 
 func (self *multiListener) SetErrorEventHandler(handler func(error)) {
@@ -258,7 +171,7 @@ func (self *multiListener) NotifyOfChildError(err error) {
 
 func (self *multiListener) notifyOfConnectionChange() {
 	if handler := self.GetConnectionChangeHandler(); handler != nil {
-		var list []edge.Listener
+		var list []edge.RouterHostConn
 		for k := range self.listeners {
 			list = append(list, k)
 		}
@@ -338,12 +251,12 @@ func (self *multiListener) GetService() *rest_model.ServiceDetail {
 	return self.service
 }
 
-func (self *multiListener) AddListener(netListener edge.Listener, closeHandler func()) {
+func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHandler func()) {
 	if self.closed.Load() {
 		return
 	}
 
-	edgeListener, ok := netListener.(*edgeListener)
+	listener, ok := netListener.(*edgeHostConn)
 	if !ok {
 		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(self))
 		return
@@ -351,12 +264,12 @@ func (self *multiListener) AddListener(netListener edge.Listener, closeHandler f
 
 	self.listenerLock.Lock()
 	defer self.listenerLock.Unlock()
-	self.listeners[edgeListener] = struct{}{}
+	self.listeners[listener] = struct{}{}
 
 	closer := func() {
 		self.listenerLock.Lock()
 		defer self.listenerLock.Unlock()
-		delete(self.listeners, edgeListener)
+		delete(self.listeners, listener)
 
 		self.notifyOfConnectionChange()
 		go closeHandler()
@@ -364,10 +277,10 @@ func (self *multiListener) AddListener(netListener edge.Listener, closeHandler f
 
 	self.notifyOfConnectionChange()
 
-	go self.forward(edgeListener, closer)
+	go self.forward(listener, closer)
 }
 
-func (self *multiListener) forward(edgeListener *edgeListener, closeHandler func()) {
+func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func()) {
 	defer func() {
 		if err := edgeListener.Close(); err != nil {
 			pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)

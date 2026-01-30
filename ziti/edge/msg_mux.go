@@ -58,7 +58,7 @@ type MsgSink[T any] interface {
 	//   // Use connId for routing decisions
 	Id() uint32
 
-	// Accept processes an incoming message for this connection.
+	// AcceptMessage processes an incoming message for this connection.
 	// The message is guaranteed to be intended for this sink's connection ID.
 	// The sink should handle the message appropriately based on its type and content.
 	//
@@ -66,7 +66,7 @@ type MsgSink[T any] interface {
 	//   msg - the incoming message to process
 	//
 	// Example:
-	//   func (s *myMsgSink) Accept(msg *channel.Message) {
+	//   func (s *myMsgSink) AcceptMessage(msg *channel.Message) {
 	//       switch msg.ContentType {
 	//       case edge.ContentTypeData:
 	//           s.handleData(msg)
@@ -74,7 +74,7 @@ type MsgSink[T any] interface {
 	//           s.handleClose(msg)
 	//       }
 	//   }
-	Accept(msg *channel.Message)
+	AcceptMessage(msg *channel.Message)
 
 	// HandleMuxClose is called when the underlying multiplexer is closing.
 	// This gives the sink an opportunity to perform cleanup operations
@@ -365,7 +365,7 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 	}
 
 	if sink, found := mux.sinks.Get(connId); found {
-		sink.Accept(msg)
+		sink.AcceptMessage(msg)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
 		pfxlog.Logger().WithField("connId", int(connId)).Trace("no conn found for connection inspect")
 		resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))

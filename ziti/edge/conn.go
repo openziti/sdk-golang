@@ -44,13 +44,17 @@ func init() {
 
 type RouterClient interface {
 	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
-	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (Listener, error)
+	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
 	UpdateToken(token []byte, timeout time.Duration) error
 
 	SendPosture(creates []rest_model.PostureResponseCreate) error
+}
+
+type RouterHostConn interface {
+	Identifiable
 }
 
 type RouterConn interface {
@@ -81,7 +85,7 @@ type Listener interface {
 type SessionListener interface {
 	Listener
 	GetCurrentSession() *rest_model.SessionDetail
-	SetConnectionChangeHandler(func(conn []Listener))
+	SetConnectionChangeHandler(func(conn []RouterHostConn))
 	SetErrorEventHandler(func(error))
 	GetErrorEventHandler() func(error)
 }
@@ -277,7 +281,9 @@ func (options *ListenOptions) String() string {
 type ListenerEventType int
 
 const (
-	ListenerEstablished ListenerEventType = 1
+	ListenerEstablished       ListenerEventType = 1
+	ListenerErrorStartOver    ListenerEventType = 2
+	ListenerErrorNotRetriable ListenerEventType = 3
 )
 
 type ListenerEvent struct {
