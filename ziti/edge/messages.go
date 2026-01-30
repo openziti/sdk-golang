@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/michaelquigley/pfxlog"
@@ -128,7 +129,33 @@ const (
 	ErrorCodeInvalidCost                 = uint32(edge_client_pb.Error_InvalidCost)
 	ErrorCodeEncryptionDataMissing       = uint32(edge_client_pb.Error_EncryptionDataMissing)
 	ErrorCodeInvalidApiSessionType       = uint32(edge_client_pb.Error_InvalidApiSessionType)
+	ErrorCodeInvalidInstanceId           = uint32(edge_client_pb.Error_InvalidInstanceId)
+	ErrorCodeAccessDenied                = uint32(edge_client_pb.Error_AccessDenied)
 )
+
+type RetryHint byte
+
+const (
+	RetryDefault      RetryHint = 0
+	RetryTooBusy      RetryHint = 1
+	RetryStartOver    RetryHint = 2
+	RetryNotRetriable RetryHint = 3
+)
+
+func (r RetryHint) String() string {
+	switch r {
+	case RetryDefault:
+		return "RetryDefault"
+	case RetryTooBusy:
+		return "RetryTooBusy"
+	case RetryStartOver:
+		return "RetryStartOver"
+	case RetryNotRetriable:
+		return "RetryNotRetriable"
+	default:
+		return "Unknown"
+	}
+}
 
 const (
 	PrecedenceDefault  = Precedence(edge_client_pb.PrecedenceValue_Default)
@@ -609,4 +636,49 @@ func UnmarshalInspectResult(msg *channel.Message) (*InspectResult, error) {
 	}
 
 	return nil, errors.Errorf("unexpected response. received %v instead of inspect result message", msg.ContentType)
+}
+
+type Error struct {
+	Message   string    `json:"message"`
+	Code      uint32    `json:"code"`
+	Cause     error     `json:"cause"`
+	RetryHint RetryHint `json:"retryHint"`
+}
+
+func (e Error) Error() string {
+	ret := fmt.Errorf("code: %d, message: %s", e.Code, e.Message).Error()
+
+	if e.Cause != nil {
+		ret += fmt.Sprintf(", Cause: %v", e.Cause)
+	}
+
+	return ret
+}
+
+func (e Error) Unwrap() error {
+	return e.Cause
+}
+
+func (e Error) ApplyToMsg(msg *channel.Message) {
+	errAsJson, err := json.Marshal(e)
+
+	if err != nil {
+		return
+	}
+	if len(errAsJson) > 0 {
+		msg.Headers.PutStringHeader(StructuredError, string(errAsJson))
+		msg.Headers.PutUint32Header(ErrorCodeHeader, e.Code)
+	}
+}
+
+func ErrorFromMsg(msg *channel.Message) *Error {
+	if jsonFormat, found := msg.Headers.GetStringHeader(StructuredError); found {
+		e := &Error{}
+		if err := json.Unmarshal([]byte(jsonFormat), e); err != nil {
+			pfxlog.Logger().WithError(err).Error("failed to unmarshal structured error message")
+			return nil
+		}
+		return e
+	}
+	return nil
 }
