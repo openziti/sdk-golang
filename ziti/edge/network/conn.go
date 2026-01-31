@@ -63,7 +63,7 @@ var _ edge.Conn = &edgeConn{}
 //   - Manages connection lifecycle from establishment to termination
 //
 // Message Flow:
-//  1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.Accept()
+//  1. Remote peer sends data → Edge router → msgMux routes to this edgeConn.AcceptMessage()
 //  2. edgeConn.Accept() processes message based on content type (data, state, ack, etc.)
 //  3. Application reads data via Read() method from internal buffer
 //  4. Application writes data via Write() method, which sends to edge router
@@ -290,8 +290,8 @@ func (conn *edgeConn) GetState() string {
 	return string(jsonOutput)
 }
 
-func (conn *edgeConn) Accept(msg *channel.Message) {
-	conn.TraceMsg("Accept", msg)
+func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
+	conn.TraceMsg("AcceptMessage", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
 		resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
