@@ -27,7 +27,6 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/pkg/errors"
 )
 
@@ -160,16 +159,21 @@ func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 	return fmt.Errorf("could not update token for router [%s]: %w", conn.Key(), err)
 }
 
-func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, keyPair *kx.KeyPair) *edgeHostConn {
+func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) *edgeHostConn {
 	id := conn.mux.GetNextId()
 
 	edgeCh := &edgeHostConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
 		msgMux:      conn.mux,
 		serviceName: *service.Name,
-		keyPair:     keyPair,
-		crypto:      keyPair != nil,
-		hosting:     cmap.New[*edgeListener](),
+		keyPair:     options.KeyPair,
+		crypto:      options.KeyPair != nil,
+		service:     service,
+		acceptC:     make(chan edge.Conn, 10),
+		token:       *session.Token,
+		manualStart: options.ManualStart,
+		eventC:      options.GetEventChannel(),
+		envF:        envF,
 	}
 
 	// duplicate errors only happen on the server side, since the client controls ids
@@ -199,8 +203,8 @@ func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest
 	return dialConn, err
 }
 
-func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.Listener, error) {
-	ec := conn.NewListenConn(service, options.KeyPair)
+func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.RouterHostConn, error) {
+	ec := conn.NewListenConn(service, session, options, envF)
 
 	log := pfxlog.Logger().
 		WithField("connId", ec.Id()).
@@ -208,21 +212,21 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 		WithField("serviceId", *service.ID).
 		WithField("serviceName", *service.Name)
 
-	listener, err := ec.listen(session, service, options, envF)
-	if err != nil {
+	if err := ec.listen(session, service, options); err != nil {
 		log.WithError(err).Error("failed to establish listener")
 
-		if err2 := ec.Close(); err2 != nil {
-			log.WithError(err2).
-				Error("failed to cleanup listener for service after failed bind")
+		if closeErr := ec.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("failed to cleanup listener for service after failed bind")
 		}
-	} else {
-		if !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
-			listener.established.Store(true)
-		}
-		log.Debug("established listener")
+		return nil, err
 	}
-	return listener, err
+
+	if !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+		ec.established.Store(true)
+	}
+
+	log.Debug("established listener")
+	return ec, nil
 }
 
 func (conn *routerConn) Close() error {

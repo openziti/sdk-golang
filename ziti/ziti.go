@@ -2210,8 +2210,25 @@ func (mgr *listenerManager) run() {
 			}
 		case <-ticker.C:
 			mgr.makeMoreListeners()
-		case <-mgr.options.GetEventChannel():
-			mgr.notify(ListenerEstablished)
+		case evt := <-mgr.options.GetEventChannel():
+			switch evt.EventType {
+			case edge.ListenerEstablished:
+				mgr.notify(ListenerEstablished)
+			case edge.ListenerErrorStartOver:
+				log.Info("router indicated need to restart hosting, checking sessions")
+				time.Sleep(5 * time.Second)
+				mgr.session = nil
+				mgr.lastSessionRefresh = time.Time{}
+				if err := mgr.context.Authenticate(); err != nil {
+					log.WithError(err).Error("failed to authenticate")
+				}
+				mgr.refreshSession()
+			case edge.ListenerErrorNotRetriable:
+				log.Info("router indicated unfixable hosting error, closing listener")
+				if err := mgr.listener.Close(); err != nil {
+					log.WithError(err).Error("failed to close listener")
+				}
+			}
 		case <-mgr.context.closeNotify:
 			mgr.listener.CloseWithError(errors.New("context closed"))
 		}

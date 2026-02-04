@@ -18,6 +18,7 @@ package network
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -25,10 +26,10 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,10 +44,10 @@ import (
 //   - Manages service lifecycle (bind, unbind, close) with the edge router
 //
 // Message Flow:
-//   1. Client sends dial request → edgeHostConn.Accept() handles it
-//   2. edgeHostConn creates new edgeConn for the client
-//   3. edgeConn is added to msgMux for future message routing
-//   4. Client's data messages bypass edgeHostConn and go directly to edgeConn.Accept()
+//  1. Client sends dial request → edgeHostConn.AcceptMessage() handles it
+//  2. edgeHostConn creates new edgeConn for the client
+//  3. edgeConn is added to msgMux for future message routing
+//  4. Client's data messages bypass edgeHostConn and go directly to edgeConn.Accept()
 //
 // Thread Safety: All methods are safe for concurrent use.
 type edgeHostConn struct {
@@ -58,14 +59,6 @@ type edgeHostConn struct {
 	// Each accepted client gets an edgeConn that is registered with this mux.
 	// Future messages for specific clients are routed directly to their edgeConn.
 	msgMux edge.ConnMux[any]
-
-	// hosting maps session tokens to their corresponding edgeListener instances.
-	// Each token represents a service binding session with the edge router.
-	hosting cmap.ConcurrentMap[string, *edgeListener]
-
-	// closed indicates whether this hosting connection has been terminated.
-	// Used to prevent new operations on a closed connection.
-	closed atomic.Bool
 
 	// serviceName is the name of the service being hosted by this connection.
 	// Used for logging and debugging purposes.
@@ -88,6 +81,16 @@ type edgeHostConn struct {
 	// authentication policies, metrics collectors, or other service-wide state.
 	// Unlike client-specific data in edgeConn, this context applies to the entire service.
 	data atomic.Value
+
+	closed  atomic.Bool
+	service *rest_model.ServiceDetail
+	acceptC chan edge.Conn
+
+	token       string
+	manualStart bool
+	established atomic.Bool
+	eventC      chan *edge.ListenerEvent
+	envF        func() xgress.Env
 }
 
 // GetData retrieves arbitrary service-level context data associated with this hosting connection.
@@ -118,7 +121,7 @@ func (conn *edgeHostConn) SetData(data any) {
 	conn.data.Store(data)
 }
 
-// Accept implements edge.MsgSink and handles service-level messages for this hosting connection.
+// AcceptMessage implements edge.MsgSink and handles service-level messages for this hosting connection.
 // This method acts as the "receptionist" that processes incoming requests and manages
 // the service lifecycle. It does NOT handle individual client data messages - those
 // are routed directly to the appropriate edgeConn via msgMux.
@@ -133,8 +136,8 @@ func (conn *edgeHostConn) SetData(data any) {
 //   - msg: the incoming message to process
 //
 // Thread Safety: This method is safe for concurrent use.
-func (conn *edgeHostConn) Accept(msg *channel.Message) {
-	conn.TraceMsg("Accept", msg)
+func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
+	conn.TraceMsg("AcceptMessage", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
 		resp := edge.NewConnInspectResponse(0, edge.ConnTypeBind, conn.Inspect())
@@ -154,20 +157,82 @@ func (conn *edgeHostConn) Accept(msg *channel.Message) {
 			WithField("newConnId", newConnId).Debug("received dial request")
 		go conn.newChildConnection(msg)
 	case edge.ContentTypeStateClosed:
-		conn.close(true)
-	case edge.ContentTypeBindSuccess:
-		for entry := range conn.hosting.IterBuffered() {
-			entry.Val.established.Store(true)
-			event := &edge.ListenerEvent{
-				EventType: edge.ListenerEstablished,
+		if err := edge.ErrorFromMsg(msg); err != nil {
+			log := pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).
+				WithField("retryHint", err.RetryHint.String())
+			if errName, ok := edge_client_pb.Error_name[int32(err.Code)]; ok && err.Code > 0 {
+				log = log.WithField("errorCode", errName)
+			} else {
+				log = log.WithField("errorCode", err.Code)
 			}
-			select {
-			case entry.Val.eventC <- event:
-			default:
-				logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
+
+			log.Errorf("router reported hosting error: %s", err.Message)
+
+			var event *edge.ListenerEvent
+			switch err.RetryHint {
+			case edge.RetryStartOver:
+				event = &edge.ListenerEvent{EventType: edge.ListenerErrorStartOver}
+			case edge.RetryNotRetriable:
+				event = &edge.ListenerEvent{EventType: edge.ListenerErrorNotRetriable}
+			}
+
+			if event != nil {
+				select {
+				case conn.eventC <- event:
+				case <-time.After(time.Second):
+				}
 			}
 		}
+
+		conn.closeAndLogError(true)
+	case edge.ContentTypeBindSuccess:
+		conn.established.Store(true)
+		event := &edge.ListenerEvent{
+			EventType: edge.ListenerEstablished,
+		}
+		select {
+		case conn.eventC <- event:
+		default:
+			logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
+		}
 	}
+}
+
+func (conn *edgeHostConn) UpdateCost(cost uint16) error {
+	return conn.updateCostAndPrecedence(&cost, nil)
+}
+
+func (conn *edgeHostConn) UpdatePrecedence(precedence edge.Precedence) error {
+	return conn.updateCostAndPrecedence(nil, &precedence)
+}
+
+func (conn *edgeHostConn) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
+	return conn.updateCostAndPrecedence(&cost, &precedence)
+}
+
+func (conn *edgeHostConn) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
+	logger := pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("serviceName", conn.serviceName).
+		WithField("session", conn.token)
+
+	logger.Debug("sending update bind request to edge router")
+	request := edge.NewUpdateBindMsg(conn.Id(), conn.token, cost, precedence)
+	conn.TraceMsg("updateCostAndPrecedence", request)
+	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender())
+}
+
+func (conn *edgeHostConn) SendHealthEvent(pass bool) error {
+	logger := pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("serviceName", conn.serviceName).
+		WithField("session", conn.token).
+		WithField("health.status", pass)
+
+	logger.Debug("sending health event to edge router")
+	request := edge.NewHealthEventMsg(conn.Id(), conn.token, pass)
+	conn.TraceMsg("healthEvent", request)
+	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender())
 }
 
 func (conn *edgeHostConn) Inspect() string {
@@ -177,16 +242,12 @@ func (conn *edgeHostConn) Inspect() string {
 	result["closed"] = conn.closed.Load()
 	result["encryptionRequired"] = conn.crypto
 
-	hosting := map[string]interface{}{}
-	for entry := range conn.hosting.IterBuffered() {
-		hosting[entry.Key] = map[string]interface{}{
-			"closed":      entry.Val.closed.Load(),
-			"manualStart": entry.Val.manualStart,
-			"serviceId":   *entry.Val.service.ID,
-			"serviceName": *entry.Val.service.Name,
-		}
+	result["listener"] = map[string]interface{}{
+		"closed":      conn.closed.Load(),
+		"manualStart": conn.manualStart,
+		"serviceId":   *conn.service.ID,
+		"serviceName": *conn.service.Name,
 	}
-	result["hosting"] = hosting
 
 	jsonOutput, err := json.Marshal(result)
 	if err != nil {
@@ -204,10 +265,9 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	}
 	logger.WithField("token", token).Debug("logging token")
 
-	logger.Debug("looking up listener")
-	listener, found := conn.getListener(token)
-	if !found {
-		logger.Warn("listener not found")
+	logger.Debug("checking token")
+	if conn.token != token {
+		logger.Warn("invalid token")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
 		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
@@ -242,6 +302,18 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		circuitId:      circuitId,
 	}
 
+	cleanupAndReportError := func(description string, err error) {
+		logger.WithError(err).Error(description)
+
+		edgeCh.close(false)
+
+		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("%s (%s)", description, err.Error()))
+		reply.ReplyTo(message)
+		if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
+			logger.WithError(sendErr).Error("failed to send reply to dial request")
+		}
+	}
+
 	newConnLogger := pfxlog.Logger().
 		WithField("marker", marker).
 		WithField("connId", id).
@@ -249,26 +321,15 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		WithField("token", token).
 		WithField("circuitId", circuitId)
 
-	err := conn.msgMux.Add(edgeCh) // duplicate errors only happen on the server side, since client controls ids
-	if err != nil {
-		conn.close(true)
-
+	// duplicate errors only happen on the server side, since client controls ids
+	if err := conn.msgMux.Add(edgeCh); err != nil {
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
+		cleanupAndReportError("invalid connection id, already in use", err)
 		return
 	}
 
-	if err = edgeCh.setupFlowControl(message, xgress.Terminator, listener.envF); err != nil {
-		logger.WithError(err).Error("failed to start flow control")
-		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("failed to start flow control (%s)", err.Error()))
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
+	if err := edgeCh.setupFlowControl(message, xgress.Terminator, conn.envF); err != nil {
+		cleanupAndReportError("failed to start flow control", err)
 		return
 	}
 
@@ -279,23 +340,14 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 
 		if clientKey != nil {
+			var err error
 			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
-				logger.WithError(err).Error("failed to establish crypto session")
+				cleanupAndReportError("failed to establish crypto session", err)
+				return
 			}
 		} else {
 			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
 		}
-	}
-
-	if err != nil {
-		conn.close(true)
-		newConnLogger.WithError(err).Error("failed to establish connection")
-		reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
-		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
-			logger.WithError(err).Error("failed to send reply to dial request")
-		}
-		return
 	}
 
 	connHandler := &newConnHandler{
@@ -307,81 +359,86 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		circuitId:            circuitId,
 	}
 
-	if listener.manualStart {
+	if conn.manualStart {
 		edgeCh.acceptCompleteHandler = connHandler
-	} else if err := connHandler.dialSucceeded(); err != nil {
-		logger.Debug("calling dial succeeded")
+	} else if err, cleanupHandled := connHandler.dialSucceeded(); err != nil {
+		if !cleanupHandled {
+			cleanupAndReportError("failed to start connection", err)
+		}
 		return
 	}
 
-	listener.acceptC <- edgeCh
-}
+	newConnLogger.Debug("dial succeeded")
 
-func (conn *edgeHostConn) getListener(token string) (*edgeListener, bool) {
-	return conn.hosting.Get(token)
+	conn.acceptC <- edgeCh
 }
 
 func (conn *edgeHostConn) HandleMuxClose() error {
-	conn.close(true)
-	return nil
+	return conn.close(true)
 }
 
 func (conn *edgeHostConn) Close() error {
-	conn.close(false)
-	return nil
+	return conn.close(false)
 }
 
-func (conn *edgeHostConn) close(closedByRemote bool) {
+func (conn *edgeHostConn) closeAndLogError(closedByRemote bool) {
+	if err := conn.close(closedByRemote); err != nil {
+		pfxlog.Logger().WithError(err).Error("error closing connection")
+	}
+}
+
+func (conn *edgeHostConn) close(closedByRemote bool) error {
 	// everything in here should be safe to execute concurrently from outside the muxer loop,
 	// except the remove from mux call
 	if !conn.closed.CompareAndSwap(false, true) {
-		return
+		return nil
 	}
 
-	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker)
+	defer func() {
+		conn.acceptC <- nil // signal listeners that listener is closed
+	}()
+
+	log := pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("sessionId", conn.token).
+		WithField("marker", conn.marker).
+		WithField("serviceName", *conn.service.Name)
+	log.Debug("removing listener for session")
+
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
+	var errList []error
+
 	if !closedByRemote {
+		unbindRequest := edge.NewUnbindMsg(conn.Id(), conn.token)
+		conn.TraceMsg("close", unbindRequest)
+		if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+			log.WithError(err).Error("unable to unbind session for conn")
+			errList = append(errList, err)
+		}
+
 		msg := edge.NewStateClosedMsg(conn.Id(), "")
 		if err := conn.SendState(msg); err != nil {
 			log.WithError(err).Error("failed to send close message")
+			errList = append(errList, err)
 		}
 	}
 
-	for entry := range conn.hosting.IterBuffered() {
-		listener := entry.Val
-		if err := listener.close(closedByRemote); err != nil {
-			log.WithError(err).WithField("serviceName", *listener.service.Name).Error("failed to close listener")
-		}
-	}
+	return errors.Join(errList...)
 }
 
-func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions, envF func() xgress.Env) (*edgeListener, error) {
+func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) error {
 	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
 		WithField("connId", conn.Id()).
 		WithField("serviceName", *service.Name).
 		WithField("sessionId", *session.ID)
 
-	listener := &edgeListener{
-		baseListener: baseListener{
-			service: service,
-			acceptC: make(chan edge.Conn, 10),
-		},
-		token:       *session.Token,
-		edgeChan:    conn,
-		manualStart: options.ManualStart,
-		eventC:      options.GetEventChannel(),
-		envF:        envF,
-	}
-	logger.Debug("adding listener for session")
-	conn.hosting.Set(*session.Token, listener)
-
 	success := false
 	defer func() {
 		if !success {
 			logger.Debug("removing listener for session")
-			conn.unbind(logger, listener.token)
+			conn.unbind(logger, conn.token)
 		}
 	}()
 
@@ -395,30 +452,28 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.GetControlSender())
 	if err != nil {
 		logger.WithError(err).Error("failed to bind")
-		return nil, err
+		return err
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
 		msg := string(replyMsg.Body)
 		logger.Errorf("bind request resulted in disconnect. msg: (%v)", msg)
-		return nil, fmt.Errorf("attempt to use closed connection: %v", msg)
+		return fmt.Errorf("attempt to use closed connection: %v", msg)
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
 		logger.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
-		return nil, fmt.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+		return fmt.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
 	success = true
 	logger.Debug("connected")
 
-	return listener, nil
+	return nil
 }
 
 func (conn *edgeHostConn) unbind(logger *logrus.Entry, token string) {
 	logger.Debug("starting unbind")
-
-	conn.hosting.Remove(token)
 
 	unbindRequest := edge.NewUnbindMsg(conn.Id(), token)
 	if err := unbindRequest.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {

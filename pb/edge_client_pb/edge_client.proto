@@ -102,6 +102,8 @@ enum Error {
   InvalidCost = 10;
   EncryptionDataMissing = 11;
   InvalidApiSessionType = 12;
+  InvalidInstanceId = 13;
+  AccessDenied = 14;
 }
 
 enum PrecedenceValue {
@@ -131,14 +133,14 @@ message ServicePostureStateRequest {
 }
 
 message ServicePostureStateResponse {
-  map<string,ServicePostureState> states = 1;
+  map<string, ServicePostureState> states = 1;
 }
 
 message ServicePostureState {
   bool isPassing = 1;
   repeated string passingPolicyIds = 2;
   repeated string failingPolicyIds = 3;
-  map<string,Policy> policies = 4;
+  map<string, Policy> policies = 4;
 }
 
 message Policy {
@@ -146,7 +148,7 @@ message Policy {
   bool isPassing = 2;
   repeated string passingPostureQueryIds = 3;
   repeated string failingPostureQueryIds = 4;
-  map<string,PostureQuery> postureQueries = 5;
+  map<string, PostureQuery> postureQueries = 5;
 }
 
 message PostureQuery {
