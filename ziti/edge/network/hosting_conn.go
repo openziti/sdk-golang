@@ -26,11 +26,17 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	hostConnClosedFlag              = 0
+	hostConnDoNotSaveDialerIdentity = 1
 )
 
 // edgeHostConn represents a service hosting connection that acts as a "receptionist"
@@ -82,7 +88,7 @@ type edgeHostConn struct {
 	// Unlike client-specific data in edgeConn, this context applies to the entire service.
 	data atomic.Value
 
-	closed  atomic.Bool
+	flags   concurrenz.AtomicBitSet
 	service *rest_model.ServiceDetail
 	acceptC chan edge.Conn
 
@@ -239,11 +245,11 @@ func (conn *edgeHostConn) Inspect() string {
 	result := map[string]interface{}{}
 	result["id"] = conn.Id()
 	result["serviceName"] = conn.serviceName
-	result["closed"] = conn.closed.Load()
+	result["closed"] = conn.flags.IsSet(hostConnClosedFlag)
 	result["encryptionRequired"] = conn.crypto
 
 	result["listener"] = map[string]interface{}{
-		"closed":      conn.closed.Load(),
+		"closed":      conn.flags.IsSet(hostConnClosedFlag),
 		"manualStart": conn.manualStart,
 		"serviceId":   *conn.service.ID,
 		"serviceName": *conn.service.Name,
@@ -300,6 +306,19 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		appData:        message.Headers[edge.AppDataHeader],
 		marker:         marker,
 		circuitId:      circuitId,
+	}
+
+	if !conn.flags.IsSet(hostConnDoNotSaveDialerIdentity) {
+		if edgeCh.customState == nil {
+			edgeCh.customState = map[int32][]byte{}
+		}
+
+		if dialerIdentityId, ok := message.Headers[edge.DialerIdentityId]; ok {
+			edgeCh.customState[edge.DialerIdentityId] = dialerIdentityId
+		}
+		if dialerIdentityName, ok := message.Headers[edge.DialerIdentityName]; ok {
+			edgeCh.customState[edge.DialerIdentityName] = dialerIdentityName
+		}
 	}
 
 	cleanupAndReportError := func(description string, err error) {
@@ -390,7 +409,7 @@ func (conn *edgeHostConn) closeAndLogError(closedByRemote bool) {
 func (conn *edgeHostConn) close(closedByRemote bool) error {
 	// everything in here should be safe to execute concurrently from outside the muxer loop,
 	// except the remove from mux call
-	if !conn.closed.CompareAndSwap(false, true) {
+	if !conn.flags.CompareAndSet(hostConnClosedFlag, false, true) {
 		return nil
 	}
 
