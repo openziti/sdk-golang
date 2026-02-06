@@ -103,6 +103,8 @@ type ServiceConn interface {
 	TraceRoute(hops uint32, timeout time.Duration) (*TraceRouteResult, error)
 	GetCircuitId() string
 	GetStickinessToken() []byte
+	GetDialerIdentityId() string
+	GetDialerIdentityName() string
 }
 
 type Conn interface {
@@ -252,18 +254,19 @@ func NewListenOptions() *ListenOptions {
 }
 
 type ListenOptions struct {
-	Cost                  uint16
-	Precedence            Precedence
-	ConnectTimeout        time.Duration
-	MaxTerminators        int
-	Identity              string
-	IdentitySecret        string
-	BindUsingEdgeIdentity bool
-	ManualStart           bool
-	SdkFlowControl        bool
-	ListenerId            string
-	KeyPair               *kx.KeyPair
-	eventC                chan *ListenerEvent
+	Cost                    uint16
+	Precedence              Precedence
+	ConnectTimeout          time.Duration
+	MaxTerminators          int
+	Identity                string
+	IdentitySecret          string
+	BindUsingEdgeIdentity   bool
+	ManualStart             bool
+	SdkFlowControl          bool
+	DoNotSaveDialerIdentity bool
+	ListenerId              string
+	KeyPair                 *kx.KeyPair
+	eventC                  chan *ListenerEvent
 }
 
 func (options *ListenOptions) GetEventChannel() chan *ListenerEvent {

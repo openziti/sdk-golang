@@ -1,3 +1,16 @@
+# Release notes 1.4.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.4.0 -> v1.4.1](https://github.com/openziti/sdk-golang/compare/v1.4.0...v1.4.1)
+    * [Issue #860](https://github.com/openziti/sdk-golang/issues/860) - Make the dialing identity's id and name available on dialed connections
+
+* github.com/openziti/channel/v4: [v4.2.50 -> v4.2.52](https://github.com/openziti/channel/compare/v4.2.50...v4.2.52)
+* github.com/openziti/foundation/v2: [v2.0.84 -> v2.0.85](https://github.com/openziti/foundation/compare/v2.0.84...v2.0.85)
+* github.com/openziti/identity: [v1.0.122 -> v1.0.123](https://github.com/openziti/identity/compare/v1.0.122...v1.0.123)
+* github.com/openziti/transport/v2: [v2.0.205 -> v2.0.206](https://github.com/openziti/transport/compare/v2.0.205...v2.0.206)
+* golang.org/x/term: v0.38.0 -> v0.39.0
+
 # Release notes 1.4.0
 
 ## Notes

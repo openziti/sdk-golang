@@ -291,7 +291,7 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
-	for !self.closed.Load() && !edgeListener.closed.Load() {
+	for !self.closed.Load() && !edgeListener.flags.IsSet(hostConnClosedFlag) {
 		select {
 		case conn, ok := <-edgeListener.acceptC:
 			if !ok || conn == nil {

@@ -114,6 +114,8 @@ const (
 	InspectRequestValuesHeader     = int32(edge_client_pb.HeaderId_InspectRequestedValues)
 	SupportsPostureChecksHeader    = int32(edge_client_pb.HeaderId_SupportsPostureChecks)
 	StructuredError                = int32(edge_client_pb.HeaderId_StructuredError)
+	DialerIdentityId               = int32(edge_client_pb.HeaderId_DialerIdentityId)
+	DialerIdentityName             = int32(edge_client_pb.HeaderId_DialerIdentityName)
 )
 
 const (

@@ -176,6 +176,10 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 		envF:        envF,
 	}
 
+	if options.DoNotSaveDialerIdentity {
+		edgeCh.flags.Set(hostConnDoNotSaveDialerIdentity, true)
+	}
+
 	// duplicate errors only happen on the server side, since the client controls ids
 	if err := conn.mux.Add(edgeCh); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
