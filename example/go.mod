@@ -11,10 +11,10 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/openziti/edge-api v0.26.52
-	github.com/openziti/foundation/v2 v2.0.84
+	github.com/openziti/foundation/v2 v2.0.85
 	github.com/openziti/runzmd v1.0.83
 	github.com/openziti/sdk-golang v1.2.6
-	github.com/openziti/transport/v2 v2.0.205
+	github.com/openziti/transport/v2 v2.0.206
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
@@ -87,9 +87,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/openziti/channel/v4 v4.2.50 // indirect
+	github.com/openziti/channel/v4 v4.2.52 // indirect
 	github.com/openziti/go-term-markdown v1.0.1 // indirect
-	github.com/openziti/identity v1.0.122 // indirect
+	github.com/openziti/identity v1.0.123 // indirect
 	github.com/openziti/metrics v1.4.3 // indirect
 	github.com/openziti/secretstream v0.1.46 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
@@ -130,7 +130,7 @@ require (
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231106174013-bbf56f31fb17 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
