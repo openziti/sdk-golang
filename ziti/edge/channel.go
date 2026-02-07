@@ -14,7 +14,7 @@ const (
 	ChannelTypeDefault string = "edge.default"
 )
 
-func NewBaseSdkChannel(underlay channel.Underlay) *BaseSdkChannel {
+func NewBaseSdkChannel() *BaseSdkChannel {
 	senderContext := channel.NewSenderContext()
 
 	defaultMsgChan := make(chan channel.Sendable, 64)
@@ -23,7 +23,6 @@ func NewBaseSdkChannel(underlay channel.Underlay) *BaseSdkChannel {
 
 	result := &BaseSdkChannel{
 		SenderContext:  senderContext,
-		id:             underlay.ConnectionId(),
 		defaultSender:  channel.NewSingleChSender(senderContext, defaultMsgChan),
 		controlSender:  channel.NewSingleChSender(senderContext, controlMsgChan),
 		controlMsgChan: controlMsgChan,
@@ -34,7 +33,6 @@ func NewBaseSdkChannel(underlay channel.Underlay) *BaseSdkChannel {
 }
 
 type BaseSdkChannel struct {
-	id string
 	ch channel.MultiChannel
 	channel.SenderContext
 	controlSender channel.Sender
@@ -46,7 +44,7 @@ type BaseSdkChannel struct {
 	retryMsgChan            chan channel.Sendable
 }
 
-func (self *BaseSdkChannel) InitChannel(ch channel.MultiChannel) {
+func (self *BaseSdkChannel) ChannelCreated(ch channel.MultiChannel) {
 	self.ch = ch
 }
 
@@ -135,9 +133,9 @@ func (self *BaseSdkChannel) UpdateCtrlChannelAvailable(ch channel.MultiChannel) 
 	self.controlChannelAvailable.Store(ch.GetUnderlayCountsByType()[ChannelTypeControl] > 0)
 }
 
-func NewDialSdkChannel(dialer channel.DialUnderlayFactory, underlay channel.Underlay, maxDefaultChannels, maxControlChannel int) UnderlayHandlerSdkChannel {
+func NewDialSdkChannel(dialer channel.DialUnderlayFactory, maxDefaultChannels, maxControlChannel int) UnderlayHandlerSdkChannel {
 	result := &DialSdkChannel{
-		BaseSdkChannel: *NewBaseSdkChannel(underlay),
+		BaseSdkChannel: *NewBaseSdkChannel(),
 		dialer:         dialer,
 	}
 
@@ -153,7 +151,6 @@ type UnderlayHandlerSdkChannel interface {
 }
 
 type SdkChannel interface {
-	InitChannel(channel.MultiChannel)
 	GetChannel() channel.Channel
 	GetDefaultSender() channel.Sender
 	GetControlSender() channel.Sender

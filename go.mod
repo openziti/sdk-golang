@@ -16,13 +16,13 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.2.50
+	github.com/openziti/channel/v4 v4.2.52
 	github.com/openziti/edge-api v0.26.52
-	github.com/openziti/foundation/v2 v2.0.84
-	github.com/openziti/identity v1.0.122
+	github.com/openziti/foundation/v2 v2.0.85
+	github.com/openziti/identity v1.0.123
 	github.com/openziti/metrics v1.4.3
 	github.com/openziti/secretstream v0.1.46
-	github.com/openziti/transport/v2 v2.0.205
+	github.com/openziti/transport/v2 v2.0.206
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
@@ -93,7 +93,7 @@ require (
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect

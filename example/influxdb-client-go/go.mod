@@ -103,13 +103,13 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/openziti/channel/v4 v4.2.50 // indirect
+	github.com/openziti/channel/v4 v4.2.52 // indirect
 	github.com/openziti/edge-api v0.26.52 // indirect
-	github.com/openziti/foundation/v2 v2.0.84 // indirect
-	github.com/openziti/identity v1.0.122 // indirect
+	github.com/openziti/foundation/v2 v2.0.85 // indirect
+	github.com/openziti/identity v1.0.123 // indirect
 	github.com/openziti/metrics v1.4.3 // indirect
 	github.com/openziti/secretstream v0.1.46 // indirect
-	github.com/openziti/transport/v2 v2.0.205 // indirect
+	github.com/openziti/transport/v2 v2.0.206 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -150,7 +150,7 @@ require (
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

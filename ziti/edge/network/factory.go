@@ -75,7 +75,6 @@ func NewEdgeConnFactory(routerName, key string, owner RouterConnOwner) edge.Rout
 func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	if multiChannel, ok := binding.GetChannel().(channel.MultiChannel); ok {
 		conn.ch = multiChannel.GetUnderlayHandler().(edge.SdkChannel)
-		conn.ch.InitChannel(multiChannel)
 	} else {
 		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
 	}
