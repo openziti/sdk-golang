@@ -5,11 +5,25 @@
 * github.com/openziti/sdk-golang: [v1.4.0 -> v1.4.1](https://github.com/openziti/sdk-golang/compare/v1.4.0...v1.4.1)
     * [Issue #860](https://github.com/openziti/sdk-golang/issues/860) - Make the dialing identity's id and name available on dialed connections
 
-* github.com/openziti/channel/v4: [v4.2.50 -> v4.2.52](https://github.com/openziti/channel/compare/v4.2.50...v4.2.52)
-* github.com/openziti/foundation/v2: [v2.0.84 -> v2.0.85](https://github.com/openziti/foundation/compare/v2.0.84...v2.0.85)
-* github.com/openziti/identity: [v1.0.122 -> v1.0.123](https://github.com/openziti/identity/compare/v1.0.122...v1.0.123)
-* github.com/openziti/transport/v2: [v2.0.205 -> v2.0.206](https://github.com/openziti/transport/compare/v2.0.205...v2.0.206)
-* golang.org/x/term: v0.38.0 -> v0.39.0
+* github.com/openziti/channel/v4: [v4.2.50 -> v4.3.2](https://github.com/openziti/channel/compare/v4.2.50...v4.3.2)
+    * [Issue #225](https://github.com/openziti/channel/issues/225) - Add ChannelCreated to the UnderlayHandler API to allow handlers to be initialized with the channel before binding
+    * [Issue #224](https://github.com/openziti/channel/issues/224) - Update the underlay dispatcher to allow unknown underlay types to fall through to the default
+    * [Issue #222](https://github.com/openziti/channel/issues/222) - Allow injecting the underlay type into messages
+
+* github.com/openziti/foundation/v2: [v2.0.84 -> v2.0.86](https://github.com/openziti/foundation/compare/v2.0.84...v2.0.86)
+* github.com/openziti/identity: [v1.0.122 -> v1.0.124](https://github.com/openziti/identity/compare/v1.0.122...v1.0.124)
+* github.com/openziti/secretstream: [v0.1.46 -> v0.1.47](https://github.com/openziti/secretstream/compare/v0.1.46...v0.1.47)
+* github.com/openziti/transport/v2: [v2.0.205 -> v2.0.208](https://github.com/openziti/transport/compare/v2.0.205...v2.0.208)
+* github.com/zitadel/oidc/v3: v3.45.3 -> v3.45.4
+* golang.org/x/oauth2: v0.34.0 -> v0.35.0
+* golang.org/x/sys: v0.40.0 -> v0.41.0
+* github.com/zitadel/logging: v0.6.2 -> v0.7.0
+* go.opentelemetry.io/otel: v1.39.0 -> v1.40.0
+* go.opentelemetry.io/otel/metric: v1.39.0 -> v1.40.0
+* go.opentelemetry.io/otel/trace: v1.39.0 -> v1.40.0
+* golang.org/x/crypto: v0.46.0 -> v0.47.0
+* golang.org/x/net: v0.48.0 -> v0.49.0
+* golang.org/x/term: v0.38.0 -> v0.40.0
 
 # Release notes 1.4.0
 
