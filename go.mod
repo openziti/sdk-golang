@@ -1,6 +1,6 @@
 module github.com/openziti/sdk-golang
 
-go 1.24.7
+go 1.24.10
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -16,23 +16,23 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v4 v4.2.52
+	github.com/openziti/channel/v4 v4.3.2
 	github.com/openziti/edge-api v0.26.52
-	github.com/openziti/foundation/v2 v2.0.85
-	github.com/openziti/identity v1.0.123
+	github.com/openziti/foundation/v2 v2.0.86
+	github.com/openziti/identity v1.0.124
 	github.com/openziti/metrics v1.4.3
-	github.com/openziti/secretstream v0.1.46
-	github.com/openziti/transport/v2 v2.0.206
+	github.com/openziti/secretstream v0.1.47
+	github.com/openziti/transport/v2 v2.0.208
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	github.com/zitadel/oidc/v3 v3.45.3
+	github.com/zitadel/oidc/v3 v3.45.4
 	go.mozilla.org/pkcs7 v0.9.0
-	golang.org/x/oauth2 v0.34.0
-	golang.org/x/sys v0.40.0
+	golang.org/x/oauth2 v0.35.0
+	golang.org/x/sys v0.41.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -82,18 +82,18 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	github.com/zitadel/logging v0.6.2 // indirect
+	github.com/zitadel/logging v0.7.0 // indirect
 	github.com/zitadel/schema v1.3.2 // indirect
 	go.mongodb.org/mongo-driver v1.17.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.39.0 // indirect
-	go.opentelemetry.io/otel/metric v1.39.0 // indirect
-	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.opentelemetry.io/otel v1.40.0 // indirect
+	go.opentelemetry.io/otel/metric v1.40.0 // indirect
+	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
