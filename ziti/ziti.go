@@ -1682,7 +1682,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	var ch channel.Channel
 
 	if isGrouped, _ := channel.Headers(underlay.Headers()).GetBoolHeader(channel.IsGroupedHeader); isGrouped {
-		var dialSdkChannel = edge.NewDialSdkChannel(dialer, underlay, context.maxDefaultConnections, context.maxControlConnections)
+		var dialSdkChannel = edge.NewDialSdkChannel(dialer, context.maxDefaultConnections, context.maxControlConnections)
 		multiChannelConfig := &channel.MultiChannelConfig{
 			LogicalName:     fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl),
 			Options:         options,
