@@ -169,20 +169,12 @@ func (c *BaseCredentials) AddJWT(token string) {
 // AuthenticateRequest provides a base implementation to authenticate an outgoing request. This is provided here
 // for authentication methods such as `cert` which do not have to provide any more request level information.
 func (c *BaseCredentials) AuthenticateRequest(request runtime.ClientRequest, _ strfmt.Registry) error {
-	var errors []error
-
 	for hName, hVals := range c.AuthHeaders {
 		for _, hVal := range hVals {
-			err := request.SetHeaderParam(hName, hVal)
-			if err != nil {
-				errors = append(errors, err)
-			}
+			request.GetHeaderParams().Add(hName, hVal)
 		}
 	}
 
-	if len(errors) > 0 {
-		return network.MultipleErrors(errors)
-	}
 	return nil
 }
 
@@ -342,13 +334,9 @@ func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, reg 
 	if err != nil {
 		errors = append(errors, err)
 	}
-	err = request.SetHeaderParam("Authorization", "Bearer "+c.JWT)
-	if err != nil {
-		errors = append(errors, err)
-	}
-	if len(errors) > 0 {
-		return network.MultipleErrors(errors)
-	}
+
+	request.GetHeaderParams().Add("Authorization", "Bearer "+c.JWT)
+
 	return nil
 }
 
