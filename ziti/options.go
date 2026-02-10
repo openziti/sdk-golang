@@ -122,6 +122,10 @@ type ListenOptions struct {
 	// Requires router side support
 	SdkFlowControl *bool
 
+	// If set to true, the dialing identity's id and name will not be saved to the connection
+	// when a dial request is received.
+	DoNotSaveDialerIdentity bool
+
 	// Wait for N listeners before returning from the Listen call. By default it will return
 	// before any listeners have been established.
 	WaitForNEstablishedListeners uint

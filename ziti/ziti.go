@@ -1485,6 +1485,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	edgeListenOptions.Identity = options.Identity
 	edgeListenOptions.BindUsingEdgeIdentity = options.BindUsingEdgeIdentity
 	edgeListenOptions.ManualStart = options.ManualStart
+	edgeListenOptions.DoNotSaveDialerIdentity = options.DoNotSaveDialerIdentity
 
 	if edgeListenOptions.ConnectTimeout == 0 {
 		edgeListenOptions.ConnectTimeout = time.Minute

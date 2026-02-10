@@ -523,6 +523,14 @@ func (conn *edgeConn) GetStickinessToken() []byte {
 	return conn.customState[edge.StickinessTokenHeader]
 }
 
+func (conn *edgeConn) GetDialerIdentityId() string {
+	return string(conn.customState[edge.DialerIdentityId])
+}
+
+func (conn *edgeConn) GetDialerIdentityName() string {
+	return string(conn.customState[edge.DialerIdentityName])
+}
+
 func (conn *edgeConn) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")

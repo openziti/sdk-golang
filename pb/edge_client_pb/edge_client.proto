@@ -86,6 +86,8 @@ enum HeaderId {
   InspectRequestedValues = 1031;
   SupportsPostureChecks = 1032;
   StructuredError = 1033;
+  DialerIdentityId = 1034;
+  DialerIdentityName = 1035;
 }
 
 enum Error {
