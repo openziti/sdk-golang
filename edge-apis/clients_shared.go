@@ -25,7 +25,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -66,6 +65,22 @@ type OidcEnabledApi interface {
 	// SetOidcRedirectUri sets the redirect URI for the OIDC PKCE flow. The default value is used if not set.
 	// Should only be necessary to call for custom redirect controller configurations.
 	SetOidcRedirectUri(redirectUri string)
+}
+
+// OidcAuthResponses contains a set of http.Responses that occur during the OIDC flow. Used for inspection and testing.
+type OidcAuthResponses struct {
+
+	// InitResponse is the response from the initial OIDC request to obtain an auth request id/context
+	InitResponse *resty.Response
+
+	// PrimaryCredentialResponse is the response provided during primary credential authentication, nil if not reached due to OIDC init errors
+	PrimaryCredentialResponse *resty.Response
+
+	// TotpResponse is the response provided after the TOTP code was provided, nil if TOTP is not needed
+	TotpResponse *resty.Response
+
+	// RedirectResponse is the response provided after authentication, nil if never reached
+	RedirectResponse *resty.Response
 }
 
 // EdgeOidcAuthConfig represents the options necessary to complete an OAuth 2.0 PKCE authentication flow against an
@@ -327,28 +342,47 @@ func (e *EdgeOidcAuthenticator) SetRedirectUri(redirectUri string) {
 // with PKCE parameters, submits credentials and handles optional TOTP verification, then exchanges
 // the resulting authorization code for OIDC tokens.
 func (e *EdgeOidcAuthenticator) Authenticate() (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+	tokens, _, err := e.AuthenticateWithResponses()
+	return tokens, err
+}
+
+// AuthenticateWithResponses performs the complete OAuth 2.0 PKCE authentication flow. It initiates authorization
+// with PKCE parameters, submits credentials and handles optional TOTP verification, then exchanges
+// the resulting authorization code for OIDC tokens. Additionally, it returns the *resty.Responses that
+// completed during the OIDC flow. The values set are determined by how far the process is able to proceed.
+func (e *EdgeOidcAuthenticator) AuthenticateWithResponses() (*oidc.Tokens[*oidc.IDTokenClaims], *OidcAuthResponses, error) {
+	oidcAuthResponses := &OidcAuthResponses{}
+
 	pkceParams, err := newPkceParameters()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate PKCE parameters: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate PKCE parameters: %w", err)
 	}
 
-	verificationParams, err := e.initOAuthFlow(pkceParams)
+	verificationParams, initResp, err := e.initOAuthFlow(pkceParams)
+
+	oidcAuthResponses.InitResponse = initResp
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to initiate authorization flow: %w", err)
+		return nil, oidcAuthResponses, fmt.Errorf("failed to initiate authorization flow: %w", err)
 	}
 
-	redirectResp, err := e.handlePrimaryAndSecondaryAuth(verificationParams)
+	authResponses, err := e.handlePrimaryAndSecondaryAuth(verificationParams)
+
+	if authResponses != nil {
+		oidcAuthResponses.TotpResponse = authResponses.TotpResp
+		oidcAuthResponses.PrimaryCredentialResponse = authResponses.PrimaryResp
+		oidcAuthResponses.RedirectResponse = authResponses.RedirectResp
+	}
 	if err != nil {
-		return nil, err
+		return nil, oidcAuthResponses, err
 	}
 
-	tokens, err := e.finishOAuthFlow(redirectResp, verificationParams, pkceParams)
+	tokens, err := e.finishOAuthFlow(oidcAuthResponses.RedirectResponse, verificationParams, pkceParams)
 	if err != nil {
-		return nil, err
+		return nil, oidcAuthResponses, err
 	}
 
-	return tokens, nil
+	return tokens, oidcAuthResponses, nil
 }
 
 // finishOAuthFlow extracts the authorization code from the callback redirect and exchanges it for tokens.
@@ -392,8 +426,19 @@ func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 	return tokens, nil
 }
 
+// PrimaryAndSecondaryAuthResponses holds the HTTP responses collected during
+// the primary credential submission and optional secondary authentication
+// steps of the OIDC flow. Fields are nil if their corresponding step was not reached.
+type PrimaryAndSecondaryAuthResponses struct {
+	RedirectResp *resty.Response
+	PrimaryResp  *resty.Response
+	TotpResp     *resty.Response
+}
+
 // handlePrimaryAndSecondaryAuth submits credentials to the authorization endpoint and handles optional TOTP.
-func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams *verificationParameters) (*resty.Response, error) {
+func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams *verificationParameters) (*PrimaryAndSecondaryAuthResponses, error) {
+	authResponses := &PrimaryAndSecondaryAuthResponses{}
+
 	loginUri := "https://" + e.ApiHost + "/oidc/login/" + string(e.Credentials.Method())
 	totpUri := "https://" + e.ApiHost + "/oidc/login/totp"
 
@@ -412,31 +457,33 @@ func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 
 	err := e.Credentials.AuthenticateRequest(clientRequest, strfmt.Default)
 	if err != nil {
-		return nil, err
+		return authResponses, err
 	}
 
 	resp, err := req.SetFormDataFromValues(formData).Post(loginUri)
+	authResponses.PrimaryResp = resp
 	if err != nil {
-		return nil, err
+		return authResponses, err
 	}
 
 	// no additional secondary authentication required
 	if resp.StatusCode() == http.StatusFound {
-		return resp, nil
+		authResponses.RedirectResp = resp
+		return authResponses, nil
 	}
 
 	// something went wrong
 	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("credential submission failed with status %d", resp.StatusCode())
+		return authResponses, fmt.Errorf("credential submission failed with status %d", resp.StatusCode())
 	}
 
 	totpRequiredHeader := resp.Header().Get(TotpRequiredHeader)
 	if totpRequiredHeader == "" {
-		return nil, errors.New("response was not a redirect and TOTP is not required, unknown additional authentication steps are required but unsupported")
+		return authResponses, errors.New("response was not a redirect and TOTP is not required, unknown additional authentication steps are required but unsupported")
 	}
 
 	if e.TotpCodeProvider == nil {
-		return nil, errors.New("totp is required but no totp callback was defined")
+		return authResponses, errors.New("totp is required but no totp callback was defined")
 	}
 
 	totpCodeResultCh := e.TotpCodeProvider.GetTotpCode()
@@ -459,24 +506,27 @@ func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 		AuthRequestId: payload.AuthRequestId,
 	}).Post(totpUri)
 
+	authResponses.TotpResp = resp
+
 	if err != nil {
-		return nil, rest_util.WrapErr(err)
+		return authResponses, rest_util.WrapErr(err)
 	}
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
-		return nil, errors.New("totp code verified, but additional authentication is required that is not supported or not configured, cannot authenticate")
+		return authResponses, errors.New("totp code verified, but additional authentication is required that is not supported or not configured, cannot authenticate")
 	case http.StatusFound:
-		return resp, nil
+		authResponses.RedirectResp = resp
+		return authResponses, nil
 	case http.StatusBadRequest:
-		return nil, errors.New("totp code did not verify")
+		return authResponses, errors.New("totp code did not verify")
 	default:
-		return nil, fmt.Errorf("unexpected response code %d from TOTP verification", resp.StatusCode())
+		return authResponses, fmt.Errorf("unexpected response code %d from TOTP verification", resp.StatusCode())
 	}
 }
 
 // initOAuthFlow initiates the OAuth authorization request with PKCE parameters and returns the authorization request ID.
-func (e *EdgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*verificationParameters, error) {
+func (e *EdgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*verificationParameters, *resty.Response, error) {
 	verificationParams := &verificationParameters{
 		State: generateRandomState(),
 		Nonce: generateNonce(),
@@ -493,28 +543,27 @@ func (e *EdgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*veri
 		"nonce":                 []string{verificationParams.Nonce},
 	}.Encode()
 
-	resp, err := e.restyClient.R().SetDoNotParseResponse(true).Get(authUrl)
+	resp, err := e.restyClient.R().Get(authUrl)
 	if err != nil {
-		return nil, err
+		return nil, resp, err
 	}
-	defer func() { _ = resp.RawResponse.Body.Close() }()
 
 	if resp.StatusCode() != http.StatusOK {
-		body, _ := io.ReadAll(resp.RawResponse.Body)
+		body := resp.Body()
 
 		if len(body) == 0 {
 			body = []byte("<body was empty>")
 		}
 
-		return nil, fmt.Errorf("authentication request start failed with status %d, either a misconfigured request was sent or the expected redirect URL (%s) is not allowed: %s", resp.StatusCode(), e.RedirectUri, body)
+		return nil, resp, fmt.Errorf("authentication request start failed with status %d, either a misconfigured request was sent or the expected redirect URL (%s) is not allowed: %s", resp.StatusCode(), e.RedirectUri, body)
 	}
 
 	verificationParams.AuthRequestId = resp.Header().Get(AuthRequestIdHeader)
 	if verificationParams.AuthRequestId == "" {
-		return nil, errors.New("could not find auth request id header from authorize endpoint")
+		return nil, resp, errors.New("could not find auth request id header from authorize endpoint")
 	}
 
-	return verificationParams, nil
+	return verificationParams, resp, nil
 }
 
 // RedirectUntilUrlPrefix returns a redirect policy that follows redirects until the request URL
