@@ -116,6 +116,9 @@ type BaseCredentials struct {
 
 	// CaPool will override the client's default certificate pool if set to a non-nil value.
 	CaPool *x509.CertPool
+
+	// SecondaryJWT is a jwt that is sent on all requests (authentication and any other)
+	SecondaryJwt string
 }
 
 // Payload will produce the object used to construct the body of an authentication requests. The base version
@@ -163,8 +166,7 @@ func (c *BaseCredentials) AddRequestHeader(key, value string) {
 // AddJWT adds additional JWTs to the credentials. Used to satisfy secondary authentication/MFA requirements. The
 // provided token should be the base64 encoded version of the token. Convenience function for AddHeader.
 func (c *BaseCredentials) AddJWT(token string) {
-	c.AddAuthHeader("Authorization", "Bearer "+token)
-	c.AddRequestHeader("Authorization", "Bearer "+token)
+	c.SecondaryJwt = token
 }
 
 // AuthenticateRequest provides a base implementation to authenticate an outgoing request. This is provided here
@@ -175,6 +177,8 @@ func (c *BaseCredentials) AuthenticateRequest(request runtime.ClientRequest, _ s
 			request.GetHeaderParams().Add(hName, hVal)
 		}
 	}
+
+	request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
 
 	return nil
 }
@@ -192,6 +196,8 @@ func (c *BaseCredentials) ProcessRequest(request runtime.ClientRequest, _ strfmt
 			}
 		}
 	}
+
+	request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
 
 	if len(errors) > 0 {
 		return network.MultipleErrors(errors)
@@ -312,8 +318,7 @@ var _ Credentials = &JwtCredentials{}
 
 type JwtCredentials struct {
 	BaseCredentials
-	JWT                string
-	SendOnEveryRequest bool
+	JWT string
 }
 
 // NewJwtCredentials creates a Credentials instance based on a JWT obtained from an outside system.
@@ -329,12 +334,12 @@ func (c *JwtCredentials) Method() AuthMethod {
 }
 
 func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
+	request.GetHeaderParams().Add("Authorization", "Bearer "+c.JWT)
+
 	err := c.BaseCredentials.AuthenticateRequest(request, reg)
 	if err != nil {
 		return fmt.Errorf("base credentials could not authenticate the request: %w", err)
 	}
-
-	request.GetHeaderParams().Add("Authorization", "Bearer "+c.JWT)
 
 	return nil
 }
