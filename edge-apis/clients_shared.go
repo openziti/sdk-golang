@@ -67,7 +67,7 @@ type OidcEnabledApi interface {
 	SetOidcRedirectUri(redirectUri string)
 }
 
-// OidcAuthResponses contains a set of http.Responses that occur duing the OIDC flow. Used for inspection and testing.
+// OidcAuthResponses contains a set of http.Responses that occur during the OIDC flow. Used for inspection and testing.
 type OidcAuthResponses struct {
 
 	// InitResponse is the response from the initial OIDC request to obtain an auth request id/context
@@ -426,6 +426,9 @@ func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 	return tokens, nil
 }
 
+// PrimaryAndSecondaryAuthResponses holds the HTTP responses collected during
+// the primary credential submission and optional secondary authentication
+// steps of the OIDC flow. Fields are nil if their corresponding step was not reached.
 type PrimaryAndSecondaryAuthResponses struct {
 	RedirectResp *resty.Response
 	PrimaryResp  *resty.Response
@@ -540,7 +543,6 @@ func (e *EdgeOidcAuthenticator) initOAuthFlow(pkceParams *pkceParameters) (*veri
 		"nonce":                 []string{verificationParams.Nonce},
 	}.Encode()
 
-	//resp, err := e.restyClient.R().SetDoNotParseResponse(true).Get(authUrl)
 	resp, err := e.restyClient.R().Get(authUrl)
 	if err != nil {
 		return nil, resp, err

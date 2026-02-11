@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 
 	"github.com/go-openapi/runtime"
@@ -328,11 +329,9 @@ func (c *JwtCredentials) Method() AuthMethod {
 }
 
 func (c *JwtCredentials) AuthenticateRequest(request runtime.ClientRequest, reg strfmt.Registry) error {
-	var errors []error
-
 	err := c.BaseCredentials.AuthenticateRequest(request, reg)
 	if err != nil {
-		errors = append(errors, err)
+		return fmt.Errorf("base credentials could not authenticate the request: %w", err)
 	}
 
 	request.GetHeaderParams().Add("Authorization", "Bearer "+c.JWT)
