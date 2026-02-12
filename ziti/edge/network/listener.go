@@ -94,6 +94,8 @@ type MultiListener interface {
 	GetService() *rest_model.ServiceDetail
 	CloseWithError(err error)
 	GetEstablishedCount() uint
+	HasListenerForRouter(routerName string) bool
+	GetListenerCount() int
 }
 
 func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
@@ -102,9 +104,8 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 			service: service,
 			acceptC: make(chan edge.Conn),
 		},
-		listeners:      map[*edgeHostConn]struct{}{},
-		getSessionF:    getSessionF,
-		listenerEventC: make(chan *edge.ListenerEvent, 3),
+		listeners:   map[*edgeHostConn]struct{}{},
+		getSessionF: getSessionF,
 	}
 }
 
@@ -115,7 +116,6 @@ type multiListener struct {
 	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
-	listenerEventC       chan *edge.ListenerEvent
 }
 
 func (self *multiListener) Id() uint32 {
@@ -132,6 +132,23 @@ func (self *multiListener) GetEstablishedCount() uint {
 		}
 	}
 	return count
+}
+
+func (self *multiListener) HasListenerForRouter(routerName string) bool {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+	for v := range self.listeners {
+		if v.routerInfo.Name == routerName {
+			return true
+		}
+	}
+	return false
+}
+
+func (self *multiListener) GetListenerCount() int {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+	return len(self.listeners)
 }
 
 func (self *multiListener) SetConnectionChangeHandler(handler func([]edge.RouterHostConn)) {

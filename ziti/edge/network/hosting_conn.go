@@ -92,11 +92,12 @@ type edgeHostConn struct {
 	service *rest_model.ServiceDetail
 	acceptC chan edge.Conn
 
-	token       string
-	manualStart bool
-	established atomic.Bool
-	eventC      chan *edge.ListenerEvent
-	envF        func() xgress.Env
+	routerInfo   edge.EdgeRouterInfo
+	token        string
+	manualStart  bool
+	established  atomic.Bool
+	eventHandler edge.ListenerEventHandler
+	envF         func() xgress.Env
 }
 
 // GetData retrieves arbitrary service-level context data associated with this hosting connection.
@@ -111,6 +112,10 @@ type edgeHostConn struct {
 //   - Authentication and authorization policies
 //   - Metrics collectors or connection limits
 //   - Custom service handlers or middleware
+func (conn *edgeHostConn) GetEdgeRouterInfo() edge.EdgeRouterInfo {
+	return conn.routerInfo
+}
+
 func (conn *edgeHostConn) GetData() any {
 	return conn.data.Load()
 }
@@ -174,33 +179,18 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 
 			log.Errorf("router reported hosting error: %s", err.Message)
 
-			var event *edge.ListenerEvent
 			switch err.RetryHint {
 			case edge.RetryStartOver:
-				event = &edge.ListenerEvent{EventType: edge.ListenerErrorStartOver}
+				conn.eventHandler.NotifyStartOver()
 			case edge.RetryNotRetriable:
-				event = &edge.ListenerEvent{EventType: edge.ListenerErrorNotRetriable}
-			}
-
-			if event != nil {
-				select {
-				case conn.eventC <- event:
-				case <-time.After(time.Second):
-				}
+				conn.eventHandler.NotifyNotRetriable()
 			}
 		}
 
 		conn.closeAndLogError(true)
 	case edge.ContentTypeBindSuccess:
 		conn.established.Store(true)
-		event := &edge.ListenerEvent{
-			EventType: edge.ListenerEstablished,
-		}
-		select {
-		case conn.eventC <- event:
-		default:
-			logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
-		}
+		conn.eventHandler.NotifyEstablished()
 	}
 }
 
@@ -412,6 +402,8 @@ func (conn *edgeHostConn) close(closedByRemote bool) error {
 	if !conn.flags.CompareAndSet(hostConnClosedFlag, false, true) {
 		return nil
 	}
+
+	conn.msgMux.Remove(conn)
 
 	defer func() {
 		conn.acceptC <- nil // signal listeners that listener is closed

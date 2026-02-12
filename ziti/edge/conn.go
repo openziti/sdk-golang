@@ -54,8 +54,14 @@ type RouterClient interface {
 	SendPosture(creates []rest_model.PostureResponseCreate) error
 }
 
+type EdgeRouterInfo struct {
+	Name string
+	Addr string
+}
+
 type RouterHostConn interface {
 	Identifiable
+	GetEdgeRouterInfo() EdgeRouterInfo
 }
 
 type RouterConn interface {
@@ -63,7 +69,7 @@ type RouterConn interface {
 	io.Closer
 	RouterClient
 	IsClosed() bool
-	Key() string
+	GetRouterAddr() string
 	GetRouterName() string
 	GetBoolHeader(key int32) bool
 }
@@ -249,9 +255,7 @@ func (d DialOptions) GetConnectTimeout() time.Duration {
 }
 
 func NewListenOptions() *ListenOptions {
-	return &ListenOptions{
-		eventC: make(chan *ListenerEvent, 3),
-	}
+	return &ListenOptions{}
 }
 
 type ListenOptions struct {
@@ -267,11 +271,7 @@ type ListenOptions struct {
 	DoNotSaveDialerIdentity bool
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
-	eventC                  chan *ListenerEvent
-}
-
-func (options *ListenOptions) GetEventChannel() chan *ListenerEvent {
-	return options.eventC
+	EventHandler            ListenerEventHandler
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {
@@ -282,14 +282,8 @@ func (options *ListenOptions) String() string {
 	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxTerminators)
 }
 
-type ListenerEventType int
-
-const (
-	ListenerEstablished       ListenerEventType = 1
-	ListenerErrorStartOver    ListenerEventType = 2
-	ListenerErrorNotRetriable ListenerEventType = 3
-)
-
-type ListenerEvent struct {
-	EventType ListenerEventType
+type ListenerEventHandler interface {
+	NotifyEstablished()
+	NotifyStartOver()
+	NotifyNotRetriable()
 }
