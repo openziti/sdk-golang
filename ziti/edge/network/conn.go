@@ -17,6 +17,7 @@
 package network
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -540,7 +541,7 @@ func (conn *edgeConn) HandleClose(channel.Channel) {
 	}
 }
 
-func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+func (conn *edgeConn) Connect(ctx context.Context, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	logger := pfxlog.Logger().
 		WithField("marker", conn.marker).
 		WithField("connId", conn.Id()).
@@ -555,7 +556,7 @@ func (conn *edgeConn) Connect(session *rest_model.SessionDetail, options *edge.D
 	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, options.SdkFlowControl)
 
 	conn.TraceMsg("connect", connectRequest)
-	replyMsg, err := connectRequest.WithTimeout(options.ConnectTimeout).SendForReply(conn.GetControlSender())
+	replyMsg, err := connectRequest.WithContext(ctx).SendForReply(conn.GetControlSender())
 	if err != nil {
 		logger.Error(err)
 		return nil, err
