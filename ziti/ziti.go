@@ -17,6 +17,7 @@
 package ziti
 
 import (
+	gocontext "context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,6 +120,15 @@ type Context interface {
 
 	// DialWithOptions performs the same logic as Dial but allows specification of DialOptions.
 	DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error)
+
+	// DialContext attempts to connect to a service using a given service name, with the provided
+	// context governing cancellation and deadlines. If the context is cancelled or its deadline
+	// expires, the dial will return promptly with the context's error.
+	DialContext(ctx gocontext.Context, serviceName string) (edge.Conn, error)
+
+	// DialContextWithOptions performs the same logic as DialContext but allows specification of DialOptions.
+	// If the context has no deadline and ConnectTimeout is set, ConnectTimeout will be applied as a deadline.
+	DialContextWithOptions(ctx gocontext.Context, serviceName string, options *DialOptions) (edge.Conn, error)
 
 	// DialAddr finds the service for a given address and performs a Dial for it.
 	DialAddr(network string, addr string) (edge.Conn, error)
@@ -1299,11 +1309,22 @@ func (context *ContextImpl) handleAuthQuery(authQuery *rest_model.AuthQueryDetai
 }
 
 func (context *ContextImpl) Dial(serviceName string) (edge.Conn, error) {
-	defaultOptions := &DialOptions{ConnectTimeout: 5 * time.Second}
-	return context.DialWithOptions(serviceName, defaultOptions)
+	return context.DialContext(gocontext.Background(), serviceName)
 }
 
 func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOptions) (edge.Conn, error) {
+	return context.DialContextWithOptions(gocontext.Background(), serviceName, options)
+}
+
+func (context *ContextImpl) DialContext(ctx gocontext.Context, serviceName string) (edge.Conn, error) {
+	defaultOptions := &DialOptions{}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		defaultOptions.ConnectTimeout = 5 * time.Second
+	}
+	return context.DialContextWithOptions(ctx, serviceName, defaultOptions)
+}
+
+func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, serviceName string, options *DialOptions) (edge.Conn, error) {
 	edgeDialOptions := &edge.DialOptions{
 		ConnectTimeout:  options.ConnectTimeout,
 		Identity:        options.Identity,
@@ -1311,8 +1332,18 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 		StickinessToken: options.StickinessToken,
 		SdkFlowControl:  (options.SdkFlowControl != nil && *options.SdkFlowControl) || context.maxDefaultConnections > 1,
 	}
-	if edgeDialOptions.GetConnectTimeout() == 0 {
+
+	if edgeDialOptions.GetConnectTimeout() < 1 {
 		edgeDialOptions.ConnectTimeout = 15 * time.Second
+	}
+
+	// Apply ConnectTimeout as a context deadline if the context doesn't already have one,
+	// or use whichever is sooner.
+	connectTimeout := edgeDialOptions.GetConnectTimeout()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel gocontext.CancelFunc
+		ctx, cancel = gocontext.WithTimeout(ctx, connectTimeout)
+		defer cancel()
 	}
 
 	if err := context.ensureApiSession(); err != nil {
@@ -1331,13 +1362,13 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	session, err := context.GetSession(*svc.ID)
 	if err != nil {
 		context.deleteServiceSessions(*svc.ID)
-		if session, err = context.createSessionWithBackoff(svc, SessionType(SessionDial), options); err != nil {
+		if session, err = context.createSessionWithBackoff(ctx, svc, SessionType(SessionDial), options); err != nil {
 			return nil, fmt.Errorf("unable to dial service '%v' (%w)", serviceName, err)
 		}
 	}
 
 	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session")
-	conn, err := context.dialSession(svc, session, edgeDialOptions)
+	conn, err := context.dialSession(ctx, svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
@@ -1349,13 +1380,13 @@ func (context *ContextImpl) DialWithOptions(serviceName string, options *DialOpt
 	}
 
 	context.deleteServiceSessions(*svc.ID)
-	if session, refreshErr = context.createSessionWithBackoff(svc, SessionType(SessionDial), options); refreshErr != nil {
+	if session, refreshErr = context.createSessionWithBackoff(ctx, svc, SessionType(SessionDial), options); refreshErr != nil {
 		// couldn't create a new session, report the error
 		return nil, fmt.Errorf("unable to dial service '%s' (%w)", serviceName, refreshErr)
 	}
 
 	// retry with new session
-	conn, err = context.dialSession(svc, session, edgeDialOptions)
+	conn, err = context.dialSession(ctx, svc, session, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
@@ -1397,6 +1428,10 @@ func (context *ContextImpl) GetServiceForAddr(network, hostname string, port uin
 }
 
 func (context *ContextImpl) dialServiceFromAddr(service, network, host string, port uint16) (edge.Conn, error) {
+	return context.dialServiceFromAddrWithContext(gocontext.Background(), service, network, host, port)
+}
+
+func (context *ContextImpl) dialServiceFromAddrWithContext(ctx gocontext.Context, service, network, host string, port uint16) (edge.Conn, error) {
 	appdata := make(map[string]any)
 	appdata["dst_protocol"] = network
 	appdata["dst_port"] = strconv.Itoa(int(port))
@@ -1413,7 +1448,7 @@ func (context *ContextImpl) dialServiceFromAddr(service, network, host string, p
 	appdataJson, _ := json.Marshal(appdata)
 	options.AppData = appdataJson
 
-	return context.DialWithOptions(service, options)
+	return context.DialContextWithOptions(ctx, service, options)
 }
 
 func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, error) {
@@ -1438,12 +1473,12 @@ func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, er
 	return context.dialServiceFromAddr(*svc.Name, network, host, uint16(port))
 }
 
-func (context *ContextImpl) dialSession(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	edgeConnFactory, err := context.getEdgeRouterConn(session, options)
+func (context *ContextImpl) dialSession(ctx gocontext.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
+	edgeConnFactory, err := context.getEdgeRouterConn(ctx, session, options)
 	if err != nil {
 		return nil, err
 	}
-	return edgeConnFactory.Connect(service, session, options, context.getXgressEnv)
+	return edgeConnFactory.Connect(ctx, service, session, options, context.getXgressEnv)
 }
 
 func (context *ContextImpl) ensureApiSession() error {
@@ -1513,7 +1548,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	return listenerMgr.listener, nil
 }
 
-func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
+func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
 	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
 
 	if len(session.EdgeRouters) == 0 {
@@ -1571,7 +1606,6 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 		return bestER, nil
 	}
 
-	timeout := time.After(options.GetConnectTimeout())
 	for {
 		select {
 		case f := <-ch:
@@ -1579,8 +1613,8 @@ func (context *ContextImpl) getEdgeRouterConn(session *rest_model.SessionDetail,
 				logger.Debugf("using edgeRouter[%s]", f.routerConnection.Key())
 				return f.routerConnection, nil
 			}
-		case <-timeout:
-			return nil, errors.New("no edge routers connected in time")
+		case <-ctx.Done():
+			return nil, fmt.Errorf("no edge routers connected in time: %w", ctx.Err())
 		}
 	}
 }
@@ -1859,7 +1893,7 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 	return session, nil
 }
 
-func (context *ContextImpl) createSessionWithBackoff(service *rest_model.ServiceDetail, sessionType SessionType, options edge.ConnOptions) (*rest_model.SessionDetail, error) {
+func (context *ContextImpl) createSessionWithBackoff(ctx gocontext.Context, service *rest_model.ServiceDetail, sessionType SessionType, options edge.ConnOptions) (*rest_model.SessionDetail, error) {
 	expBackoff := backoff.NewExponentialBackOff()
 
 	if sessionType == SessionType(rest_model.DialBindDial) {
@@ -1900,7 +1934,7 @@ func (context *ContextImpl) createSessionWithBackoff(service *rest_model.Service
 		context.cacheSession("create", session)
 	}
 
-	return session, backoff.Retry(operation, expBackoff)
+	return session, backoff.Retry(operation, backoff.WithContext(expBackoff, ctx))
 }
 
 func (context *ContextImpl) isNotFoundApiError(err error) bool {
@@ -2476,7 +2510,7 @@ func (mgr *listenerManager) createSessionWithBackoff() error {
 		mgr.service = latestSvc
 	}
 
-	session, err := mgr.context.createSessionWithBackoff(mgr.service, SessionType(SessionBind), mgr.options)
+	session, err := mgr.context.createSessionWithBackoff(gocontext.Background(), mgr.service, SessionType(SessionBind), mgr.options)
 	if session != nil {
 		mgr.sessionRefreshed(session)
 		log.Debug("new service session created")

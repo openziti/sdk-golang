@@ -17,6 +17,7 @@
 package edge
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -43,7 +44,7 @@ func init() {
 }
 
 type RouterClient interface {
-	Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
 	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
