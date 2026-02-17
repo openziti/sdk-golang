@@ -221,6 +221,9 @@ type ContextImpl struct {
 
 	lock      sync.Mutex
 	xgressEnv xgress.Env
+
+	cachedIdentity   *rest_model.IdentityDetail
+	identityCachedAt time.Time
 }
 
 func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
@@ -1003,6 +1006,16 @@ func (context *ContextImpl) GetCurrentIdentity() (*rest_model.IdentityDetail, er
 }
 
 func (context *ContextImpl) GetCurrentIdentityWithBackoff() (*rest_model.IdentityDetail, error) {
+	const identityCacheTTL = 30 * time.Second
+
+	context.lock.Lock()
+	if context.cachedIdentity != nil && time.Since(context.identityCachedAt) < identityCacheTTL {
+		result := context.cachedIdentity
+		context.lock.Unlock()
+		return result, nil
+	}
+	context.lock.Unlock()
+
 	expBackoff := backoff.NewExponentialBackOff()
 
 	expBackoff.InitialInterval = time.Second
@@ -1019,6 +1032,11 @@ func (context *ContextImpl) GetCurrentIdentityWithBackoff() (*rest_model.Identit
 	if err := backoff.Retry(operation, expBackoff); err != nil {
 		return nil, err
 	}
+
+	context.lock.Lock()
+	context.cachedIdentity = detail
+	context.identityCachedAt = time.Now()
+	context.lock.Unlock()
 
 	return detail, nil
 }
@@ -1862,11 +1880,7 @@ func (context *ContextImpl) getOrCreateSession(serviceId string, sessionType Ses
 func (context *ContextImpl) createSessionWithBackoff(service *rest_model.ServiceDetail, sessionType SessionType, options edge.ConnOptions) (*rest_model.SessionDetail, error) {
 	expBackoff := backoff.NewExponentialBackOff()
 
-	if sessionType == SessionType(rest_model.DialBindDial) {
-		expBackoff.InitialInterval = 50 * time.Millisecond
-	} else {
-		expBackoff.InitialInterval = time.Second
-	}
+	expBackoff.InitialInterval = 50 * time.Millisecond
 
 	expBackoff.MaxInterval = 10 * time.Second
 	expBackoff.MaxElapsedTime = options.GetConnectTimeout()
