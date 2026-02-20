@@ -44,6 +44,7 @@ import (
 	"github.com/openziti/foundation/v2/errorz"
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
@@ -186,6 +187,9 @@ type Context interface {
 	SetId(id string)
 
 	Events() Eventer
+
+	// Inspect returns a snapshot of the context's state for debugging purposes.
+	Inspect() *inspect.ContextInspectResult
 }
 
 var _ Context = &ContextImpl{}
@@ -224,6 +228,8 @@ type ContextImpl struct {
 
 	cachedIdentity   *rest_model.IdentityDetail
 	identityCachedAt time.Time
+
+	listenerManagers cmap.ConcurrentMap[string, *listenerManager]
 }
 
 func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
@@ -1677,7 +1683,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	dialer := channel.NewClassicDialer(dialerConfig)
 
 	start := time.Now().UnixNano()
-	edgeConn := network.NewEdgeConnFactory(routerName, ingressUrl, context)
+	edgeConn := network.NewRouterConn(routerName, ingressUrl, context, context.Inspect)
 	options := channel.DefaultOptions()
 	options.ConnectTimeout = 15 * time.Second
 
@@ -2117,6 +2123,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 		defer listenerMgr.RemoveObserver(helper)
 	}
 
+	context.listenerManagers.Set(*service.ID, listenerMgr)
 	go listenerMgr.run()
 
 	if helper != nil {
@@ -2159,6 +2166,15 @@ func (mgr *listenerManager) RemoveObserver(observer ListenEventObserver) {
 	mgr.observers.Delete(observer)
 }
 
+func (mgr *listenerManager) InspectListener() *inspect.ContextInspectListener {
+	return &inspect.ContextInspectListener{
+		ServiceId:      stringz.OrEmpty(mgr.service.ID),
+		ServiceName:    stringz.OrEmpty(mgr.service.Name),
+		MaxTerminators: mgr.options.MaxTerminators,
+		ListenerCount:  mgr.listener.GetListenerCount(),
+	}
+}
+
 func (mgr *listenerManager) notify(eventType ListenEventType) {
 	for _, observer := range mgr.observers.Value() {
 		go observer.Notify(eventType)
@@ -2166,6 +2182,8 @@ func (mgr *listenerManager) notify(eventType ListenEventType) {
 }
 
 func (mgr *listenerManager) run() {
+	defer mgr.context.listenerManagers.Remove(stringz.OrEmpty(mgr.service.ID))
+
 	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
 
 	start := time.Now()

@@ -97,6 +97,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		intercepts:            cmap.New[*edge.InterceptV1Config](),
 		activeBinds:           cmap.New[*rest_model.ServiceDetail](),
 		activeDials:           cmap.New[*rest_model.ServiceDetail](),
+		listenerManagers:      cmap.New[*listenerManager](),
 	}
 
 	if newContext.maxDefaultConnections < 1 {

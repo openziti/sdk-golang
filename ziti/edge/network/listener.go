@@ -94,7 +94,9 @@ type MultiListener interface {
 	GetService() *rest_model.ServiceDetail
 	CloseWithError(err error)
 	GetEstablishedCount() uint
+	// HasListenerForRouter returns true if there is an active listener connected to the named router.
 	HasListenerForRouter(routerName string) bool
+	// GetListenerCount returns the number of active child listeners.
 	GetListenerCount() int
 }
 

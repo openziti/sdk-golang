@@ -30,6 +30,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequence"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/secretstream/kx"
 )
@@ -53,13 +54,16 @@ type RouterClient interface {
 	SendPosture(creates []rest_model.PostureResponseCreate) error
 }
 
+// EdgeRouterInfo contains the name and address of an edge router.
 type EdgeRouterInfo struct {
 	Name string
 	Addr string
 }
 
+// RouterHostConn represents a hosting-side connection to an edge router.
 type RouterHostConn interface {
 	Identifiable
+	// GetEdgeRouterInfo returns the name and address of the edge router for this connection.
 	GetEdgeRouterInfo() EdgeRouterInfo
 }
 
@@ -68,9 +72,11 @@ type RouterConn interface {
 	io.Closer
 	RouterClient
 	IsClosed() bool
+	// GetRouterAddr returns the address used to connect to the edge router.
 	GetRouterAddr() string
 	GetRouterName() string
 	GetBoolHeader(key int32) bool
+	Inspect() *inspect.RouterConnInspectDetail
 }
 
 type Identifiable interface {
@@ -270,6 +276,7 @@ type ListenOptions struct {
 	DoNotSaveDialerIdentity bool
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
+	// EventHandler receives listener lifecycle notifications. If nil, events are discarded.
 	EventHandler            ListenerEventHandler
 }
 
@@ -281,8 +288,12 @@ func (options *ListenOptions) String() string {
 	return fmt.Sprintf("[ListenOptions cost=%v, max-connections=%v]", options.Cost, options.MaxTerminators)
 }
 
+// ListenerEventHandler receives notifications about listener lifecycle events from edge routers.
 type ListenerEventHandler interface {
+	// NotifyEstablished is called when a bind to an edge router has been confirmed.
 	NotifyEstablished()
+	// NotifyStartOver is called when the router indicates the listener should restart hosting.
 	NotifyStartOver()
+	// NotifyNotRetriable is called when the router reports a non-recoverable hosting error.
 	NotifyNotRetriable()
 }
