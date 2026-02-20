@@ -362,7 +362,7 @@ func (e MultipleErrors) Error() string {
 	buf := strings.Builder{}
 	buf.WriteString("multiple errors occurred")
 	for idx, err := range e {
-		buf.WriteString(fmt.Sprintf(" %v: %v", idx, err))
+		_, _ = fmt.Fprintf(&buf, " %v: %v", idx, err)
 	}
 	return buf.String()
 }
