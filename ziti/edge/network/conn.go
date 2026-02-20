@@ -31,13 +31,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/xgress"
-
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
@@ -254,6 +253,16 @@ func (conn *edgeConn) CloseWrite() error {
 	}
 
 	return nil
+}
+
+func (conn *edgeConn) InspectSink() *inspect.VirtualConnDetail {
+	return &inspect.VirtualConnDetail{
+		ConnId:      conn.Id(),
+		SinkType:    "dial",
+		ServiceName: conn.serviceName,
+		Closed:      conn.closed.Load(),
+		CircuitId:   conn.circuitId,
+	}
 }
 
 func (conn *edgeConn) Inspect() string {

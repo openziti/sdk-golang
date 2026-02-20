@@ -27,6 +27,7 @@ import (
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -100,6 +101,11 @@ type edgeHostConn struct {
 	envF         func() xgress.Env
 }
 
+// GetEdgeRouterInfo returns the name and address of the edge router for this hosting connection.
+func (conn *edgeHostConn) GetEdgeRouterInfo() edge.EdgeRouterInfo {
+	return conn.routerInfo
+}
+
 // GetData retrieves arbitrary service-level context data associated with this hosting connection.
 // This allows hosting applications to store and retrieve service-wide configuration,
 // state, or metadata that applies to all clients of this service.
@@ -112,10 +118,6 @@ type edgeHostConn struct {
 //   - Authentication and authorization policies
 //   - Metrics collectors or connection limits
 //   - Custom service handlers or middleware
-func (conn *edgeHostConn) GetEdgeRouterInfo() edge.EdgeRouterInfo {
-	return conn.routerInfo
-}
-
 func (conn *edgeHostConn) GetData() any {
 	return conn.data.Load()
 }
@@ -229,6 +231,15 @@ func (conn *edgeHostConn) SendHealthEvent(pass bool) error {
 	request := edge.NewHealthEventMsg(conn.Id(), conn.token, pass)
 	conn.TraceMsg("healthEvent", request)
 	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender())
+}
+
+func (conn *edgeHostConn) InspectSink() *inspect.VirtualConnDetail {
+	return &inspect.VirtualConnDetail{
+		ConnId:      conn.Id(),
+		SinkType:    "host",
+		ServiceName: conn.serviceName,
+		Closed:      conn.flags.IsSet(hostConnClosedFlag),
+	}
 }
 
 func (conn *edgeHostConn) Inspect() string {

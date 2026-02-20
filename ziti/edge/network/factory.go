@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openziti/sdk-golang/xgress"
-
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
 	"github.com/pkg/errors"
@@ -56,21 +56,37 @@ func (conn *routerConn) GetRouterName() string {
 	return conn.routerName
 }
 
+func (conn *routerConn) Inspect() *inspect.RouterConnInspectDetail {
+	result := &inspect.RouterConnInspectDetail{
+		RouterName: conn.routerName,
+		RouterAddr: conn.routerAddr,
+		Closed:     conn.IsClosed(),
+	}
+	for _, sink := range conn.mux.GetSinks() {
+		if inspectable, ok := sink.(interface {
+			InspectSink() *inspect.VirtualConnDetail
+		}); ok {
+			result.VirtualConns = append(result.VirtualConns, inspectable.InspectSink())
+		}
+	}
+	return result
+}
+
 func (conn *routerConn) HandleClose(channel.Channel) {
 	if conn.owner != nil {
 		conn.owner.OnClose(conn)
 	}
 }
 
-func NewEdgeConnFactory(routerName, routerAddr string, owner RouterConnOwner) edge.RouterConn {
-	connFactory := &routerConn{
+func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspectF func() *inspect.ContextInspectResult) edge.RouterConn {
+	conn := &routerConn{
 		routerAddr: routerAddr,
 		routerName: routerName,
-		mux:        edge.NewChannelConnMapMux[any](),
+		mux:        edge.NewChannelConnMapMux[any](inspectF),
 		owner:      owner,
 	}
 
-	return connFactory
+	return conn
 }
 
 func (conn *routerConn) BindChannel(binding channel.Binding) error {
