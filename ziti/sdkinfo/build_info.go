@@ -20,5 +20,5 @@
 package sdkinfo
 
 const (
-	Version   = "v1.4.3"
+	Version   = "v1.4.2"
 )

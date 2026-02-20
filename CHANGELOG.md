@@ -1,3 +1,11 @@
+# Release notes 1.4.2
+
+This release exposes internal OIDC responses for structures for testing purposes.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.4.1 -> v1.4.2](https://github.com/openziti/sdk-golang/compare/v1.4.1...v1.4.2)
+
 # Release notes 1.4.1
 
 ## Issues Fixed and Dependency Updates
