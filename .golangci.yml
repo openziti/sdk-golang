@@ -2,4 +2,4 @@ version: "2"
 linters:
   settings:
     staticcheck:
-      checks: [ "all", "-ST1000", "-ST1003", "-ST1006", "-ST1020", "-ST1021" ]
+      checks: [ "all", "-ST1000", "-ST1003", "-ST1006", "-ST1020", "-ST1021", "-QF1012" ]
