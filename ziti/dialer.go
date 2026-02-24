@@ -3,10 +3,11 @@ package ziti
 import (
 	"context"
 	"fmt"
-	"github.com/openziti/edge-api/rest_model"
 	"math"
 	"net"
 	"strconv"
+
+	"github.com/openziti/edge-api/rest_model"
 )
 
 type Dialer interface {
@@ -45,11 +46,6 @@ func NewDialerWithFallback(ctx context.Context, fallback Dialer) Dialer {
 }
 
 func (dialer *dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	dialer.context = ctx
-	return dialer.Dial(network, address)
-}
-
-func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	host, portString, err := net.SplitHostPort(address)
 
 	if err != nil {
@@ -87,19 +83,26 @@ func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
 	})
 
 	if ztx != nil && service != nil {
-		return ztx.(*ContextImpl).dialServiceFromAddr(*service.Name, network, host, uint16(port))
+		return ztx.(*ContextImpl).dialServiceFromAddrWithContext(ctx, *service.Name, network, host, uint16(port))
 	}
 
 	if dialer.fallback != nil {
 		ctxDialer, ok := dialer.fallback.(ContextDialer)
-		if ok && dialer.context != nil {
-			return ctxDialer.DialContext(dialer.context, network, address)
-		} else {
-			return dialer.fallback.Dial(network, address)
+		if ok {
+			return ctxDialer.DialContext(ctx, network, address)
 		}
+		return dialer.fallback.Dial(network, address)
 	}
 
 	return nil, fmt.Errorf("address [%s:%s:%d] is not intercepted by any ziti context", network, host, port)
+}
+
+func (dialer *dialer) Dial(network, address string) (net.Conn, error) {
+	ctx := dialer.context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return dialer.DialContext(ctx, network, address)
 }
 
 func normalizeProtocol(proto string) string {

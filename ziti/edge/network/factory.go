@@ -17,6 +17,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -193,9 +194,9 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 	return edgeCh
 }
 
-func (conn *routerConn) Connect(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	ec := conn.NewDialConn(service)
-	dialConn, err := ec.Connect(session, options, envF)
+	dialConn, err := ec.Connect(ctx, session, options, envF)
 	if err != nil {
 		if !conn.ch.GetChannel().IsClosed() {
 			if err2 := ec.Close(); err2 != nil {
