@@ -190,7 +190,8 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 }
 
 func (conn *edgeHostConn) handleInspect(msg *channel.Message) {
-	resp := edge.NewConnInspectResponse(0, edge.ConnTypeBind, conn.Inspect())
+	// note, until 1.5 this returned 0 for the connId
+	resp := edge.NewConnInspectResponse(conn.Id(), edge.ConnTypeBind, conn.Inspect())
 	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("failed to send inspect response")
