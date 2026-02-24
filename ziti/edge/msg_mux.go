@@ -359,7 +359,7 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		if msg.ContentType == ContentTypeInspectRequest {
-			mux.HandleInspect(msg, ch)
+			go mux.HandleInspect(msg, ch)
 			return
 		}
 		pfxlog.Logger().Errorf("received edge message with no connId header. content type: %v", msg.ContentType)
@@ -369,12 +369,7 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 	if sink, found := mux.sinks.Get(connId); found {
 		sink.AcceptMessage(msg)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
-		pfxlog.Logger().WithField("connId", int(connId)).Info("no conn found for connection inspect")
-		resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))
-		if err := resp.ReplyTo(msg).Send(ch); err != nil {
-			logrus.WithFields(GetLoggerFields(msg)).WithError(err).
-				Error("failed to send inspect response")
-		}
+		go mux.HandleNotFoundConnInspect(connId, msg, ch)
 	} else if msg.ContentType == ContentTypeXgPayload {
 		mux.handlePayloadWithNoSink(msg, ch)
 	} else if msg.ContentType == ContentTypeStateClosed {
@@ -401,6 +396,15 @@ func (mux *ConnMuxImpl[T]) handlePayloadWithNoSink(msg *channel.Message, ch chan
 	} else {
 		pfxlog.Logger().WithError(err).WithField("connId", int(connId)).
 			Debug("unable to dispatch xg payload received for unknown edge conn id")
+	}
+}
+
+func (mux *ConnMuxImpl[T]) HandleNotFoundConnInspect(connId uint32, msg *channel.Message, ch channel.Channel) {
+	pfxlog.Logger().WithField("connId", int(connId)).Info("no conn found for connection inspect")
+	resp := NewConnInspectResponse(connId, ConnTypeInvalid, fmt.Sprintf("invalid conn id [%v]", connId))
+	if err := resp.ReplyTo(msg).Send(ch); err != nil {
+		logrus.WithFields(GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
 	}
 }
 

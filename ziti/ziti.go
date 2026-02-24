@@ -2419,6 +2419,9 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 }
 
 func (mgr *listenerManager) makeMoreListeners() {
+	if mgr.session == nil {
+		return
+	}
 	log := pfxlog.Logger().WithField("service", *mgr.service.Name).WithField("erCount", len(mgr.session.EdgeRouters))
 
 	if !mgr.needsMoreListeners() {

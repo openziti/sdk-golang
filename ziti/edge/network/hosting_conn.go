@@ -152,16 +152,9 @@ func (conn *edgeHostConn) SetData(data any) {
 func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 	conn.TraceMsg("AcceptMessage", msg)
 
-	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnTypeBind, conn.Inspect())
-		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send inspect response")
-		}
-		return
-	}
-
 	switch msg.ContentType {
+	case edge.ContentTypeConnInspectRequest:
+		go conn.handleInspect(msg)
 	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
 		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
@@ -193,6 +186,14 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 	case edge.ContentTypeBindSuccess:
 		conn.established.Store(true)
 		conn.eventHandler.NotifyEstablished()
+	}
+}
+
+func (conn *edgeHostConn) handleInspect(msg *channel.Message) {
+	resp := edge.NewConnInspectResponse(0, edge.ConnTypeBind, conn.Inspect())
+	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
 	}
 }
 

@@ -300,15 +300,43 @@ func (conn *edgeConn) GetState() string {
 	return string(jsonOutput)
 }
 
+func (conn *edgeConn) HandleConnInspect(msg *channel.Message) {
+	resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
+	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
+	}
+}
+
+func (conn *edgeConn) handleTraceRoute(msg *channel.Message) {
+	hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+	if hops > 0 {
+		hops--
+		msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+	}
+
+	ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+	connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+	resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
+
+	sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+	resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+
+	if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+		resp.Headers[edge.UUIDHeader] = msgUUID
+	}
+
+	if err := conn.GetControlSender().Send(resp); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send trace route response")
+	}
+}
+
 func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 	conn.TraceMsg("AcceptMessage", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
-		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send inspect response")
-		}
+		go conn.HandleConnInspect(msg)
 		return
 	}
 
@@ -332,31 +360,11 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
 	case edge.ContentTypeInspectRequest:
-		conn.HandleInspect(msg)
+		go conn.HandleInspect(msg)
 		return
 
 	case edge.ContentTypeTraceRoute:
-		hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
-		if hops > 0 {
-			hops--
-			msg.PutUint32Header(edge.TraceHopCountHeader, hops)
-		}
-
-		ts, _ := msg.GetUint64Header(edge.TimestampHeader)
-		connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-		resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
-
-		sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
-		resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-
-		if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
-			resp.Headers[edge.UUIDHeader] = msgUUID
-		}
-
-		if err := conn.GetControlSender().Send(resp); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send trace route response")
-		}
+		go conn.handleTraceRoute(msg)
 		return
 	}
 
