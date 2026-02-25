@@ -918,6 +918,15 @@ func (context *ContextImpl) updateTokenOnAllErs(apiSession apis.ApiSession) erro
 	return errors.Join(routerErrors...)
 }
 
+func jitteredDuration(base time.Duration, jitter float64) time.Duration {
+	if jitter <= 0 {
+		return base
+	}
+	delta := float64(base) * jitter
+	minD := float64(base) - delta
+	return time.Duration(minD + rand.Float64()*2*delta)
+}
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -928,8 +937,6 @@ func (context *ContextImpl) runRefreshes() {
 	if svcRefreshInterval < MinRefreshInterval {
 		svcRefreshInterval = MinRefreshInterval
 	}
-	svcRefreshTick := time.NewTicker(svcRefreshInterval)
-	defer svcRefreshTick.Stop()
 
 	sessionRefreshInterval := context.options.SessionRefreshInterval
 	if sessionRefreshInterval == 0 {
@@ -939,8 +946,10 @@ func (context *ContextImpl) runRefreshes() {
 		sessionRefreshInterval = MinRefreshInterval
 	}
 
-	sessionRefreshTick := time.NewTicker(sessionRefreshInterval)
-	defer sessionRefreshTick.Stop()
+	jitter := min(context.options.RefreshJitter, 0.5)
+
+	svcRefreshTimer := time.After(jitteredDuration(svcRefreshInterval, jitter))
+	sessionRefreshTimer := time.After(jitteredDuration(sessionRefreshInterval, jitter))
 
 	refreshAt := time.Now().Add(30 * time.Second)
 
@@ -983,15 +992,17 @@ func (context *ContextImpl) runRefreshes() {
 				}
 			}
 
-		case <-svcRefreshTick.C:
+		case <-svcRefreshTimer:
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
 				log.WithError(err).Error("failed to load service updates")
 			}
+			svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
 
-		case <-sessionRefreshTick.C:
+		case <-sessionRefreshTimer:
 			log.Debug("refreshing sessions")
 			context.refreshSessions()
+			sessionRefreshTimer = time.After(jitteredDuration(sessionRefreshInterval, jitter))
 		}
 	}
 }

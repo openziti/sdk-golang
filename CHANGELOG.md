@@ -1,12 +1,20 @@
 # Release notes 1.5.0
 
+## Notes
+
+Session and service refresh timers now include configurable jitter to avoid thundering-herd load spikes on the
+controller. A new `RefreshJitter` field on `Options` controls the amount of randomization applied to refresh
+intervals. It is a fraction (0.0–1.0) representing the ±percentage of the configured interval. The default
+value is 0.1 (±10%), and the maximum allowed value is 0.5 (±50%).
+
+For example, with the default 5-minute service refresh interval and 0.1 jitter, each refresh will fire at a
+random time between 4m30s and 5m30s. Internally, fixed-interval tickers have been replaced with per-cycle
+randomized timers, so each refresh cycle gets a newly randomized delay.
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.4.2 -> v1.5.0](https://github.com/openziti/sdk-golang/compare/v1.4.2...v1.5.0)
-    * [Issue #879](https://github.com/openziti/sdk-golang/issues/879) - Return the connId in inspect response
-    * [Issue #878](https://github.com/openziti/sdk-golang/issues/878) - Fix responses from rx goroutines
-    * [Issue #874](https://github.com/openziti/sdk-golang/issues/874) - Add inspect support at the context level
-    * [Issue #871](https://github.com/openziti/sdk-golang/issues/871) - Make SDK better at sticking to MaxTerminator terminators
+    * [Issue #832](https://github.com/openziti/sdk-golang/issues/832) - Fuzz session refresh timers
 
 # Release notes 1.4.2
 
