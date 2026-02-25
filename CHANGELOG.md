@@ -1,3 +1,13 @@
+# Release notes 1.5.0
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.4.2 -> v1.5.0](https://github.com/openziti/sdk-golang/compare/v1.4.2...v1.5.0)
+    * [Issue #879](https://github.com/openziti/sdk-golang/issues/879) - Return the connId in inspect response
+    * [Issue #878](https://github.com/openziti/sdk-golang/issues/878) - Fix responses from rx goroutines
+    * [Issue #874](https://github.com/openziti/sdk-golang/issues/874) - Add inspect support at the context level
+    * [Issue #871](https://github.com/openziti/sdk-golang/issues/871) - Make SDK better at sticking to MaxTerminator terminators
+
 # Release notes 1.4.2
 
 This release exposes internal OIDC responses for structures for testing purposes.
