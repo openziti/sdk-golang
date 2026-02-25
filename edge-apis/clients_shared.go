@@ -76,32 +76,58 @@ type OidcAuthResponses struct {
 	// PrimaryCredentialResponse is the response provided during primary credential authentication, nil if not reached due to OIDC init errors
 	PrimaryCredentialResponse *resty.Response
 
-	// TotpResponse is the response provided after the TOTP code was provided, nil if TOTP is not needed
+	// TotpEnrollResponse is the response from starting TOTP enrollment, nil if enrollment was not performed
+	TotpEnrollResponse *resty.Response
+
+	// TotpEnrollVerifyResponse is the response from verifying the enrollment TOTP code, nil if enrollment was not performed
+	TotpEnrollVerifyResponse *resty.Response
+
+	// TotpResponse is the response provided after the TOTP code was provided for an already-enrolled identity, nil if not reached
 	TotpResponse *resty.Response
 
 	// RedirectResponse is the response provided after authentication, nil if never reached
 	RedirectResponse *resty.Response
 }
 
+// OidcAuthorizeResult holds the result of starting an OIDC PKCE authorization flow.
+// It provides the auth request ID, a pre-configured resty client for making raw HTTP calls
+// to the OP login endpoints, and an exchange function that completes the flow by trading
+// an authorization code for OIDC tokens.
+type OidcAuthorizeResult struct {
+
+	// AuthRequestId is the auth request identifier returned by the /oidc/authorize endpoint.
+	AuthRequestId string
+
+	// Client is a resty client pre-configured with the correct TLS settings and redirect policy
+	// for the OIDC flow. Use it to make raw HTTP calls to OP login endpoints.
+	Client *resty.Client
+
+	// Exchange completes the OIDC flow by exchanging an authorization code (extracted from the
+	// callback redirect Location header) for OIDC tokens.
+	Exchange func(code string) (*oidc.Tokens[*oidc.IDTokenClaims], error)
+}
+
 // EdgeOidcAuthConfig represents the options necessary to complete an OAuth 2.0 PKCE authentication flow against an
 // OpenZiti controller.
 type EdgeOidcAuthConfig struct {
-	ClientTransportPool ClientTransportPool
-	Credentials         Credentials
-	ConfigTypeOverrides []string
-	HttpClient          *http.Client
-	TotpCodeProvider    TotpCodeProvider
-	RedirectUri         string
-	ApiHost             string
+	ClientTransportPool    ClientTransportPool
+	Credentials            Credentials
+	ConfigTypeOverrides    []string
+	HttpClient             *http.Client
+	TotpCodeProvider       TotpCodeProvider
+	TotpEnrollmentProvider TotpEnrollmentProvider
+	RedirectUri            string
+	ApiHost                string
 }
 
 // ApiClientConfig contains configuration options for creating API clients.
 type ApiClientConfig struct {
-	ApiUrls          []*url.URL
-	CaPool           *x509.CertPool
-	TotpCodeProvider TotpCodeProvider
-	Components       *Components
-	Proxy            func(r *http.Request) (*url.URL, error)
+	ApiUrls                []*url.URL
+	CaPool                 *x509.CertPool
+	TotpCodeProvider       TotpCodeProvider
+	TotpEnrollmentProvider TotpEnrollmentProvider
+	Components             *Components
+	Proxy                  func(r *http.Request) (*url.URL, error)
 }
 
 // exchangeTokens exchanges OIDC tokens for refreshed tokens. It uses refresh tokens preferentially,
@@ -233,6 +259,10 @@ type authPayload struct {
 
 type totpCodePayload struct {
 	rest_model.MfaCode
+	AuthRequestId string `json:"id"`
+}
+
+type authRequestIdPayload struct {
 	AuthRequestId string `json:"id"`
 }
 
@@ -369,8 +399,10 @@ func (e *EdgeOidcAuthenticator) AuthenticateWithResponses() (*oidc.Tokens[*oidc.
 	authResponses, err := e.handlePrimaryAndSecondaryAuth(verificationParams)
 
 	if authResponses != nil {
-		oidcAuthResponses.TotpResponse = authResponses.TotpResp
 		oidcAuthResponses.PrimaryCredentialResponse = authResponses.PrimaryResp
+		oidcAuthResponses.TotpEnrollResponse = authResponses.TotpEnrollResp
+		oidcAuthResponses.TotpEnrollVerifyResponse = authResponses.TotpEnrollVerifyResp
+		oidcAuthResponses.TotpResponse = authResponses.TotpResp
 		oidcAuthResponses.RedirectResponse = authResponses.RedirectResp
 	}
 	if err != nil {
@@ -383,6 +415,29 @@ func (e *EdgeOidcAuthenticator) AuthenticateWithResponses() (*oidc.Tokens[*oidc.
 	}
 
 	return tokens, oidcAuthResponses, nil
+}
+
+// Authorize starts the OIDC PKCE authorization flow without completing it, returning an
+// OidcAuthorizeResult for use when tests need to make raw HTTP calls to the OP login endpoints.
+// The Exchange function in the result completes the flow by trading an authorization code for tokens.
+func (e *EdgeOidcAuthenticator) Authorize() (*OidcAuthorizeResult, error) {
+	pkceParams, err := newPkceParameters()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PKCE parameters: %w", err)
+	}
+
+	verificationParams, _, err := e.initOAuthFlow(pkceParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initiate authorization flow: %w", err)
+	}
+
+	return &OidcAuthorizeResult{
+		AuthRequestId: verificationParams.AuthRequestId,
+		Client:        e.restyClient,
+		Exchange: func(code string) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+			return e.exchangeAuthorizationCodeForTokens(code, pkceParams)
+		},
+	}, nil
 }
 
 // finishOAuthFlow extracts the authorization code from the callback redirect and exchanges it for tokens.
@@ -430,9 +485,11 @@ func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 // the primary credential submission and optional secondary authentication
 // steps of the OIDC flow. Fields are nil if their corresponding step was not reached.
 type PrimaryAndSecondaryAuthResponses struct {
-	RedirectResp *resty.Response
-	PrimaryResp  *resty.Response
-	TotpResp     *resty.Response
+	RedirectResp         *resty.Response
+	PrimaryResp          *resty.Response
+	TotpEnrollResp       *resty.Response
+	TotpEnrollVerifyResp *resty.Response
+	TotpResp             *resty.Response
 }
 
 // handlePrimaryAndSecondaryAuth submits credentials to the authorization endpoint and handles optional TOTP.
@@ -482,6 +539,24 @@ func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 		return authResponses, errors.New("response was not a redirect and TOTP is not required, unknown additional authentication steps are required but unsupported")
 	}
 
+	// Parse the auth queries response body to determine if TOTP is already enrolled.
+	var authQueriesResp struct {
+		AuthQueries []*rest_model.AuthQueryDetail `json:"authQueries"`
+	}
+	isTotpEnrolled := true // default to enrolled; enrollment check requires a parseable body
+	if err = json.Unmarshal(resp.Body(), &authQueriesResp); err == nil {
+		for _, q := range authQueriesResp.AuthQueries {
+			if q.TypeID == rest_model.AuthQueryTypeTOTP {
+				isTotpEnrolled = q.IsTotpEnrolled
+				break
+			}
+		}
+	}
+
+	if !isTotpEnrolled {
+		return e.handleTotpEnrollment(authResponses, payload.AuthRequestId)
+	}
+
 	if e.TotpCodeProvider == nil {
 		return authResponses, errors.New("totp is required but no totp callback was defined")
 	}
@@ -522,6 +597,81 @@ func (e *EdgeOidcAuthenticator) handlePrimaryAndSecondaryAuth(verificationParams
 		return authResponses, errors.New("totp code did not verify")
 	default:
 		return authResponses, fmt.Errorf("unexpected response code %d from TOTP verification", resp.StatusCode())
+	}
+}
+
+// handleTotpEnrollment performs TOTP enrollment during an OIDC authentication flow.
+// It starts enrollment to obtain a provisioning URL, delegates QR code display and code
+// collection to the configured TotpEnrollmentProvider, then verifies the resulting code
+// to complete enrollment.
+func (e *EdgeOidcAuthenticator) handleTotpEnrollment(authResponses *PrimaryAndSecondaryAuthResponses, authRequestId string) (*PrimaryAndSecondaryAuthResponses, error) {
+	if e.TotpEnrollmentProvider == nil {
+		return authResponses, errors.New("totp enrollment is required but no totp enrollment provider was configured")
+	}
+
+	enrollUri := "https://" + e.ApiHost + "/oidc/login/totp/enroll"
+	enrollVerifyUri := "https://" + e.ApiHost + "/oidc/login/totp/enroll/verify"
+
+	enrollResp, err := e.restyClient.R().SetBody(&authRequestIdPayload{
+		AuthRequestId: authRequestId,
+	}).Post(enrollUri)
+
+	authResponses.TotpEnrollResp = enrollResp
+
+	if err != nil {
+		return authResponses, fmt.Errorf("totp enrollment start failed: %w", err)
+	}
+
+	if enrollResp.StatusCode() != http.StatusCreated {
+		return authResponses, fmt.Errorf("totp enrollment start failed with status %d", enrollResp.StatusCode())
+	}
+
+	var enrollDetail rest_model.DetailMfa
+	if err = json.Unmarshal(enrollResp.Body(), &enrollDetail); err != nil {
+		return authResponses, fmt.Errorf("failed to parse totp enrollment response: %w", err)
+	}
+
+	provisioningUrl := enrollDetail.ProvisioningURL
+	if provisioningUrl == "" {
+		return authResponses, errors.New("totp enrollment response did not contain a provisioning URL")
+	}
+
+	enrollResultCh := e.TotpEnrollmentProvider.GetTotpEnrollmentCode(provisioningUrl)
+	var enrollCode string
+
+	select {
+	case enrollResult := <-enrollResultCh:
+		if enrollResult.Err != nil {
+			return authResponses, fmt.Errorf("totp enrollment cancelled: %w", enrollResult.Err)
+		}
+		enrollCode = enrollResult.Code
+	case <-time.After(30 * time.Minute):
+		return authResponses, errors.New("timeout waiting for totp enrollment code")
+	}
+
+	enrollVerifyResp, err := e.restyClient.R().SetBody(&totpCodePayload{
+		MfaCode: rest_model.MfaCode{
+			Code: &enrollCode,
+		},
+		AuthRequestId: authRequestId,
+	}).Post(enrollVerifyUri)
+
+	authResponses.TotpEnrollVerifyResp = enrollVerifyResp
+
+	if err != nil {
+		return authResponses, fmt.Errorf("totp enrollment verification failed: %w", err)
+	}
+
+	switch enrollVerifyResp.StatusCode() {
+	case http.StatusFound:
+		authResponses.RedirectResp = enrollVerifyResp
+		return authResponses, nil
+	case http.StatusOK:
+		return authResponses, errors.New("totp enrollment verified, but additional authentication is required that is not supported or not configured, cannot authenticate")
+	case http.StatusBadRequest:
+		return authResponses, errors.New("totp enrollment code did not verify")
+	default:
+		return authResponses, fmt.Errorf("unexpected response code %d from totp enrollment verification", enrollVerifyResp.StatusCode())
 	}
 }
 
