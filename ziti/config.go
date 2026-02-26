@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
 	apis "github.com/openziti/sdk-golang/edge-apis"
@@ -120,6 +121,8 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 		return nil, errors.Errorf("failed to load ziti configuration (%s): %v", confFile, err)
 	}
 
+	c.RouterProxy = RouterProxyFromEnvironment
+
 	return &c, nil
 }
 
@@ -130,4 +133,45 @@ func NewConfigFromFile(confFile string) (*Config, error) {
 // request is required.
 func GetControllerWellKnownCaPool(controllerAddr string) (*x509.CertPool, error) {
 	return rest_util.GetControllerWellKnownCaPool(controllerAddr)
+}
+
+// RouterProxyFromEnvironment will return a ProxyConfiguration for the given address based on the environment variables
+func RouterProxyFromEnvironment(addr string) *transport.ProxyConfiguration {
+	// Create a request with the address to parse
+	parsedURL, errParse := parseTLS(addr)
+	if errParse != nil {
+		pfxlog.Logger().Warnf("Could not parse URL. Error: %s", errParse.Error())
+		return nil
+	}
+	req := &http.Request{URL: parsedURL}
+
+	// Parse the HTTPS_PROXY or HTTP_PROXY env for this address
+	proxyURL, errProxy := http.ProxyFromEnvironment(req)
+	if errProxy != nil {
+		pfxlog.Logger().Warnf("Could not determine proxy from environment. Error: %s", errProxy.Error())
+		return nil
+	}
+	if proxyURL == nil {
+		return nil // no proxy
+	}
+
+	return &transport.ProxyConfiguration{
+		Type:    transport.ProxyTypeHttpConnect,
+		Address: proxyURL.Host,
+	}
+}
+
+// parseTLS is a helper function to parse a raw URL string that may be prefixed with "tls:".
+// If the URL is prefixed with "tls:", it will prepend "https://" and reparse it.
+func parseTLS(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	if u.Scheme == "tls" {
+		// Prepend standard "https://" and reparse
+		return url.Parse("https://" + u.Opaque)
+	}
+	return u, nil
 }
