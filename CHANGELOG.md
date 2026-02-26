@@ -1,3 +1,13 @@
+# Release notes 1.5.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.5.0 -> v1.5.1](https://github.com/openziti/sdk-golang/compare/v1.5.0...v1.5.1)
+    * [Issue #877](https://github.com/openziti/sdk-golang/issues/877) - Handle differences in xgress eof/end-of-circuit handling by adding a capabilities exchange
+
+* github.com/openziti/edge-api: [v0.26.56 -> v0.27.0](https://github.com/openziti/edge-api/compare/v0.26.56...v0.27.0)
+
+
 # Release notes 1.5.0
 
 ## Notes

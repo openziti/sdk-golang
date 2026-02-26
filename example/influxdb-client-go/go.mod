@@ -104,7 +104,7 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/openziti/channel/v4 v4.3.6 // indirect
-	github.com/openziti/edge-api v0.26.56 // indirect
+	github.com/openziti/edge-api v0.27.0 // indirect
 	github.com/openziti/foundation/v2 v2.0.87 // indirect
 	github.com/openziti/identity v1.0.125 // indirect
 	github.com/openziti/metrics v1.4.3 // indirect
