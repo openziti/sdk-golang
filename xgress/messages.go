@@ -19,12 +19,13 @@ package xgress
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
+
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"math"
 )
 
 const (
@@ -80,6 +81,10 @@ const (
 	PayloadFlagRetransmit   Flag = 16
 	PayloadFlagEOF          Flag = 32
 	PayloadFlagWriteFailed  Flag = 64
+)
+
+const (
+	HeaderKeyCapabilities uint8 = 1
 )
 
 func NewAcknowledgement(circuitId string, originator Originator) *Acknowledgement {

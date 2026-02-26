@@ -48,6 +48,10 @@ const (
 	endOfCircuitSentFlag  = 3
 	closedTxer            = 4
 	rxPushModeFlag        = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
+
+	// bits 8-16 reserved for peer capabilities (same values used in wire format)
+	CapabilityEOF    = 1 << 8
+	capabilitiesMask = 0x1FF00 // bits 8-16
 )
 
 var ErrWriteClosed = errors.New("write closed")
@@ -224,11 +228,38 @@ func (self *Xgress) markCircuitEndReceived() {
 	self.flags.Set(endOfCircuitRecvdFlag, true)
 }
 
+func (self *Xgress) capabilities() uint32 {
+	return CapabilityEOF
+}
+
+func (self *Xgress) capabilitiesHeader() []byte {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, self.capabilities())
+	return buf
+}
+
+func (self *Xgress) setPeerCapabilities(caps []byte) {
+	if len(caps) >= 4 {
+		v := binary.BigEndian.Uint32(caps) & capabilitiesMask
+		for {
+			current := self.flags.Load()
+			next := current | v
+			if self.flags.CompareAndSetAll(current, next) {
+				return
+			}
+		}
+	}
+}
+
+func (self *Xgress) peerSupportsEOF() bool {
+	return self.flags.IsSet(8) // bit 8 = CapabilityEOF
+}
+
 func (self *Xgress) IsCircuitStarted() bool {
 	return !self.IsTerminator() || self.flags.IsSet(rxerStartedFlag)
 }
 
-func (self *Xgress) firstCircuitStartReceived() bool {
+func (self *Xgress) isRxStarted() bool {
 	return self.flags.CompareAndSet(rxerStartedFlag, false, true)
 }
 
@@ -244,7 +275,7 @@ func (self *Xgress) Start() {
 		if self.Options.CircuitStartTimeout > time.Second {
 			time.AfterFunc(self.Options.CircuitStartTimeout, self.terminateIfNotStarted)
 		}
-	} else {
+	} else if self.isRxStarted() {
 		log.Debug("initiator: sending circuit start")
 		go self.payloadBuffer.run()
 		_ = self.forwardPayload(self.GetStartCircuit(), context.Background())
@@ -273,6 +304,9 @@ func (self *Xgress) GetStartCircuit() *Payload {
 		Flags:     SetOriginatorFlag(uint32(PayloadFlagCircuitStart), self.originator),
 		Sequence:  int32(self.nextReceiveSequence()),
 		Data:      nil,
+		Headers: map[uint8][]byte{
+			HeaderKeyCapabilities: self.capabilitiesHeader(),
+		},
 	}
 	return startCircuit
 }
@@ -423,9 +457,21 @@ func (self *Xgress) HandleControlReceive(controlType ControlType, headers channe
 }
 
 func (self *Xgress) acceptPayload(payload *Payload) {
-	if payload.IsCircuitStartFlagSet() && self.firstCircuitStartReceived() {
+	if payload.IsCircuitStartFlagSet() && self.isRxStarted() {
 		pfxlog.ContextLogger(self.Label()).Debug("start received")
+
+		var peerSentCapabilities bool
+		if caps, ok := payload.Headers[HeaderKeyCapabilities]; ok {
+			self.setPeerCapabilities(caps)
+			peerSentCapabilities = true
+		}
+
 		go self.payloadBuffer.run()
+
+		if peerSentCapabilities {
+			self.sendCapabilitiesResponse()
+		}
+
 		if !self.flags.IsSet(rxPushModeFlag) {
 			go self.rx()
 		}
@@ -471,6 +517,16 @@ func (self *Xgress) tx() {
 			self.CloseXgToClient()
 			payloadLogger.Debug("circuit end payload received, exiting")
 			return false
+		}
+
+		// Intercept capabilities header from peer
+		if caps, ok := payload.Headers[HeaderKeyCapabilities]; ok {
+			self.setPeerCapabilities(caps)
+			delete(payload.Headers, HeaderKeyCapabilities)
+			payloadLogger.Debug("peer capabilities received")
+			if len(payload.Data) == 0 && !payload.IsCircuitStartFlagSet() {
+				return true // capabilities-only payload, consume it
+			}
 		}
 
 		payloadLogger.Debug("sending")
@@ -566,6 +622,19 @@ func (self *Xgress) tx() {
 	}
 }
 
+func (self *Xgress) sendCapabilitiesResponse() {
+	payload := &Payload{
+		CircuitId: self.circuitId,
+		Flags:     SetOriginatorFlag(0, self.originator),
+		Sequence:  int32(self.nextReceiveSequence()),
+		Data:      nil,
+		Headers: map[uint8][]byte{
+			HeaderKeyCapabilities: self.capabilitiesHeader(),
+		},
+	}
+	_ = self.forwardPayload(payload, context.Background())
+}
+
 func (self *Xgress) sendEOF() {
 	log := pfxlog.ContextLogger(self.Label())
 	log.Debug("sendEOF")
@@ -575,9 +644,18 @@ func (self *Xgress) sendEOF() {
 		return
 	}
 
+	var flag Flag
+	if self.peerSupportsEOF() {
+		flag = PayloadFlagEOF
+		log.Debug("peer supports EOF, sending EOF flag")
+	} else {
+		flag = PayloadFlagCircuitEnd
+		log.Debug("peer does not support EOF, falling back to CircuitEnd")
+	}
+
 	payload := &Payload{
 		CircuitId: self.circuitId,
-		Flags:     SetOriginatorFlag(uint32(PayloadFlagEOF), self.originator),
+		Flags:     SetOriginatorFlag(uint32(flag), self.originator),
 		Sequence:  int32(self.nextReceiveSequence()),
 		Data:      nil,
 	}
