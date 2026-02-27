@@ -236,7 +236,7 @@ type ContextImpl struct {
 	lock      sync.Mutex
 	xgressEnv xgress.Env
 
-	cachedIdentity   *rest_model.IdentityDetail
+	cachedIdentity   atomic.Pointer[rest_model.IdentityDetail]
 	identityCachedAt time.Time
 
 	listenerManagers cmap.ConcurrentMap[string, *listenerManager]
@@ -1025,8 +1025,8 @@ func (context *ContextImpl) GetCurrentIdentityWithBackoff() (*rest_model.Identit
 	const identityCacheTTL = 30 * time.Second
 
 	context.lock.Lock()
-	if context.cachedIdentity != nil && time.Since(context.identityCachedAt) < identityCacheTTL {
-		result := context.cachedIdentity
+	if cachedIdentity := context.cachedIdentity.Load(); cachedIdentity != nil && time.Since(context.identityCachedAt) < identityCacheTTL {
+		result := cachedIdentity
 		context.lock.Unlock()
 		return result, nil
 	}
@@ -1050,7 +1050,7 @@ func (context *ContextImpl) GetCurrentIdentityWithBackoff() (*rest_model.Identit
 	}
 
 	context.lock.Lock()
-	context.cachedIdentity = detail
+	context.cachedIdentity.Store(nil)
 	context.identityCachedAt = time.Now()
 	context.lock.Unlock()
 
@@ -2364,11 +2364,6 @@ func (mgr *listenerManager) handleRouterConnectResult(result *edgeRouterConnResu
 	}
 
 	routerName := routerConnection.GetRouterName()
-	if listenerCount+len(mgr.pendingListens) >= mgr.options.MaxTerminators {
-		log.Debug("ignoring connection, already have max terminators")
-		return
-	}
-
 	if _, pending := mgr.pendingListens[routerName]; mgr.listener.HasListenerForRouter(routerName) || pending {
 		return
 	}
@@ -2670,6 +2665,8 @@ type listenerEventSender struct {
 func (sender *listenerEventSender) NotifyEstablished() {
 	select {
 	case sender.eventChan <- &listenerEstablishedEvent{}:
+	case <-sender.closeNotify:
+		pfxlog.Logger().Warn("sdk context closed")
 	case <-time.After(100 * time.Millisecond):
 		pfxlog.Logger().Warn("timed out sending listener established event")
 	}
@@ -2679,6 +2676,8 @@ func (sender *listenerEventSender) NotifyStartOver() {
 	time.AfterFunc(5*time.Second, func() {
 		select {
 		case sender.eventChan <- &listenerStartOverEvent{}:
+		case <-sender.closeNotify:
+			pfxlog.Logger().Warn("sdk context closed")
 		case <-time.After(time.Second):
 			pfxlog.Logger().Warn("timed out sending listener start-over event")
 		}
@@ -2688,6 +2687,8 @@ func (sender *listenerEventSender) NotifyStartOver() {
 func (sender *listenerEventSender) NotifyNotRetriable() {
 	select {
 	case sender.eventChan <- &listenerNotRetriableEvent{}:
+	case <-sender.closeNotify:
+		pfxlog.Logger().Warn("sdk context closed")
 	case <-time.After(time.Second):
 		pfxlog.Logger().Warn("timed out sending listener not-retriable event")
 	}

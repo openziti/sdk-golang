@@ -29,12 +29,12 @@ func (context *ContextImpl) Inspect() *inspect.ContextInspectResult {
 
 	// Identity
 	result.Identity = &inspect.ContextInspectIdentity{}
-	if context.cachedIdentity != nil {
-		if context.cachedIdentity.ID != nil {
-			result.Identity.Id = *context.cachedIdentity.ID
+	if cachedIdentity := context.cachedIdentity.Load(); cachedIdentity != nil {
+		if cachedIdentity.ID != nil {
+			result.Identity.Id = *cachedIdentity.ID
 		}
-		if context.cachedIdentity.Name != nil {
-			result.Identity.Name = *context.cachedIdentity.Name
+		if cachedIdentity.Name != nil {
+			result.Identity.Name = *cachedIdentity.Name
 		}
 	}
 
