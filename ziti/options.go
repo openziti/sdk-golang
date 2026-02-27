@@ -1,8 +1,9 @@
 package ziti
 
 import (
-	"github.com/openziti/edge-api/rest_model"
 	"time"
+
+	"github.com/openziti/edge-api/rest_model"
 )
 
 type ServiceEventType string
@@ -30,7 +31,7 @@ type Options struct {
 	// May not be less than 1 second
 	SessionRefreshInterval time.Duration
 
-	// RefreshJitter is a fraction (0.0–1.0) representing ±percentage of the refresh interval
+	// RefreshJitter is a fraction (0.0–0.5) representing ±percentage of the refresh interval
 	// to randomize. For example, 0.1 means each refresh will fire at a random time within ±10%
 	// of the configured interval, helping avoid thundering-herd load spikes on the controller.
 	RefreshJitter float64

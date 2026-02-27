@@ -4,7 +4,7 @@
 
 Session and service refresh timers now include configurable jitter to avoid thundering-herd load spikes on the
 controller. A new `RefreshJitter` field on `Options` controls the amount of randomization applied to refresh
-intervals. It is a fraction (0.0–1.0) representing the ±percentage of the configured interval. The default
+intervals. It is a fraction (0.0–0.5) representing the ±percentage of the configured interval. The default
 value is 0.1 (±10%), and the maximum allowed value is 0.5 (±50%).
 
 For example, with the default 5-minute service refresh interval and 0.1 jitter, each refresh will fire at a

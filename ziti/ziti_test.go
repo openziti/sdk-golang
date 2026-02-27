@@ -3,6 +3,7 @@ package ziti
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
@@ -97,6 +98,45 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 
 	assert.Equal(t, len(services), len(callbacks))
 	assert.Equal(t, ServiceChanged, callbacks[*services[0].Name])
+}
+
+func Test_jitteredDuration(t *testing.T) {
+	t.Run("zero jitter returns base", func(t *testing.T) {
+		base := 10 * time.Second
+		result := jitteredDuration(base, 0)
+		assert.Equal(t, base, result)
+	})
+
+	t.Run("negative jitter returns base", func(t *testing.T) {
+		base := 10 * time.Second
+		result := jitteredDuration(base, -0.5)
+		assert.Equal(t, base, result)
+	})
+
+	t.Run("result is within expected range", func(t *testing.T) {
+		base := 10 * time.Second
+		jitter := 0.1
+
+		minExpected := 9 * time.Second
+		maxExpected := 11 * time.Second
+
+		for i := 0; i < 1000; i++ {
+			result := jitteredDuration(base, jitter)
+			assert.GreaterOrEqual(t, result, minExpected, "result %v below min %v", result, minExpected)
+			assert.LessOrEqual(t, result, maxExpected, "result %v above max %v", result, maxExpected)
+		}
+	})
+
+	t.Run("results vary across calls", func(t *testing.T) {
+		base := 10 * time.Second
+		jitter := 0.1
+
+		seen := map[time.Duration]bool{}
+		for i := 0; i < 100; i++ {
+			seen[jitteredDuration(base, jitter)] = true
+		}
+		assert.Greater(t, len(seen), 1, "expected multiple distinct values")
+	})
 }
 
 func Test_AddressMatch(t *testing.T) {
