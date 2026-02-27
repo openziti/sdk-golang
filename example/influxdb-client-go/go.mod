@@ -61,7 +61,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.15.4 // indirect
-	github.com/go-resty/resty/v2 v2.17.1 // indirect
+	github.com/go-resty/resty/v2 v2.17.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
@@ -103,13 +103,13 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/openziti/channel/v4 v4.3.2 // indirect
-	github.com/openziti/edge-api v0.26.52 // indirect
-	github.com/openziti/foundation/v2 v2.0.86 // indirect
-	github.com/openziti/identity v1.0.124 // indirect
+	github.com/openziti/channel/v4 v4.3.6 // indirect
+	github.com/openziti/edge-api v0.26.56 // indirect
+	github.com/openziti/foundation/v2 v2.0.87 // indirect
+	github.com/openziti/identity v1.0.125 // indirect
 	github.com/openziti/metrics v1.4.3 // indirect
 	github.com/openziti/secretstream v0.1.47 // indirect
-	github.com/openziti/transport/v2 v2.0.208 // indirect
+	github.com/openziti/transport/v2 v2.0.209 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
