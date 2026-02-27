@@ -10,11 +10,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
-	github.com/openziti/edge-api v0.26.52
-	github.com/openziti/foundation/v2 v2.0.86
+	github.com/openziti/edge-api v0.26.56
+	github.com/openziti/foundation/v2 v2.0.87
 	github.com/openziti/runzmd v1.0.83
 	github.com/openziti/sdk-golang v1.2.6
-	github.com/openziti/transport/v2 v2.0.208
+	github.com/openziti/transport/v2 v2.0.209
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
@@ -64,7 +64,7 @@ require (
 	github.com/go-openapi/swag/typeutils v0.25.1 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.1 // indirect
 	github.com/go-openapi/validate v0.25.1 // indirect
-	github.com/go-resty/resty/v2 v2.17.1 // indirect
+	github.com/go-resty/resty/v2 v2.17.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -87,9 +87,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/openziti/channel/v4 v4.3.2 // indirect
+	github.com/openziti/channel/v4 v4.3.6 // indirect
 	github.com/openziti/go-term-markdown v1.0.1 // indirect
-	github.com/openziti/identity v1.0.124 // indirect
+	github.com/openziti/identity v1.0.125 // indirect
 	github.com/openziti/metrics v1.4.3 // indirect
 	github.com/openziti/secretstream v0.1.47 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect

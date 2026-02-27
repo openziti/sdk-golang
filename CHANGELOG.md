@@ -1,12 +1,37 @@
 # Release notes 1.5.0
 
+## Notes
+
+Session and service refresh timers now include configurable jitter to avoid thundering-herd load spikes on the
+controller. A new `RefreshJitter` field on `Options` controls the amount of randomization applied to refresh
+intervals. It is a fraction (0.0–0.5) representing the ±percentage of the configured interval. The default
+value is 0.1 (±10%), and the maximum allowed value is 0.5 (±50%).
+
+For example, with the default 5-minute service refresh interval and 0.1 jitter, each refresh will fire at a
+random time between 4m30s and 5m30s. Internally, fixed-interval tickers have been replaced with per-cycle
+randomized timers, so each refresh cycle gets a newly randomized delay.
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.4.2 -> v1.5.0](https://github.com/openziti/sdk-golang/compare/v1.4.2...v1.5.0)
+    * [Issue #832](https://github.com/openziti/sdk-golang/issues/832) - Fuzz session refresh timers
     * [Issue #879](https://github.com/openziti/sdk-golang/issues/879) - Return the connId in inspect response
     * [Issue #878](https://github.com/openziti/sdk-golang/issues/878) - Fix responses from rx goroutines
     * [Issue #874](https://github.com/openziti/sdk-golang/issues/874) - Add inspect support at the context level
     * [Issue #871](https://github.com/openziti/sdk-golang/issues/871) - Make SDK better at sticking to MaxTerminator terminators
+
+* github.com/go-resty/resty/v2: v2.17.1 -> v2.17.2
+* github.com/openziti/channel/v4: [v4.3.2 -> v4.3.6](https://github.com/openziti/channel/compare/v4.3.2...v4.3.6)
+    * [Issue #228](https://github.com/openziti/channel/issues/228) - Ensure that Underlay never return nil on MultiChannel
+    * [Issue #226](https://github.com/openziti/channel/issues/226) - Allow specifying a minimum number of underlays for a channel, regardless of underlay type
+
+* github.com/openziti/edge-api: [v0.26.52 -> v0.26.56](https://github.com/openziti/edge-api/compare/v0.26.52...v0.26.56)
+    * [Issue #170](https://github.com/openziti/edge-api/issues/170) - Add preferredLeader flag to controllers
+    * [Issue #167](https://github.com/openziti/edge-api/issues/167) - Add ctrlChanListeners to router types
+
+* github.com/openziti/foundation/v2: [v2.0.86 -> v2.0.87](https://github.com/openziti/foundation/compare/v2.0.86...v2.0.87)
+* github.com/openziti/identity: [v1.0.124 -> v1.0.125](https://github.com/openziti/identity/compare/v1.0.124...v1.0.125)
+* github.com/openziti/transport/v2: [v2.0.208 -> v2.0.209](https://github.com/openziti/transport/compare/v2.0.208...v2.0.209)
 
 # Release notes 1.4.2
 

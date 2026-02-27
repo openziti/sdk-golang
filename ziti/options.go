@@ -1,8 +1,9 @@
 package ziti
 
 import (
-	"github.com/openziti/edge-api/rest_model"
 	"time"
+
+	"github.com/openziti/edge-api/rest_model"
 )
 
 type ServiceEventType string
@@ -15,6 +16,7 @@ const (
 	DefaultServiceRefreshInterval = 5 * time.Minute
 	DefaultSessionRefreshInterval = time.Hour
 	MinRefreshInterval            = time.Second
+	DefaultRefreshJitter          = 0.1
 )
 
 type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetail)
@@ -28,6 +30,11 @@ type Options struct {
 	// edge session will be refreshed regardless.
 	// May not be less than 1 second
 	SessionRefreshInterval time.Duration
+
+	// RefreshJitter is a fraction (0.0–0.5) representing ±percentage of the refresh interval
+	// to randomize. For example, 0.1 means each refresh will fire at a random time within ±10%
+	// of the configured interval, helping avoid thundering-herd load spikes on the controller.
+	RefreshJitter float64
 
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
@@ -47,6 +54,7 @@ func (self *Options) isEdgeRouterUrlAccepted(url string) bool {
 var DefaultOptions = &Options{
 	RefreshInterval:        DefaultServiceRefreshInterval,
 	SessionRefreshInterval: DefaultSessionRefreshInterval,
+	RefreshJitter:          DefaultRefreshJitter,
 	OnServiceUpdate:        nil,
 }
 
