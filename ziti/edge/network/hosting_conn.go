@@ -27,6 +27,7 @@ import (
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/pb/edge_client_pb"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -92,11 +93,17 @@ type edgeHostConn struct {
 	service *rest_model.ServiceDetail
 	acceptC chan edge.Conn
 
-	token       string
-	manualStart bool
-	established atomic.Bool
-	eventC      chan *edge.ListenerEvent
-	envF        func() xgress.Env
+	routerInfo   edge.EdgeRouterInfo
+	token        string
+	manualStart  bool
+	established  atomic.Bool
+	eventHandler edge.ListenerEventHandler
+	envF         func() xgress.Env
+}
+
+// GetEdgeRouterInfo returns the name and address of the edge router for this hosting connection.
+func (conn *edgeHostConn) GetEdgeRouterInfo() edge.EdgeRouterInfo {
+	return conn.routerInfo
 }
 
 // GetData retrieves arbitrary service-level context data associated with this hosting connection.
@@ -145,16 +152,9 @@ func (conn *edgeHostConn) SetData(data any) {
 func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 	conn.TraceMsg("AcceptMessage", msg)
 
-	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnTypeBind, conn.Inspect())
-		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send inspect response")
-		}
-		return
-	}
-
 	switch msg.ContentType {
+	case edge.ContentTypeConnInspectRequest:
+		go conn.handleInspect(msg)
 	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
 		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
@@ -174,33 +174,27 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 
 			log.Errorf("router reported hosting error: %s", err.Message)
 
-			var event *edge.ListenerEvent
 			switch err.RetryHint {
 			case edge.RetryStartOver:
-				event = &edge.ListenerEvent{EventType: edge.ListenerErrorStartOver}
+				conn.eventHandler.NotifyStartOver()
 			case edge.RetryNotRetriable:
-				event = &edge.ListenerEvent{EventType: edge.ListenerErrorNotRetriable}
-			}
-
-			if event != nil {
-				select {
-				case conn.eventC <- event:
-				case <-time.After(time.Second):
-				}
+				conn.eventHandler.NotifyNotRetriable()
 			}
 		}
 
 		conn.closeAndLogError(true)
 	case edge.ContentTypeBindSuccess:
 		conn.established.Store(true)
-		event := &edge.ListenerEvent{
-			EventType: edge.ListenerEstablished,
-		}
-		select {
-		case conn.eventC <- event:
-		default:
-			logrus.WithFields(edge.GetLoggerFields(msg)).Warn("unable to send listener established event")
-		}
+		conn.eventHandler.NotifyEstablished()
+	}
+}
+
+func (conn *edgeHostConn) handleInspect(msg *channel.Message) {
+	// note, until 1.5 this returned 0 for the connId
+	resp := edge.NewConnInspectResponse(conn.Id(), edge.ConnTypeBind, conn.Inspect())
+	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
 	}
 }
 
@@ -239,6 +233,15 @@ func (conn *edgeHostConn) SendHealthEvent(pass bool) error {
 	request := edge.NewHealthEventMsg(conn.Id(), conn.token, pass)
 	conn.TraceMsg("healthEvent", request)
 	return request.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender())
+}
+
+func (conn *edgeHostConn) InspectSink() *inspect.VirtualConnDetail {
+	return &inspect.VirtualConnDetail{
+		ConnId:      conn.Id(),
+		SinkType:    "host",
+		ServiceName: conn.serviceName,
+		Closed:      conn.flags.IsSet(hostConnClosedFlag),
+	}
 }
 
 func (conn *edgeHostConn) Inspect() string {
@@ -412,6 +415,8 @@ func (conn *edgeHostConn) close(closedByRemote bool) error {
 	if !conn.flags.CompareAndSet(hostConnClosedFlag, false, true) {
 		return nil
 	}
+
+	conn.msgMux.Remove(conn)
 
 	defer func() {
 		conn.acceptC <- nil // signal listeners that listener is closed

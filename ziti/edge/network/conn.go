@@ -31,13 +31,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/xgress"
-
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/inspect"
+	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/openziti/secretstream/kx"
@@ -256,6 +255,16 @@ func (conn *edgeConn) CloseWrite() error {
 	return nil
 }
 
+func (conn *edgeConn) InspectSink() *inspect.VirtualConnDetail {
+	return &inspect.VirtualConnDetail{
+		ConnId:      conn.Id(),
+		SinkType:    "dial",
+		ServiceName: conn.serviceName,
+		Closed:      conn.closed.Load(),
+		CircuitId:   conn.circuitId,
+	}
+}
+
 func (conn *edgeConn) Inspect() string {
 	state := conn.getBaseState()
 	jsonOutput, err := json.Marshal(state)
@@ -291,15 +300,44 @@ func (conn *edgeConn) GetState() string {
 	return string(jsonOutput)
 }
 
+func (conn *edgeConn) HandleConnInspect(msg *channel.Message) {
+	// note, until 1.5 this returned 0 for the connId
+	resp := edge.NewConnInspectResponse(conn.Id(), edge.ConnTypeDial, conn.Inspect())
+	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
+	}
+}
+
+func (conn *edgeConn) handleTraceRoute(msg *channel.Message) {
+	hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+	if hops > 0 {
+		hops--
+		msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+	}
+
+	ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+	connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+	resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
+
+	sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+	resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+
+	if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+		resp.Headers[edge.UUIDHeader] = msgUUID
+	}
+
+	if err := conn.GetControlSender().Send(resp); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send trace route response")
+	}
+}
+
 func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 	conn.TraceMsg("AcceptMessage", msg)
 
 	if msg.ContentType == edge.ContentTypeConnInspectRequest {
-		resp := edge.NewConnInspectResponse(0, edge.ConnTypeDial, conn.Inspect())
-		if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send inspect response")
-		}
+		go conn.HandleConnInspect(msg)
 		return
 	}
 
@@ -323,31 +361,11 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
 	case edge.ContentTypeInspectRequest:
-		conn.HandleInspect(msg)
+		go conn.HandleInspect(msg)
 		return
 
 	case edge.ContentTypeTraceRoute:
-		hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
-		if hops > 0 {
-			hops--
-			msg.PutUint32Header(edge.TraceHopCountHeader, hops)
-		}
-
-		ts, _ := msg.GetUint64Header(edge.TimestampHeader)
-		connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-		resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
-
-		sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
-		resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-
-		if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
-			resp.Headers[edge.UUIDHeader] = msgUUID
-		}
-
-		if err := conn.GetControlSender().Send(resp); err != nil {
-			logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-				Error("failed to send trace route response")
-		}
+		go conn.handleTraceRoute(msg)
 		return
 	}
 
