@@ -18,18 +18,18 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v4 v4.3.6
 	github.com/openziti/edge-api v0.27.0
-	github.com/openziti/foundation/v2 v2.0.87
-	github.com/openziti/identity v1.0.125
+	github.com/openziti/foundation/v2 v2.0.88
+	github.com/openziti/identity v1.0.126
 	github.com/openziti/metrics v1.4.3
 	github.com/openziti/secretstream v0.1.47
-	github.com/openziti/transport/v2 v2.0.209
+	github.com/openziti/transport/v2 v2.0.211
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	github.com/zitadel/oidc/v3 v3.45.4
+	github.com/zitadel/oidc/v3 v3.45.5
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sys v0.41.0
@@ -94,7 +94,7 @@ require (
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
 )
