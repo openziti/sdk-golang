@@ -1,3 +1,53 @@
+# Release notes 1.5.2
+
+## What's New
+
+* Updates Go version to 1.24, in-line with Go's supported version policy
+* Bug fixes
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.5.1 -> v1.5.2](https://github.com/openziti/sdk-golang/compare/v1.5.1...v1.5.2)
+    * [Issue #887](https://github.com/openziti/sdk-golang/issues/887) - Fix listener manager cleanup
+    * [Issue #886](https://github.com/openziti/sdk-golang/issues/886) - When controller is busy during service refresh, backoff and retry instead of falling back to full refresh
+    * [Issue #885](https://github.com/openziti/sdk-golang/issues/885) - Only compare relevant service fields when looking for changes
+    * [Issue #884](https://github.com/openziti/sdk-golang/issues/884) - Add deadline for bind establishment
+    * [Issue #883](https://github.com/openziti/sdk-golang/issues/883) - Router level listener can be left open if multi-listener closes during listener establishment
+    * [Issue #877](https://github.com/openziti/sdk-golang/issues/877) - Handle differences in xgress eof/end-of-circuit handling by adding a capabilities exchange
+
+* github.com/openziti/edge-api: [v0.27.0 -> v0.27.4](https://github.com/openziti/edge-api/compare/v0.27.0...v0.27.4)
+    * [Issue #175](https://github.com/openziti/edge-api/issues/175) - ctrlChanListeners should have x-omit-empty: false attribute
+
+* github.com/openziti/foundation/v2: [v2.0.87 -> v2.0.88](https://github.com/openziti/foundation/compare/v2.0.87...v2.0.88)
+    * [Issue #472](https://github.com/openziti/foundation/issues/472) - Add support for multi-bit set/get to AtomicBitSet
+
+* github.com/openziti/identity: [v1.0.125 -> v1.0.126](https://github.com/openziti/identity/compare/v1.0.125...v1.0.126)
+* github.com/openziti/secretstream: [v0.1.47 -> v0.1.48](https://github.com/openziti/secretstream/compare/v0.1.47...v0.1.48)
+* github.com/openziti/transport/v2: [v2.0.209 -> v2.0.213](https://github.com/openziti/transport/compare/v2.0.209...v2.0.213)
+    * [Issue #31](https://github.com/openziti/transport/issues/31) - ipv6 Transport Address Parsing
+    * [Issue #149](https://github.com/openziti/transport/issues/149) - Archive transwarp code
+
+* github.com/zitadel/oidc/v3: v3.45.4 -> v3.45.5
+* github.com/go-openapi/errors: v0.22.4 -> v0.22.7
+* github.com/go-openapi/jsonpointer: v0.22.1 -> v0.22.5
+* github.com/go-openapi/jsonreference: v0.21.3 -> v0.21.5
+* github.com/go-openapi/spec: v0.22.1 -> v0.22.4
+* github.com/go-openapi/swag: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/cmdutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/conv: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/fileutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/jsonname: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/jsonutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/loading: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/mangling: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/netutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/stringutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/typeutils: v0.25.1 -> v0.25.5
+* github.com/go-openapi/swag/yamlutils: v0.25.1 -> v0.25.5
+* golang.org/x/crypto: v0.47.0 -> v0.48.0
+* golang.org/x/net: v0.49.0 -> v0.51.0
+* golang.org/x/text: v0.33.0 -> v0.34.0
+
 # Release notes 1.5.1
 
 ## Issues Fixed and Dependency Updates
