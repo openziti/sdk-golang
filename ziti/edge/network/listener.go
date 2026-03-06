@@ -313,6 +313,8 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
+	establishDeadline := time.Now().Add(time.Minute)
+
 	for !self.closed.Load() && !edgeListener.flags.IsSet(hostConnClosedFlag) {
 		select {
 		case conn, ok := <-edgeListener.acceptC:
@@ -323,6 +325,14 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 			self.accept(conn, ticker)
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
+			if !edgeListener.established.Load() && time.Now().After(establishDeadline) {
+				pfxlog.Logger().
+					WithField("connId", edgeListener.Id()).
+					WithField("routerName", edgeListener.routerInfo.Name).
+					WithField("serviceName", edgeListener.serviceName).
+					Warn("listener was not established in time, closing")
+				return
+			}
 		}
 	}
 }
