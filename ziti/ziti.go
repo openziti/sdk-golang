@@ -847,11 +847,12 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 	if !forceRefresh {
 		log.Debug("checking if service updates available")
 		if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-			log.WithError(err).Error("failed to check if service list update is available")
-			target := &current_api_session.ListServiceUpdatesUnauthorized{}
-			if !errors.As(err, &target) {
-				checkService = true
-			} else {
+			unavailable := &current_api_session.ListServiceUpdatesServiceUnavailable{}
+			unauthorized := &current_api_session.ListServiceUpdatesUnauthorized{}
+			if errors.As(err, &unavailable) {
+				log.WithError(err).Warn("controller unavailable checking for service updates, will retry")
+				return ErrControllerUnavailable
+			} else if errors.As(err, &unauthorized) {
 				if err = context.Authenticate(); err != nil {
 					log.WithError(err).Error("unable to re-authenticate during service list refresh")
 				} else {
@@ -859,6 +860,9 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 						checkService = true
 					}
 				}
+			} else {
+				log.WithError(err).Error("failed to check if service list update is available")
+				checkService = true
 			}
 		}
 	}
@@ -956,6 +960,8 @@ func jitteredDuration(base time.Duration, jitter float64) time.Duration {
 	return time.Duration(minD + rand.Float64()*2*delta)
 }
 
+var ErrControllerUnavailable = errors.New("controller unavailable")
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -1024,6 +1030,12 @@ func (context *ContextImpl) runRefreshes() {
 		case <-svcRefreshTimer:
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
+				if errors.Is(err, ErrControllerUnavailable) {
+					retryMax := min(2*time.Minute, svcRefreshInterval/2)
+					retryDelay := 5*time.Second + time.Duration(rand.Int63n(int64(retryMax-5*time.Second)))
+					svcRefreshTimer = time.After(retryDelay)
+					continue
+				}
 				log.WithError(err).Error("failed to load service updates")
 			}
 			svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
