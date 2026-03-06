@@ -2268,19 +2268,25 @@ func (mgr *listenerManager) notify(eventType ListenEventType) {
 }
 
 func (mgr *listenerManager) run() {
-	defer mgr.context.listenerManagers.Remove(stringz.OrEmpty(mgr.service.ID))
+	defer mgr.context.listenerManagers.RemoveCb(stringz.OrEmpty(mgr.service.ID), func(key string, v *listenerManager, exists bool) bool {
+		return exists && v == mgr
+	})
 
 	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
 
-	start := time.Now()
 	// need to either establish a session, or fail if we can't create one
-	for mgr.session == nil {
+	for mgr.session == nil && !mgr.listener.IsClosed() {
 		if err := mgr.createSessionWithBackoff(); err != nil {
-			if time.Since(start) > mgr.options.ConnectTimeout {
-				log.WithError(err).Error("timed out trying to create session to bind service")
+			if IsServiceAccessDeniedError(err) {
+				log.WithError(err).Error("service access denied, stopping listener")
 				return
 			}
+			log.WithError(err).Warn("failed to create session to bind service, will retry")
 		}
+	}
+
+	if mgr.listener.IsClosed() {
+		return
 	}
 
 	mgr.makeMoreListeners()
