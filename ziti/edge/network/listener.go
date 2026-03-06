@@ -271,13 +271,16 @@ func (self *multiListener) GetService() *rest_model.ServiceDetail {
 }
 
 func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHandler func()) {
-	if self.closed.Load() {
-		return
-	}
-
 	listener, ok := netListener.(*edgeHostConn)
 	if !ok {
 		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(self))
+		return
+	}
+
+	if self.closed.Load() {
+		if err := listener.Close(); err != nil {
+			pfxlog.Logger().WithError(err).Error("error closing listener added after multi-listener was closed")
+		}
 		return
 	}
 
