@@ -719,7 +719,7 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 	_ = context.services.Upsert(*s.Name, s, func(exist bool, valueInMap *rest_model.ServiceDetail, newValue *rest_model.ServiceDetail) *rest_model.ServiceDetail {
 		isChange = exist
 		if isChange {
-			valuesDiffer = !reflect.DeepEqual(newValue, valueInMap)
+			valuesDiffer = !serviceDetailsEqual(valueInMap, newValue)
 		}
 
 		return newValue
@@ -759,6 +759,35 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 			context.intercepts.Set(*s.Name, intercept)
 		}
 	}
+}
+
+func ptrEqual[T comparable](a, b *T) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+// serviceDetailsEqual compares only the fields that are relevant to hosting and dialing behavior.
+// Metadata fields like timestamps, _links, tags, posture queries, role attributes, terminator
+// strategy, and max idle time are ignored to avoid spurious ServiceChanged events when the
+// controller returns the same service with different metadata.
+func serviceDetailsEqual(a, b *rest_model.ServiceDetail) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return ptrEqual(a.ID, b.ID) &&
+		ptrEqual(a.Name, b.Name) &&
+		ptrEqual(a.EncryptionRequired, b.EncryptionRequired) &&
+		slices.Equal([]rest_model.DialBind(a.Permissions), []rest_model.DialBind(b.Permissions)) &&
+		slices.Equal(a.Configs, b.Configs) &&
+		reflect.DeepEqual(a.Config, b.Config)
 }
 
 func (context *ContextImpl) refreshSessions() {
