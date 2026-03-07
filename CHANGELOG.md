@@ -15,6 +15,7 @@
     * [Issue #883](https://github.com/openziti/sdk-golang/issues/883) - Router level listener can be left open if multi-listener closes during listener establishment
     * [Issue #877](https://github.com/openziti/sdk-golang/issues/877) - Handle differences in xgress eof/end-of-circuit handling by adding a capabilities exchange
 
+* github.com/openziti/channel/v4: [v4.3.6 -> v4.3.7](https://github.com/openziti/channel/compare/v4.3.6...v4.3.7)
 * github.com/openziti/edge-api: [v0.27.0 -> v0.27.4](https://github.com/openziti/edge-api/compare/v0.27.0...v0.27.4)
     * [Issue #175](https://github.com/openziti/edge-api/issues/175) - ctrlChanListeners should have x-omit-empty: false attribute
 
@@ -23,7 +24,7 @@
 
 * github.com/openziti/identity: [v1.0.125 -> v1.0.126](https://github.com/openziti/identity/compare/v1.0.125...v1.0.126)
 * github.com/openziti/secretstream: [v0.1.47 -> v0.1.48](https://github.com/openziti/secretstream/compare/v0.1.47...v0.1.48)
-* github.com/openziti/transport/v2: [v2.0.209 -> v2.0.213](https://github.com/openziti/transport/compare/v2.0.209...v2.0.213)
+* github.com/openziti/transport/v2: [v2.0.209 -> v2.0.214](https://github.com/openziti/transport/compare/v2.0.209...v2.0.214)
     * [Issue #31](https://github.com/openziti/transport/issues/31) - ipv6 Transport Address Parsing
     * [Issue #149](https://github.com/openziti/transport/issues/149) - Archive transwarp code
 
@@ -44,9 +45,13 @@
 * github.com/go-openapi/swag/stringutils: v0.25.1 -> v0.25.5
 * github.com/go-openapi/swag/typeutils: v0.25.1 -> v0.25.5
 * github.com/go-openapi/swag/yamlutils: v0.25.1 -> v0.25.5
+* github.com/go-viper/mapstructure/v2: v2.4.0 -> v2.5.0
+* github.com/miekg/pkcs11: v1.1.1 -> v1.1.2
+* go.mongodb.org/mongo-driver: v1.17.6 -> v1.17.9
 * golang.org/x/crypto: v0.47.0 -> v0.48.0
 * golang.org/x/net: v0.49.0 -> v0.51.0
 * golang.org/x/text: v0.33.0 -> v0.34.0
+
 
 # Release notes 1.5.1
 
