@@ -719,7 +719,7 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 	_ = context.services.Upsert(*s.Name, s, func(exist bool, valueInMap *rest_model.ServiceDetail, newValue *rest_model.ServiceDetail) *rest_model.ServiceDetail {
 		isChange = exist
 		if isChange {
-			valuesDiffer = !reflect.DeepEqual(newValue, valueInMap)
+			valuesDiffer = !serviceDetailsEqual(valueInMap, newValue)
 		}
 
 		return newValue
@@ -759,6 +759,35 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 			context.intercepts.Set(*s.Name, intercept)
 		}
 	}
+}
+
+func ptrEqual[T comparable](a, b *T) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+// serviceDetailsEqual compares only the fields that are relevant to hosting and dialing behavior.
+// Metadata fields like timestamps, _links, tags, posture queries, role attributes, terminator
+// strategy, and max idle time are ignored to avoid spurious ServiceChanged events when the
+// controller returns the same service with different metadata.
+func serviceDetailsEqual(a, b *rest_model.ServiceDetail) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return ptrEqual(a.ID, b.ID) &&
+		ptrEqual(a.Name, b.Name) &&
+		ptrEqual(a.EncryptionRequired, b.EncryptionRequired) &&
+		slices.Equal([]rest_model.DialBind(a.Permissions), []rest_model.DialBind(b.Permissions)) &&
+		slices.Equal(a.Configs, b.Configs) &&
+		reflect.DeepEqual(a.Config, b.Config)
 }
 
 func (context *ContextImpl) refreshSessions() {
@@ -818,11 +847,12 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 	if !forceRefresh {
 		log.Debug("checking if service updates available")
 		if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-			log.WithError(err).Error("failed to check if service list update is available")
-			target := &current_api_session.ListServiceUpdatesUnauthorized{}
-			if !errors.As(err, &target) {
-				checkService = true
-			} else {
+			unavailable := &current_api_session.ListServiceUpdatesServiceUnavailable{}
+			unauthorized := &current_api_session.ListServiceUpdatesUnauthorized{}
+			if errors.As(err, &unavailable) {
+				log.WithError(err).Warn("controller unavailable checking for service updates, will retry")
+				return ErrControllerUnavailable
+			} else if errors.As(err, &unauthorized) {
 				if err = context.Authenticate(); err != nil {
 					log.WithError(err).Error("unable to re-authenticate during service list refresh")
 				} else {
@@ -830,6 +860,9 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 						checkService = true
 					}
 				}
+			} else {
+				log.WithError(err).Error("failed to check if service list update is available")
+				checkService = true
 			}
 		}
 	}
@@ -927,6 +960,8 @@ func jitteredDuration(base time.Duration, jitter float64) time.Duration {
 	return time.Duration(minD + rand.Float64()*2*delta)
 }
 
+var ErrControllerUnavailable = errors.New("controller unavailable")
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -995,6 +1030,12 @@ func (context *ContextImpl) runRefreshes() {
 		case <-svcRefreshTimer:
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
+				if errors.Is(err, ErrControllerUnavailable) {
+					retryMax := min(2*time.Minute, svcRefreshInterval/2)
+					retryDelay := 5*time.Second + time.Duration(rand.Int63n(int64(retryMax-5*time.Second)))
+					svcRefreshTimer = time.After(retryDelay)
+					continue
+				}
 				log.WithError(err).Error("failed to load service updates")
 			}
 			svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
@@ -2227,19 +2268,25 @@ func (mgr *listenerManager) notify(eventType ListenEventType) {
 }
 
 func (mgr *listenerManager) run() {
-	defer mgr.context.listenerManagers.Remove(stringz.OrEmpty(mgr.service.ID))
+	defer mgr.context.listenerManagers.RemoveCb(stringz.OrEmpty(mgr.service.ID), func(key string, v *listenerManager, exists bool) bool {
+		return exists && v == mgr
+	})
 
 	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
 
-	start := time.Now()
 	// need to either establish a session, or fail if we can't create one
-	for mgr.session == nil {
+	for mgr.session == nil && !mgr.listener.IsClosed() {
 		if err := mgr.createSessionWithBackoff(); err != nil {
-			if time.Since(start) > mgr.options.ConnectTimeout {
-				log.WithError(err).Error("timed out trying to create session to bind service")
+			if IsServiceAccessDeniedError(err) {
+				log.WithError(err).Error("service access denied, stopping listener")
 				return
 			}
+			log.WithError(err).Warn("failed to create session to bind service, will retry")
 		}
+	}
+
+	if mgr.listener.IsClosed() {
+		return
 	}
 
 	mgr.makeMoreListeners()

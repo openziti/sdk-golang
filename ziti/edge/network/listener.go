@@ -271,13 +271,16 @@ func (self *multiListener) GetService() *rest_model.ServiceDetail {
 }
 
 func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHandler func()) {
-	if self.closed.Load() {
-		return
-	}
-
 	listener, ok := netListener.(*edgeHostConn)
 	if !ok {
 		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(self))
+		return
+	}
+
+	if self.closed.Load() {
+		if err := listener.Close(); err != nil {
+			pfxlog.Logger().WithError(err).Error("error closing listener added after multi-listener was closed")
+		}
 		return
 	}
 
@@ -310,6 +313,8 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
+	establishDeadline := time.Now().Add(time.Minute)
+
 	for !self.closed.Load() && !edgeListener.flags.IsSet(hostConnClosedFlag) {
 		select {
 		case conn, ok := <-edgeListener.acceptC:
@@ -320,6 +325,14 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 			self.accept(conn, ticker)
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
+			if !edgeListener.established.Load() && time.Now().After(establishDeadline) {
+				pfxlog.Logger().
+					WithField("connId", edgeListener.Id()).
+					WithField("routerName", edgeListener.routerInfo.Name).
+					WithField("serviceName", edgeListener.serviceName).
+					Warn("listener was not established in time, closing")
+				return
+			}
 		}
 	}
 }
