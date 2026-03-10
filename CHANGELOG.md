@@ -1,3 +1,9 @@
+# Release notes 1.5.3
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.5.2 -> v1.5.3](https://github.com/openziti/sdk-golang/compare/v1.5.2...v1.5.3)
+
 # Release notes 1.5.2
 
 ## What's New
