@@ -494,6 +494,10 @@ func (context *ContextImpl) AddMfaTotpCodeListener(handler func(Context, *rest_m
 	}
 }
 
+// AddMfaTotpEnrollmentListener adds a listener for EventMfaTotpEnrollment and returns a function
+// that removes it. The listener is called during OIDC authentication when the identity has not yet
+// enrolled in TOTP but their auth policy requires it. Display the provisioning URL as a QR code,
+// collect the user's initial TOTP code, and call the MfaTotpEnrollmentResponse to complete enrollment.
 func (context *ContextImpl) AddMfaTotpEnrollmentListener(handler func(Context, string, MfaTotpEnrollmentResponse)) func() {
 	listener := func(args ...interface{}) {
 		provisioningUrl, ok := args[0].(string)
