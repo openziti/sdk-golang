@@ -46,6 +46,10 @@ func init() {
 
 type RouterClient interface {
 	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	// ConnectV2 performs a sessionless dial. The router authorizes locally via RDM.
+	ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	// SupportsConnectV2 returns true if the router advertises ConnectV2 support.
+	SupportsConnectV2() bool
 	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
@@ -107,6 +111,33 @@ type CloseWriter interface {
 	CloseWrite() error
 }
 
+// DialProtocol identifies which dial protocol a dial attempt used; it is
+// reported on the SDK's dial events rather than tracked on connections.
+type DialProtocol byte
+
+const (
+	// DialProtocolNone is the zero value, for connections that were not dialed
+	// (e.g. hosting-side accepted connections).
+	DialProtocolNone DialProtocol = iota
+	// DialProtocolConnectV1 is the session-token-based V1 dial protocol.
+	DialProtocolConnectV1
+	// DialProtocolConnectV2 is the sessionless Connect-V2 dial protocol.
+	DialProtocolConnectV2
+)
+
+// String returns a stable, human-readable protocol name, empty for
+// DialProtocolNone.
+func (p DialProtocol) String() string {
+	switch p {
+	case DialProtocolConnectV1:
+		return "connect-v1"
+	case DialProtocolConnectV2:
+		return "connect-v2"
+	default:
+		return ""
+	}
+}
+
 type ServiceConn interface {
 	net.Conn
 	CloseWriter
@@ -123,7 +154,6 @@ type ServiceConn interface {
 type Conn interface {
 	ServiceConn
 	Identifiable
-	GetRouterId() string
 	GetState() string
 	CompleteAcceptSuccess() error
 	CompleteAcceptFailed(err error)
@@ -160,10 +190,6 @@ func NewEdgeMsgChannel(ch SdkChannel, connId uint32) *MsgChannel {
 		msgIdSeq:   sequence.NewSequence(),
 		trace:      traceEnabled,
 	}
-}
-
-func (ec *MsgChannel) GetRouterId() string {
-	return ec.GetChannel().Id()
 }
 
 func (ec *MsgChannel) Id() uint32 {
@@ -254,6 +280,9 @@ type DialOptions struct {
 	AppData         []byte
 	StickinessToken []byte
 	SdkFlowControl  bool
+	// ForceConnectV1 skips the ConnectV2 path even if the router advertises support.
+	// Intended as an escape hatch; normal callers should leave this false.
+	ForceConnectV1 bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -278,7 +307,7 @@ type ListenOptions struct {
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
 	// EventHandler receives listener lifecycle notifications. If nil, events are discarded.
-	EventHandler            ListenerEventHandler
+	EventHandler ListenerEventHandler
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {
