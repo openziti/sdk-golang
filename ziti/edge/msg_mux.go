@@ -60,21 +60,13 @@ type MsgSink[T any] interface {
 
 	// AcceptMessage processes an incoming message for this connection.
 	// The message is guaranteed to be intended for this sink's connection ID.
-	// The sink should handle the message appropriately based on its type and content.
+	// The ch parameter identifies the SdkChannel from which the message was received,
+	// allowing reply operations to target the correct router.
 	//
 	// Parameters:
 	//   msg - the incoming message to process
-	//
-	// Example:
-	//   func (s *myMsgSink) AcceptMessage(msg *channel.Message) {
-	//       switch msg.ContentType {
-	//       case edge.ContentTypeData:
-	//           s.handleData(msg)
-	//       case edge.ContentTypeStateClosed:
-	//           s.handleClose(msg)
-	//       }
-	//   }
-	AcceptMessage(msg *channel.Message)
+	//   ch  - the SdkChannel the message arrived on
+	AcceptMessage(msg *channel.Message, ch SdkChannel)
 
 	// HandleMuxClose is called when the underlying multiplexer is closing.
 	// This gives the sink an opportunity to perform cleanup operations
@@ -174,6 +166,14 @@ type ConnMux[T any] interface {
 	//   mux.RemoveByConnId(12345)
 	RemoveByConnId(connId uint32)
 
+	// AddByCircuitId registers a message handler keyed by circuit ID string.
+	// This is used by ConnectV2 to pre-register an edgeConn before the full circuit
+	// is established, allowing messages with a CircuitIdHeader to be routed.
+	AddByCircuitId(circuitId string, sink MsgSink[T]) error
+
+	// RemoveByCircuitId removes a handler previously registered by circuit ID.
+	RemoveByCircuitId(circuitId string)
+
 	// Close shuts down the multiplexer and all managed connections.
 	// After calling Close, the multiplexer should not accept new connections
 	// or route any more messages. All registered message sinks will be notified
@@ -264,6 +264,9 @@ type ConnMux[T any] interface {
 	//   mux.Add(conn)
 	GetNextId() uint32
 
+	// SetSdkChannel sets the SdkChannel used when dispatching messages to sinks.
+	SetSdkChannel(ch SdkChannel)
+
 	// TypedReceiveHandler is an embedded interface
 	//
 	// TypedReceiveHandler provides typed message handling capabilities for the multiplexer.
@@ -303,6 +306,7 @@ func NewChannelConnMapMux[T any](inspectF func() *inspect.ContextInspectResult) 
 		sinks: cmap.NewWithCustomShardingFunction[uint32, MsgSink[T]](func(key uint32) uint32 {
 			return key
 		}),
+		circuitSinks:     cmap.New[MsgSink[T]](),
 		contextInspector: inspectF,
 	}
 	return result
@@ -311,10 +315,16 @@ func NewChannelConnMapMux[T any](inspectF func() *inspect.ContextInspectResult) 
 type ConnMuxImpl[T any] struct {
 	closed           atomic.Bool
 	sinks            cmap.ConcurrentMap[uint32, MsgSink[T]]
+	circuitSinks     cmap.ConcurrentMap[string, MsgSink[T]]
 	nextId           uint32
 	minId            uint32
 	maxId            uint32
+	sdkCh            SdkChannel
 	contextInspector func() *inspect.ContextInspectResult
+}
+
+func (mux *ConnMuxImpl[T]) SetSdkChannel(ch SdkChannel) {
+	mux.sdkCh = ch
 }
 
 func (mux *ConnMuxImpl[T]) GetActiveConnIds() []uint32 {
@@ -356,6 +366,13 @@ func (mux *ConnMuxImpl[T]) ContentType() int32 {
 }
 
 func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channel) {
+	if circuitId, found := msg.GetStringHeader(CircuitIdHeader); found {
+		if sink, found := mux.circuitSinks.Get(circuitId); found {
+			sink.AcceptMessage(msg, mux.sdkCh)
+			return
+		}
+	}
+
 	connId, found := msg.GetUint32Header(ConnIdHeader)
 	if !found {
 		if msg.ContentType == ContentTypeInspectRequest {
@@ -367,7 +384,7 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 	}
 
 	if sink, found := mux.sinks.Get(connId); found {
-		sink.AcceptMessage(msg)
+		sink.AcceptMessage(msg, mux.sdkCh)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
 		go mux.HandleNotFoundConnInspect(connId, msg, ch)
 	} else if msg.ContentType == ContentTypeXgPayload {
@@ -490,6 +507,20 @@ func (mux *ConnMuxImpl[T]) RemoveByConnId(connId uint32) {
 	mux.sinks.Remove(connId)
 }
 
+func (mux *ConnMuxImpl[T]) AddByCircuitId(circuitId string, sink MsgSink[T]) error {
+	if mux.closed.Load() {
+		return errors.Errorf("mux is closed, can't add sink by circuit id [%v]", circuitId)
+	}
+	if !mux.circuitSinks.SetIfAbsent(circuitId, sink) {
+		return errors.Errorf("circuit id %v already in use", circuitId)
+	}
+	return nil
+}
+
+func (mux *ConnMuxImpl[T]) RemoveByCircuitId(circuitId string) {
+	mux.circuitSinks.Remove(circuitId)
+}
+
 func (mux *ConnMuxImpl[T]) Close() {
 	if mux.closed.CompareAndSwap(false, true) {
 		// we don't need to lock the mux because due to the atomic bool, only one go-routine will enter this.
@@ -502,6 +533,18 @@ func (mux *ConnMuxImpl[T]) Close() {
 					WithField("connId", val.Id()).
 					WithError(err).
 					Error("error while closing message sink")
+			}
+		}
+
+		// Close circuit-keyed sinks that aren't also in the connId map
+		for circuitId, val := range mux.circuitSinks.Items() {
+			if !mux.sinks.Has(val.Id()) {
+				if err := val.HandleMuxClose(); err != nil {
+					pfxlog.Logger().
+						WithField("circuitId", circuitId).
+						WithError(err).
+						Error("error while closing circuit-keyed message sink")
+				}
 			}
 		}
 	}

@@ -21,6 +21,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/big"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/michaelquigley/pfxlog"
@@ -74,6 +75,9 @@ const (
 	ContentTypeXgAcknowledgement = int32(edge_client_pb.ContentType_XgAcknowledgementType)
 	ContentTypeXgControl         = int32(edge_client_pb.ContentType_XgControlType)
 	ContentTypeXgClose           = int32(edge_client_pb.ContentType_XgCloseType)
+
+	ContentTypeConnectV2    = int32(edge_client_pb.ContentType_ConnectV2Type)
+	ContentTypeRouteCircuit = int32(edge_client_pb.ContentType_RouteCircuitType)
 )
 
 const (
@@ -116,6 +120,10 @@ const (
 	StructuredError                = int32(edge_client_pb.HeaderId_StructuredError)
 	DialerIdentityId               = int32(edge_client_pb.HeaderId_DialerIdentityId)
 	DialerIdentityName             = int32(edge_client_pb.HeaderId_DialerIdentityName)
+	ServiceIdHeader                = int32(edge_client_pb.HeaderId_ServiceId)
+	ServiceIdentifierTypeHeader    = int32(edge_client_pb.HeaderId_ServiceIdentifierType)
+	ConnectRequestIdHeader         = int32(edge_client_pb.HeaderId_ConnectRequestId)
+	RouterCapabilitiesHeader       = int32(edge_client_pb.HeaderId_RouterCapabilities)
 )
 
 const (
@@ -189,6 +197,28 @@ type CryptoMethod byte
 
 type Precedence byte
 
+// ServiceIdentifierType indicates how a service is identified in a ConnectV2 message.
+type ServiceIdentifierType byte
+
+const (
+	ServiceIdentifierById   ServiceIdentifierType = 0
+	ServiceIdentifierByName ServiceIdentifierType = 1
+)
+
+// Router capabilities advertised via RouterCapabilitiesHeader bitmask.
+const (
+	RouterCapabilityConnectV2 int = 1
+)
+
+// IsRouterCapable checks whether a router hello header set includes the given capability bit.
+func IsRouterCapable(headers map[int32][]byte, capability int) bool {
+	if val, found := headers[RouterCapabilitiesHeader]; found {
+		mask := new(big.Int).SetBytes(val)
+		return mask.Bit(capability) == 1
+	}
+	return false
+}
+
 var ContentTypeValue = map[string]int32{
 	"EdgeConnectType":            ContentTypeConnect,
 	"EdgeStateConnectedType":     ContentTypeStateConnected,
@@ -203,6 +233,8 @@ var ContentTypeValue = map[string]int32{
 	"EdgeUpdateTokenType":        ContentTypeUpdateToken,
 	"EdgeUpdateTokenSuccessType": ContentTypeUpdateTokenSuccess,
 	"EdgeUpdateTokenFailureType": ContentTypeUpdateTokenFailure,
+	"EdgeConnectV2Type":          ContentTypeConnectV2,
+	"EdgeRouteCircuitType":       ContentTypeRouteCircuit,
 }
 
 var ContentTypeNames = map[int32]string{
@@ -219,6 +251,8 @@ var ContentTypeNames = map[int32]string{
 	ContentTypeUpdateToken:        "EdgeUpdateTokenType",
 	ContentTypeUpdateTokenSuccess: "EdgeUpdateTokenSuccessType",
 	ContentTypeUpdateTokenFailure: "EdgeUpdateTokenFailureType",
+	ContentTypeConnectV2:          "EdgeConnectV2Type",
+	ContentTypeRouteCircuit:       "EdgeRouteCircuitType",
 }
 
 type MsgEvent struct {
@@ -542,6 +576,44 @@ func NewUpdateTokenFailedMsg(err error) *channel.Message {
 // was accepted.
 func NewUpdateTokenSuccessMsg() *channel.Message {
 	msg := channel.NewMessage(ContentTypeUpdateTokenSuccess, nil)
+	return msg
+}
+
+// NewConnectV2Msg creates a ConnectV2 message for sessionless dialing. The service is identified
+// by the serviceId parameter, with identifierType indicating whether it is a service ID or name.
+// The requestId correlates this request to the route_circuit message the router will send back.
+func NewConnectV2Msg(connId uint32, serviceId string, identifierType ServiceIdentifierType, requestId string, pubKey []byte, options *DialOptions) *channel.Message {
+	msg := newMsg(ContentTypeConnectV2, connId, nil)
+	msg.PutStringHeader(ServiceIdHeader, serviceId)
+	msg.PutByteHeader(ServiceIdentifierTypeHeader, byte(identifierType))
+	msg.PutStringHeader(ConnectRequestIdHeader, requestId)
+	msg.PutBoolHeader(UseXgressToSdkHeader, options.SdkFlowControl)
+
+	if pubKey != nil {
+		msg.Headers[PublicKeyHeader] = pubKey
+		msg.PutByteHeader(CryptoMethodHeader, byte(CryptoMethodLibsodium))
+	}
+	if options.Identity != "" {
+		msg.Headers[TerminatorIdentityHeader] = []byte(options.Identity)
+	}
+	if options.CallerId != "" {
+		msg.Headers[CallerIdHeader] = []byte(options.CallerId)
+	}
+	if options.AppData != nil {
+		msg.Headers[AppDataHeader] = options.AppData
+	}
+	if options.StickinessToken != nil {
+		msg.Headers[StickinessTokenHeader] = options.StickinessToken
+	}
+	return msg
+}
+
+// NewRouteCircuitMsg creates a route_circuit message sent from router to SDK to notify
+// the SDK of the circuit ID before the full circuit is established.
+func NewRouteCircuitMsg(circuitId string, requestId string) *channel.Message {
+	msg := channel.NewMessage(ContentTypeRouteCircuit, nil)
+	msg.PutStringHeader(CircuitIdHeader, circuitId)
+	msg.PutStringHeader(ConnectRequestIdHeader, requestId)
 	return msg
 }
 

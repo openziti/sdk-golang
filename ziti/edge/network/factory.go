@@ -36,11 +36,12 @@ type RouterConnOwner interface {
 }
 
 type routerConn struct {
-	routerName string
-	routerAddr string
-	ch         edge.SdkChannel
-	mux        edge.ConnMux[any]
-	owner      RouterConnOwner
+	routerName   string
+	routerAddr   string
+	ch           edge.SdkChannel
+	mux          edge.ConnMux[any]
+	owner        RouterConnOwner
+	pendingDials *pendingDialTracker
 }
 
 func (conn *routerConn) GetBoolHeader(key int32) bool {
@@ -80,10 +81,11 @@ func (conn *routerConn) HandleClose(channel.Channel) {
 
 func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspectF func() *inspect.ContextInspectResult) edge.RouterConn {
 	conn := &routerConn{
-		routerAddr: routerAddr,
-		routerName: routerName,
-		mux:        edge.NewChannelConnMapMux[any](inspectF),
-		owner:      owner,
+		routerAddr:   routerAddr,
+		routerName:   routerName,
+		mux:          edge.NewChannelConnMapMux[any](inspectF),
+		owner:        owner,
+		pendingDials: newPendingDialTracker(),
 	}
 
 	return conn
@@ -96,6 +98,8 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
 	}
 
+	conn.mux.SetSdkChannel(conn.ch)
+
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.mux.HandleReceive)
@@ -105,6 +109,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.mux.HandleReceive)
+	binding.AddReceiveHandlerF(edge.ContentTypeRouteCircuit, conn.pendingDials.HandleRouteCircuit)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.mux)
@@ -116,15 +121,18 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 
 func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
 	id := conn.mux.GetNextId()
+	msgCh := edge.NewEdgeMsgChannel(conn.ch, id)
 
 	closeNotify := make(chan struct{})
 	edgeCh := &edgeConn{
-		closeNotify: closeNotify,
-		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      conn.mux,
-		serviceName: *service.Name,
-		marker:      newMarker(),
+		edgeConnBase: edgeConnBase{
+			closeNotify: closeNotify,
+			serviceName: *service.Name,
+			marker:      newMarker(),
+		},
+		msgCh: *msgCh,
+		mux:   conn.mux,
+		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
 
 	var err error
@@ -141,6 +149,35 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
 	}
 	return edgeCh
+}
+
+// NewDialConnV2 creates a new edgeConnV2 for sessionless V2 dials using xgress flow control.
+func (conn *routerConn) NewDialConnV2(service *rest_model.ServiceDetail) *edgeConnV2 {
+	id := conn.mux.GetNextId()
+	closeNotify := make(chan struct{})
+	ec := &edgeConnV2{
+		edgeConnBase: edgeConnBase{
+			closeNotify: closeNotify,
+			serviceName: *service.Name,
+			marker:      newMarker(),
+		},
+		connId: id,
+	}
+
+	if *service.EncryptionRequired {
+		if keyPair, err := kx.NewKeyPair(); err == nil {
+			ec.crypto = true
+			ec.keyPair = keyPair
+		} else {
+			pfxlog.Logger().Errorf("unable to setup encryption for edgeConnV2[%s] %v", *service.Name, err)
+		}
+	}
+
+	err := conn.mux.Add(ec)
+	if err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
+	}
+	return ec
 }
 
 func (conn *routerConn) SendPosture(responses []rest_model.PostureResponseCreate) error {
@@ -211,9 +248,28 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 	return edgeCh
 }
 
+// SupportsConnectV2 returns true if the router advertises ConnectV2 capability in its hello headers.
+func (conn *routerConn) SupportsConnectV2() bool {
+	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), edge.RouterCapabilityConnectV2)
+}
+
+// ConnectV2 performs a sessionless dial. The router authorizes locally via RDM.
+func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+	ec := conn.NewDialConnV2(service)
+	dialConn, err := ec.ConnectV2(ctx, *service.ID, edge.ServiceIdentifierById, options, envF, conn)
+	if err != nil {
+		if !conn.ch.GetChannel().IsClosed() {
+			if err2 := ec.Close(); err2 != nil {
+				pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
+			}
+		}
+	}
+	return dialConn, err
+}
+
 func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
 	ec := conn.NewDialConn(service)
-	dialConn, err := ec.Connect(ctx, session, options, envF)
+	dialConn, err := ec.Connect(ctx, session, options, envF, conn.ch, conn.mux)
 	if err != nil {
 		if !conn.ch.GetChannel().IsClosed() {
 			if err2 := ec.Close(); err2 != nil {

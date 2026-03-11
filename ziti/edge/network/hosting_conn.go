@@ -149,19 +149,19 @@ func (conn *edgeHostConn) SetData(data any) {
 //   - msg: the incoming message to process
 //
 // Thread Safety: This method is safe for concurrent use.
-func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
+func (conn *edgeHostConn) AcceptMessage(msg *channel.Message, ch edge.SdkChannel) {
 	conn.TraceMsg("AcceptMessage", msg)
 
 	switch msg.ContentType {
 	case edge.ContentTypeConnInspectRequest:
-		go conn.handleInspect(msg)
+		go conn.handleInspect(msg, ch)
 	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
 		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
 		logrus.WithFields(edge.GetLoggerFields(msg)).
 			WithField("circuitId", circuitId).
 			WithField("newConnId", newConnId).Debug("received dial request")
-		go conn.newChildConnection(msg)
+		go conn.newChildConnection(msg, ch)
 	case edge.ContentTypeStateClosed:
 		if err := edge.ErrorFromMsg(msg); err != nil {
 			log := pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).
@@ -189,10 +189,10 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 	}
 }
 
-func (conn *edgeHostConn) handleInspect(msg *channel.Message) {
+func (conn *edgeHostConn) handleInspect(msg *channel.Message, ch edge.SdkChannel) {
 	// note, until 1.5 this returned 0 for the connId
 	resp := edge.NewConnInspectResponse(conn.Id(), edge.ConnTypeBind, conn.Inspect())
-	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+	if err := resp.ReplyTo(msg).Send(ch.GetControlSender()); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("failed to send inspect response")
 	}
@@ -265,7 +265,7 @@ func (conn *edgeHostConn) Inspect() string {
 	return string(jsonOutput)
 }
 
-func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
+func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.SdkChannel) {
 	token := string(message.Body)
 	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
@@ -279,7 +279,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		logger.Warn("invalid token")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(ch.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -299,16 +299,19 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
 	closeNotify := make(chan struct{})
+	msgCh := edge.NewEdgeMsgChannel(conn.SdkChannel, id)
 	edgeCh := &edgeConn{
-		closeNotify:    closeNotify,
-		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:         conn.msgMux,
-		sourceIdentity: sourceIdentity,
-		crypto:         conn.crypto,
-		appData:        message.Headers[edge.AppDataHeader],
-		marker:         marker,
-		circuitId:      circuitId,
+		edgeConnBase: edgeConnBase{
+			closeNotify:    closeNotify,
+			sourceIdentity: sourceIdentity,
+			crypto:         conn.crypto,
+			appData:        message.Headers[edge.AppDataHeader],
+			marker:         marker,
+			circuitId:      circuitId,
+		},
+		msgCh: *msgCh,
+		mux:   conn.msgMux,
+		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
 
 	if !conn.flags.IsSet(hostConnDoNotSaveDialerIdentity) {
@@ -331,7 +334,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("%s (%s)", description, err.Error()))
 		reply.ReplyTo(message)
-		if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
+		if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(ch.GetControlSender()); sendErr != nil {
 			logger.WithError(sendErr).Error("failed to send reply to dial request")
 		}
 	}
@@ -350,7 +353,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		return
 	}
 
-	if err := edgeCh.setupFlowControl(message, xgress.Terminator, conn.envF); err != nil {
+	if err := edgeCh.setupFlowControl(message, xgress.Terminator, conn.envF, conn.SdkChannel, conn.msgMux); err != nil {
 		cleanupAndReportError("failed to start flow control", err)
 		return
 	}
@@ -376,6 +379,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		conn:                 conn,
 		edgeCh:               edgeCh,
 		message:              message,
+		ctrlSender:           ch.GetControlSender(),
 		txHeader:             txHeader,
 		routerProvidedConnId: routerProvidedConnId,
 		circuitId:            circuitId,
