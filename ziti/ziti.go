@@ -1591,6 +1591,9 @@ func (context *ContextImpl) dialSession(ctx gocontext.Context, service *rest_mod
 	if err != nil {
 		return nil, err
 	}
+	if edgeConnFactory.SupportsConnectV2() {
+		return edgeConnFactory.ConnectV2(ctx, service, options, context.getXgressEnv)
+	}
 	return edgeConnFactory.Connect(ctx, service, session, options, context.getXgressEnv)
 }
 

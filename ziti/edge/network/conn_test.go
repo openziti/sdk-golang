@@ -36,10 +36,10 @@ func BenchmarkConnWrite(b *testing.B) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      mux,
-		serviceName: "test",
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
 
 	req := require.New(b)
@@ -64,10 +64,10 @@ func BenchmarkConnRead(b *testing.B) {
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       readQ,
-		msgMux:      mux,
-		serviceName: "test",
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        readQ,
 	}
 
 	var stop atomic.Bool
@@ -141,10 +141,10 @@ func TestReadMultipart(t *testing.T) {
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
 	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       readQ,
-		msgMux:      mux,
-		serviceName: "test",
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        readQ,
 	}
 
 	var stop atomic.Bool

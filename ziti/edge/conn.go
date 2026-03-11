@@ -46,6 +46,10 @@ func init() {
 
 type RouterClient interface {
 	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	// ConnectV2 performs a sessionless dial. The router authorizes locally via RDM.
+	ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	// SupportsConnectV2 returns true if the router advertises ConnectV2 support.
+	SupportsConnectV2() bool
 	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
@@ -123,7 +127,7 @@ type ServiceConn interface {
 type Conn interface {
 	ServiceConn
 	Identifiable
-	GetRouterId() string
+	Peers() []string
 	GetState() string
 	CompleteAcceptSuccess() error
 	CompleteAcceptFailed(err error)
@@ -162,9 +166,6 @@ func NewEdgeMsgChannel(ch SdkChannel, connId uint32) *MsgChannel {
 	}
 }
 
-func (ec *MsgChannel) GetRouterId() string {
-	return ec.GetChannel().Id()
-}
 
 func (ec *MsgChannel) Id() uint32 {
 	return ec.id

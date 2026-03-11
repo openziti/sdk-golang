@@ -79,7 +79,7 @@
 
 ## What's New
 
-* Updates Go version to 1.24, in-line with Go's supported version policy
+* Updates Go version to 1.25, in-line with Go's supported version policy
 * Bug fixes
 
 ## Issues Fixed and Dependency Updates

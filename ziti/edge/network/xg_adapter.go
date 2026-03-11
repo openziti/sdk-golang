@@ -8,15 +8,17 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
-	"github.com/openziti/sdk-golang/edgexg"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/sirupsen/logrus"
 )
 
 type XgAdapter struct {
-	conn         *edgeConn
-	readC        chan []byte
+	sender       RouterSender
+	connId       uint32
+	circuitId    string
+	mux          edge.ConnMux[any]
+	muxSink      edge.MsgSink[any]
+	ctrlSender   channel.Sender
 	env          xgress.Env
 	xg           *xgress.Xgress
 	writeAdapter *xgress.WriteAdapter
@@ -24,28 +26,31 @@ type XgAdapter struct {
 
 func (self *XgAdapter) HandleXgressClose(x *xgress.Xgress) {
 	xgCloseMsg := channel.NewMessage(edge.ContentTypeXgClose, []byte(self.xg.CircuitId()))
-	if err := xgCloseMsg.WithTimeout(5 * time.Second).Send(self.conn.GetControlSender()); err != nil {
+	if err := xgCloseMsg.WithTimeout(5 * time.Second).Send(self.ctrlSender); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send close xg close message")
 	}
 
 	// see note in close
-	self.conn.msgMux.Remove(self.conn)
+	self.mux.Remove(self.muxSink)
+	if self.circuitId != "" {
+		self.mux.RemoveByCircuitId(self.circuitId)
+	}
 }
 
 func (self *XgAdapter) ForwardPayload(payload *xgress.Payload, _ *xgress.Xgress, ctx context.Context) {
 	msg := payload.Marshall()
-	msg.PutUint32Header(edge.ConnIdHeader, self.conn.Id())
+	msg.PutUint32Header(edge.ConnIdHeader, self.connId)
 
-	if err := msg.WithContext(ctx).SendAndWaitForWire(self.conn.GetDefaultSender()); err != nil {
+	if err := self.sender.SendPayload(msg, ctx); err != nil {
 		pfxlog.Logger().WithField("circuitId", payload.CircuitId).WithError(err).Error("failed to send payload")
 	}
 }
 
 func (self *XgAdapter) RetransmitPayload(srcAddr xgress.Address, payload *xgress.Payload) error {
 	msg := payload.Marshall()
-	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
+	if err := self.sender.SendPayload(msg, context.Background()); err != nil {
 		// if the channel is closed, close the xgress
-		if self.conn.MsgChannel.GetChannel().IsClosed() {
+		if self.sender.IsClosed() {
 			self.xg.Close()
 		}
 		return err
@@ -55,14 +60,14 @@ func (self *XgAdapter) RetransmitPayload(srcAddr xgress.Address, payload *xgress
 
 func (self *XgAdapter) ForwardControlMessage(control *xgress.Control, x *xgress.Xgress) {
 	msg := control.Marshall()
-	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
+	if err := self.sender.SendControlMessage(msg); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to forward control message")
 	}
 }
 
 func (self *XgAdapter) ForwardAcknowledgement(ack *xgress.Acknowledgement, address xgress.Address) {
 	msg := ack.Marshall()
-	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
+	if err := self.sender.SendAcknowledgement(msg); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send acknowledgement")
 	}
 }
@@ -80,52 +85,19 @@ func (self *XgAdapter) Close() error {
 }
 
 func (self *XgAdapter) LogContext() string {
-	return fmt.Sprintf("xg/%s", self.conn.GetCircuitId())
+	return fmt.Sprintf("xg/%s", self.circuitId)
 }
 
 func (self *XgAdapter) ReadPayload() ([]byte, map[uint8][]byte, error) {
 	return nil, nil, errors.New("should never be called")
 }
 
-func (self *XgAdapter) WritePayload(bytes []byte, headers map[uint8][]byte) (int, error) {
-	var msgUUID []byte
-	var edgeHdrs map[int32][]byte
-
-	if headers != nil {
-		msgUUID = headers[xgress.HeaderKeyUUID]
-
-		edgeHdrs = make(map[int32][]byte)
-		for k, v := range headers {
-			if edgeHeader, found := edgexg.HeadersFromFabric[k]; found {
-				edgeHdrs[edgeHeader] = v
-			}
-		}
-	}
-
-	msg := edge.NewDataMsg(self.conn.Id(), bytes)
-	if msgUUID != nil {
-		msg.Headers[edge.UUIDHeader] = msgUUID
-	}
-
-	for k, v := range edgeHdrs {
-		msg.Headers[k] = v
-	}
-
-	if err := self.conn.readQ.PutSequenced(msg); err != nil {
-		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			WithField("circuitId", self.conn.circuitId).
-			Error("error pushing edge message to sequencer")
-		return 0, err
-	}
-
-	logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
-	return len(msg.Body), nil
+func (self *XgAdapter) WritePayload([]byte, map[uint8][]byte) (int, error) {
+	return 0, errors.New("not available in pull mode")
 }
 
 func (self *XgAdapter) FlowFromFabricToXgressClosed() {
-	pfxlog.Logger().WithField("circuitId", self.conn.circuitId).
-		Debug("fabric to sdk flow complete")
-	self.conn.readQ.Close()
+	// no-op: in pull mode, ReadAdapter handles cleanup
 }
 
 func (self *XgAdapter) HandleControlMsg(controlType xgress.ControlType, headers channel.Headers, responder xgress.ControlReceiver) error {
