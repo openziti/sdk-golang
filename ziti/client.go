@@ -69,6 +69,7 @@ type CtrlClient struct {
 	ConfigTypes                      []string
 	supportsConfigTypesOnServiceList atomic.Bool
 	capabilitiesLoaded               atomic.Bool
+	controllerVersion                atomic.Pointer[versions.SemVer]
 }
 
 // RequestTotpToken implements TotpTokenRequestor, exchanging a TOTP code for a TOTP token.
@@ -529,29 +530,39 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 // any addresses that cannot be parsed
 func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
 	for _, edgeRouter := range session.EdgeRouters {
-		newUrls := map[string]string{}
-		for protocol, url := range edgeRouter.SupportedProtocols {
-			url = strings.Replace(url, "://", ":", 1)
-			if _, err := transport.ParseAddress(url); err == nil {
-				newUrls[protocol] = url
-			} else {
-				pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(edgeRouter.Name))
-			}
-		}
-		edgeRouter.SupportedProtocols = newUrls
+		self.sanitizeEdgeRouterUrls(&edgeRouter.CommonEdgeRouterProperties)
 	}
 }
 
+// sanitizeEdgeRouterUrls normalizes the SupportedProtocols map of a single ER, dropping
+// any addresses the transport package can't parse.
+func (self *CtrlClient) sanitizeEdgeRouterUrls(er *rest_model.CommonEdgeRouterProperties) {
+	newUrls := map[string]string{}
+	for protocol, url := range er.SupportedProtocols {
+		url = strings.Replace(url, "://", ":", 1)
+		if _, err := transport.ParseAddress(url); err == nil {
+			newUrls[protocol] = url
+		} else {
+			pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(er.Name))
+		}
+	}
+	er.SupportedProtocols = newUrls
+}
+
+// loadCtrlCapabilities fetches and caches the controller version and derived capability flags.
+// If the version can't be fetched or parsed, the cache is left unpopulated so the next
+// capability check retries, rather than pinning capabilities based on a transient failure.
 func (self *CtrlClient) loadCtrlCapabilities() {
 	result, _ := self.API.Informational.ListVersion(informational.NewListVersionParams())
 	if result != nil && result.Payload != nil && result.Payload.Data != nil {
 		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
+			self.controllerVersion.Store(sv)
 			if sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.1.0")) >= 0 {
 				self.supportsConfigTypesOnServiceList.Store(true)
 			}
+			self.capabilitiesLoaded.Store(true)
 		}
 	}
-	self.capabilitiesLoaded.Store(true)
 }
 
 func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
@@ -559,6 +570,42 @@ func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
 		self.loadCtrlCapabilities()
 	}
 	return self.supportsConfigTypesOnServiceList.Load()
+}
+
+// supportsServiceEdgeRouterList returns true if the controller exposes the sessionless
+// GET /services/{id}/edge-routers endpoint on the client API (controller >= 1.0.0). Dev builds
+// reporting "0.0.0" are assumed to support it. While the controller version is still unknown
+// it returns false, taking the V1 session path; the version load is retried on the next call.
+func (self *CtrlClient) supportsServiceEdgeRouterList() bool {
+	if !self.capabilitiesLoaded.Load() {
+		self.loadCtrlCapabilities()
+	}
+	sv := self.controllerVersion.Load()
+	if sv == nil {
+		return false
+	}
+	return sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.0.0")) >= 0
+}
+
+// GetServiceEdgeRouters returns the edge routers the current identity may use to reach the given
+// service. It calls the sessionless GET /services/{id}/edge-routers endpoint, which filters by
+// the authenticated API-session identity and the provided service id (same logic CreateSession
+// would use). No service-session token is required. The endpoint is only available on
+// controllers >= 1.0.0; check supportsServiceEdgeRouterList before calling.
+func (self *CtrlClient) GetServiceEdgeRouters(serviceId string) ([]*rest_model.CommonEdgeRouterProperties, error) {
+	params := service.NewListServiceEdgeRoutersParams()
+	params.ID = serviceId
+
+	resp, err := self.API.Service.ListServiceEdgeRouters(params, self.GetCurrentApiSession())
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	ers := resp.Payload.Data.EdgeRouters
+	for _, er := range ers {
+		self.sanitizeEdgeRouterUrls(er)
+	}
+	return ers, nil
 }
 
 // GetAvailableERs retrieves edge routers accessible to the current identity from the controller.

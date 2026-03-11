@@ -149,19 +149,19 @@ func (conn *edgeHostConn) SetData(data any) {
 //   - msg: the incoming message to process
 //
 // Thread Safety: This method is safe for concurrent use.
-func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
+func (conn *edgeHostConn) AcceptMessage(msg *channel.Message, ch edge.SdkChannel) {
 	conn.TraceMsg("AcceptMessage", msg)
 
 	switch msg.ContentType {
 	case edge.ContentTypeConnInspectRequest:
-		go conn.handleInspect(msg)
+		go conn.handleInspect(msg, ch)
 	case edge.ContentTypeDial:
 		newConnId, _ := msg.GetUint32Header(edge.RouterProvidedConnId)
 		circuitId, _ := msg.GetStringHeader(edge.CircuitIdHeader)
 		logrus.WithFields(edge.GetLoggerFields(msg)).
 			WithField("circuitId", circuitId).
 			WithField("newConnId", newConnId).Debug("received dial request")
-		go conn.newChildConnection(msg)
+		go conn.newChildConnection(msg, ch)
 	case edge.ContentTypeStateClosed:
 		if err := edge.ErrorFromMsg(msg); err != nil {
 			log := pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).
@@ -189,10 +189,10 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 	}
 }
 
-func (conn *edgeHostConn) handleInspect(msg *channel.Message) {
+func (conn *edgeHostConn) handleInspect(msg *channel.Message, ch edge.SdkChannel) {
 	// note, until 1.5 this returned 0 for the connId
 	resp := edge.NewConnInspectResponse(conn.Id(), edge.ConnTypeBind, conn.Inspect())
-	if err := resp.ReplyTo(msg).Send(conn.GetControlSender()); err != nil {
+	if err := resp.ReplyTo(msg).Send(ch.GetControlSender()); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("failed to send inspect response")
 	}
@@ -265,7 +265,7 @@ func (conn *edgeHostConn) Inspect() string {
 	return string(jsonOutput)
 }
 
-func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
+func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.SdkChannel) {
 	token := string(message.Body)
 	circuitId, _ := message.GetStringHeader(edge.CircuitIdHeader)
 	logger := pfxlog.Logger().WithField("connId", conn.Id())
@@ -279,7 +279,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		logger.Warn("invalid token")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
-		if err := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+		if err := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(ch.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -298,41 +298,16 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	sourceIdentity, _ := message.GetStringHeader(edge.CallerIdHeader)
 	marker, _ := message.GetStringHeader(edge.ConnectionMarkerHeader)
 
-	closeNotify := make(chan struct{})
-	edgeCh := &edgeConn{
-		closeNotify:    closeNotify,
-		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:         conn.msgMux,
-		sourceIdentity: sourceIdentity,
-		crypto:         conn.crypto,
-		appData:        message.Headers[edge.AppDataHeader],
-		marker:         marker,
-		circuitId:      circuitId,
-	}
-
+	var customState map[int32][]byte
 	if !conn.flags.IsSet(hostConnDoNotSaveDialerIdentity) {
-		if edgeCh.customState == nil {
-			edgeCh.customState = map[int32][]byte{}
-		}
-
 		if dialerIdentityId, ok := message.Headers[edge.DialerIdentityId]; ok {
-			edgeCh.customState[edge.DialerIdentityId] = dialerIdentityId
+			customState = map[int32][]byte{edge.DialerIdentityId: dialerIdentityId}
 		}
 		if dialerIdentityName, ok := message.Headers[edge.DialerIdentityName]; ok {
-			edgeCh.customState[edge.DialerIdentityName] = dialerIdentityName
-		}
-	}
-
-	cleanupAndReportError := func(description string, err error) {
-		logger.WithError(err).Error(description)
-
-		edgeCh.close(false)
-
-		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("%s (%s)", description, err.Error()))
-		reply.ReplyTo(message)
-		if sendErr := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
-			logger.WithError(sendErr).Error("failed to send reply to dial request")
+			if customState == nil {
+				customState = map[int32][]byte{}
+			}
+			customState[edge.DialerIdentityName] = dialerIdentityName
 		}
 	}
 
@@ -343,6 +318,29 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		WithField("token", token).
 		WithField("circuitId", circuitId)
 
+	// Build the right conn type for the requested flow-control mode.
+	useXg, _ := message.GetBoolHeader(edge.UseXgressToSdkHeader)
+	params := childConnParams{
+		id:             id,
+		sourceIdentity: sourceIdentity,
+		marker:         marker,
+		circuitId:      circuitId,
+		appData:        message.Headers[edge.AppDataHeader],
+		crypto:         conn.crypto,
+		customState:    customState,
+	}
+	edgeCh, err := conn.buildChildConn(params, useXg, message)
+	if err != nil {
+		newConnLogger.WithError(err).Error("failed to construct child connection")
+		reportDialFailure(logger, ch, conn.Id(), message, "failed to construct child connection", err)
+		return
+	}
+
+	cleanupAndReportError := func(description string, err error) {
+		edgeCh.close(false)
+		reportDialFailure(logger, ch, conn.Id(), message, description, err)
+	}
+
 	// duplicate errors only happen on the server side, since client controls ids
 	if err := conn.msgMux.Add(edgeCh); err != nil {
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
@@ -350,19 +348,19 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		return
 	}
 
-	if err := edgeCh.setupFlowControl(message, xgress.Terminator, conn.envF); err != nil {
-		cleanupAndReportError("failed to start flow control", err)
-		return
+	// Start the xgress only after the sink is registered (see C1): inbound
+	// payloads from the dialer must have a mux sink the moment the xgress is live.
+	if xgConn, ok := edgeCh.(*edgeConnXgress); ok {
+		xgConn.start()
 	}
 
 	var txHeader []byte
-	if edgeCh.crypto {
+	if conn.crypto {
 		newConnLogger.Debug("setting up crypto")
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 
 		if clientKey != nil {
-			var err error
 			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
 				cleanupAndReportError("failed to establish crypto session", err)
 				return
@@ -376,13 +374,14 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		conn:                 conn,
 		edgeCh:               edgeCh,
 		message:              message,
+		ctrlSender:           ch.GetControlSender(),
 		txHeader:             txHeader,
 		routerProvidedConnId: routerProvidedConnId,
 		circuitId:            circuitId,
 	}
 
 	if conn.manualStart {
-		edgeCh.acceptCompleteHandler = connHandler
+		edgeCh.setAcceptCompleteHandler(connHandler)
 	} else if err, cleanupHandled := connHandler.dialSucceeded(); err != nil {
 		if !cleanupHandled {
 			cleanupAndReportError("failed to start connection", err)
@@ -393,6 +392,82 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	newConnLogger.Debug("dial succeeded")
 
 	conn.acceptC <- edgeCh
+}
+
+// hostedConn is the subset of edgeConnLegacy/edgeConnXgress that the hosting
+// accept path needs. It bundles the mux-sink, data-sink, and crypto-setup
+// interfaces into one.
+type hostedConn interface {
+	edge.Conn
+	edge.MsgSink[any]
+	acceptableConn
+	establishServerCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) ([]byte, error)
+	setAcceptCompleteHandler(h *newConnHandler)
+}
+
+// childConnParams holds the primitive fields needed to build a child conn on
+// the hosting side. Extracted to avoid constructing an edgeConnBase value in
+// the caller, which would trigger a copylocks vet warning when embedded.
+type childConnParams struct {
+	id             uint32
+	sourceIdentity string
+	marker         string
+	circuitId      string
+	crypto         bool
+	appData        []byte
+	customState    map[int32][]byte
+}
+
+// buildChildConn constructs an edgeConnLegacy or edgeConnXgress for an
+// accepted dial, based on whether the dialer requested xgress flow control.
+func (conn *edgeHostConn) buildChildConn(p childConnParams, useXg bool, message *channel.Message) (hostedConn, error) {
+	closeNotify := make(chan struct{})
+	if useXg {
+		ec := &edgeConnXgress{
+			edgeConnBase: edgeConnBase{
+				closeNotify:    closeNotify,
+				sourceIdentity: p.sourceIdentity,
+				crypto:         p.crypto,
+				appData:        p.appData,
+				marker:         p.marker,
+				circuitId:      p.circuitId,
+				customState:    p.customState,
+			},
+			connId: p.id,
+		}
+		ec.initChunkReader()
+		if err := ec.setupXgressFlowControl(message, xgress.Terminator, conn.envF, conn.SdkChannel, conn.msgMux); err != nil {
+			return nil, err
+		}
+		return ec, nil
+	}
+	msgCh := edge.NewEdgeMsgChannel(conn.SdkChannel, p.id)
+	ec := &edgeConnLegacy{
+		edgeConnBase: edgeConnBase{
+			closeNotify:    closeNotify,
+			sourceIdentity: p.sourceIdentity,
+			crypto:         p.crypto,
+			appData:        p.appData,
+			marker:         p.marker,
+			circuitId:      p.circuitId,
+			customState:    p.customState,
+		},
+		msgCh: *msgCh,
+		mux:   conn.msgMux,
+		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
+	}
+	ec.initChunkReader()
+	return ec, nil
+}
+
+// reportDialFailure sends a DialFailed reply to the originating dial request.
+func reportDialFailure(logger *logrus.Entry, ch edge.SdkChannel, hostConnId uint32, message *channel.Message, description string, err error) {
+	logger.WithError(err).Error(description)
+	reply := edge.NewDialFailedMsg(hostConnId, fmt.Sprintf("%s (%s)", description, err.Error()))
+	reply.ReplyTo(message)
+	if sendErr := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(ch.GetControlSender()); sendErr != nil {
+		logger.WithError(sendErr).Error("failed to send reply to dial request")
+	}
 }
 
 func (conn *edgeHostConn) HandleMuxClose() error {

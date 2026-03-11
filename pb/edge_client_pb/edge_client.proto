@@ -44,6 +44,9 @@ enum ContentType {
   InspectRequest = 60804;
   InspectResponse = 60805;
 
+  ConnectV2Type = 60806;
+  RouteCircuitType = 60807;
+
   PostureResponseType = 10800;
   ServicePostureStateRequestType = 108001;
   ServicePostureStateResponseType = 108002;
@@ -88,6 +91,10 @@ enum HeaderId {
   StructuredError = 1033;
   DialerIdentityId = 1034;
   DialerIdentityName = 1035;
+  ServiceId = 1036;
+  ServiceIdentifierType = 1037;
+  ConnectRequestId = 1038;
+  RouterCapabilities = 1039;
 }
 
 enum Error {

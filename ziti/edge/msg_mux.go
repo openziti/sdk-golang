@@ -60,21 +60,13 @@ type MsgSink[T any] interface {
 
 	// AcceptMessage processes an incoming message for this connection.
 	// The message is guaranteed to be intended for this sink's connection ID.
-	// The sink should handle the message appropriately based on its type and content.
+	// The ch parameter identifies the SdkChannel from which the message was received,
+	// allowing reply operations to target the correct router.
 	//
 	// Parameters:
 	//   msg - the incoming message to process
-	//
-	// Example:
-	//   func (s *myMsgSink) AcceptMessage(msg *channel.Message) {
-	//       switch msg.ContentType {
-	//       case edge.ContentTypeData:
-	//           s.handleData(msg)
-	//       case edge.ContentTypeStateClosed:
-	//           s.handleClose(msg)
-	//       }
-	//   }
-	AcceptMessage(msg *channel.Message)
+	//   ch  - the SdkChannel the message arrived on
+	AcceptMessage(msg *channel.Message, ch SdkChannel)
 
 	// HandleMuxClose is called when the underlying multiplexer is closing.
 	// This gives the sink an opportunity to perform cleanup operations
@@ -153,6 +145,17 @@ type ConnMux[T any] interface {
 	//   conn := &edgeXgressConn{connId: 12345, ...}
 	//   err := mux.Add(conn)
 	Add(sink MsgSink[T]) error
+
+	// Replace registers a message handler for a specific connection, overwriting
+	// any sink already registered under the same connection ID. Unlike Add, an
+	// existing registration is not an error: this is how a placeholder sink that
+	// buffered messages during connection establishment is atomically swapped for
+	// the established connection's sink.
+	//
+	// Example:
+	//   pending.delegateTo(conn) // replay anything buffered, then forward
+	//   mux.Replace(conn)        // route subsequent messages directly
+	Replace(sink MsgSink[T]) error
 
 	// Remove unregisters the specified message handler.
 	// This removes the connection from the multiplexer's routing table.
@@ -264,6 +267,9 @@ type ConnMux[T any] interface {
 	//   mux.Add(conn)
 	GetNextId() uint32
 
+	// SetSdkChannel sets the SdkChannel used when dispatching messages to sinks.
+	SetSdkChannel(ch SdkChannel)
+
 	// ContentType returns the message content type this handler processes. Together
 	// with the embedded ReceiveHandler, it allows the ConnMux to be registered as a
 	// message handler with the underlying channel infrastructure, via
@@ -316,7 +322,12 @@ type ConnMuxImpl[T any] struct {
 	nextId           uint32
 	minId            uint32
 	maxId            uint32
+	sdkCh            SdkChannel
 	contextInspector func() *inspect.ContextInspectResult
+}
+
+func (mux *ConnMuxImpl[T]) SetSdkChannel(ch SdkChannel) {
+	mux.sdkCh = ch
 }
 
 func (mux *ConnMuxImpl[T]) GetActiveConnIds() []uint32 {
@@ -369,7 +380,7 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 	}
 
 	if sink, found := mux.sinks.Get(connId); found {
-		sink.AcceptMessage(msg)
+		sink.AcceptMessage(msg, mux.sdkCh)
 	} else if msg.ContentType == ContentTypeConnInspectRequest {
 		go mux.HandleNotFoundConnInspect(connId, msg, ch)
 	} else if msg.ContentType == ContentTypeXgPayload {
@@ -390,7 +401,7 @@ func (mux *ConnMuxImpl[T]) handlePayloadWithNoSink(msg *channel.Message, ch chan
 			ack := xgress.NewAcknowledgement(payload.CircuitId, payload.GetOriginator().Invert())
 			ackMsg := ack.Marshall()
 			ackMsg.PutUint32Header(ConnIdHeader, connId)
-			_, _ = ch.TrySend(msg)
+			_, _ = ch.TrySend(ackMsg)
 		} else {
 			pfxlog.Logger().WithField("connId", int(connId)).WithField("circuitId", payload.CircuitId).
 				Debug("unable to dispatch xg payload received for unknown edge conn id")
@@ -481,6 +492,14 @@ func (mux *ConnMuxImpl[T]) Add(sink MsgSink[T]) error {
 	if !mux.sinks.SetIfAbsent(sink.Id(), sink) {
 		return errors.Errorf("sink id %v already in use", sink.Id())
 	}
+	return nil
+}
+
+func (mux *ConnMuxImpl[T]) Replace(sink MsgSink[T]) error {
+	if mux.closed.Load() {
+		return errors.Errorf("mux is closed, can't replace sink with id [%v]", sink.Id())
+	}
+	mux.sinks.Set(sink.Id(), sink)
 	return nil
 }
 

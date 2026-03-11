@@ -17,10 +17,43 @@
 package ziti
 
 import (
+	"time"
+
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
 	edge_apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/sdk-golang/ziti/edge"
 )
+
+// DialEvent describes one dial attempt: which protocol it took (or attempted),
+// why, where it went, and how it ended. A dial that falls back and retries emits
+// one event per attempt, so fallback sequences are observable.
+type DialEvent struct {
+	// ServiceName and ServiceId identify the dialed service.
+	ServiceName string
+	ServiceId   string
+
+	// RouterName is the edge router the dial was sent to. Empty if the dial
+	// failed before a router was selected.
+	RouterName string
+
+	// Protocol is the dial protocol taken (on success) or attempted (on
+	// failure); edge.DialProtocolNone if the dial failed before the protocol
+	// was selected.
+	Protocol edge.DialProtocol
+
+	// Forced is true when DialOptions.ForceConnectV1 was set on a V1 attempt.
+	Forced bool
+
+	// Err is nil for a successful dial, the failure cause otherwise.
+	Err error
+
+	// Elapsed is the time the attempt took.
+	Elapsed time.Duration
+
+	// CircuitId identifies the established circuit; set on success.
+	CircuitId string
+}
 
 const (
 	// EventServiceAdded is emitted when a new service is detected by a Ziti SDK context.
@@ -120,6 +153,15 @@ const (
 	// 1) Context - the context that triggered the listener
 	// 2) apiUrls []*urls.URL - the URLs of the API for the available controllers
 	EventControllerUrlsUpdated = events.EventName("controller-urls-updated")
+
+	// EventDial is emitted once per dial attempt, successful or not, after the
+	// attempt completes. Listeners are invoked synchronously on the dialing
+	// goroutine and should not block.
+	//
+	// Arguments:
+	// 1) Context - the context that triggered the listener
+	// 2) event DialEvent - the dial attempt's details
+	EventDial = events.EventName("dial")
 )
 
 // Eventer provides types methods for adding event listeners to a context and exposes some weakly typed functions
@@ -147,6 +189,12 @@ type Eventer interface {
 	// AddRouterDisconnectedListener adds an event listener for the EventRouterDisconnected event and returns a function to remove
 	// the listener. It is emitted any time a router connection is closed. The strings provided are router name and connection address.
 	AddRouterDisconnectedListener(func(ztx Context, name string, addr string)) func()
+
+	// AddDialListener adds an event listener for the EventDial event and returns a function to remove the listener.
+	// It is emitted once per dial attempt, successful or not, with the attempt's details: the protocol taken or
+	// attempted (connect-v1 vs connect-v2), why, the target router, timing, and the error on failure. Listeners are
+	// invoked synchronously on the dialing goroutine and should not block.
+	AddDialListener(func(Context, DialEvent)) func()
 
 	// AddMfaTotpCodeListener adds an event listener for the EventMfaTotpCode event and returns a function to remove
 	// the listener. It is emitted any time the currently authenticated API Session requires an MFA TOTP Code for

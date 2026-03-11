@@ -29,6 +29,7 @@ import (
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 type RouterConnOwner interface {
@@ -58,9 +59,10 @@ func (conn *routerConn) GetRouterName() string {
 
 func (conn *routerConn) Inspect() *inspect.RouterConnInspectDetail {
 	result := &inspect.RouterConnInspectDetail{
-		RouterName: conn.routerName,
-		RouterAddr: conn.routerAddr,
-		Closed:     conn.IsClosed(),
+		RouterName:        conn.routerName,
+		RouterAddr:        conn.routerAddr,
+		Closed:            conn.IsClosed(),
+		SupportsConnectV2: conn.SupportsConnectV2(),
 	}
 	for _, sink := range conn.mux.GetSinks() {
 		if inspectable, ok := sink.(interface {
@@ -96,6 +98,8 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
 	}
 
+	conn.mux.SetSdkChannel(conn.ch)
+
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeStateClosed, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeTraceRoute, conn.mux.HandleReceive)
@@ -114,33 +118,55 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn {
-	id := conn.mux.GetNextId()
-
-	closeNotify := make(chan struct{})
-	edgeCh := &edgeConn{
-		closeNotify: closeNotify,
-		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      conn.mux,
-		serviceName: *service.Name,
-		marker:      newMarker(),
+// maybeKeyPair returns a fresh key pair if the service requires encryption,
+// or nil otherwise. A key-generation error is logged but not fatal — the
+// connection proceeds unencrypted, matching the prior behavior.
+func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, bool) {
+	if !*service.EncryptionRequired {
+		return nil, false
 	}
-
-	var err error
-	if *service.EncryptionRequired {
-		if edgeCh.keyPair, err = kx.NewKeyPair(); err == nil {
-			edgeCh.crypto = true
-		} else {
-			pfxlog.Logger().Errorf("unable to setup encryption for edgeConn[%s] %v", *service.Name, err)
-		}
-	}
-
-	err = conn.mux.Add(edgeCh) // duplicate errors only happen on the server side, since client controls ids
+	keyPair, err := kx.NewKeyPair()
 	if err != nil {
-		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
+		pfxlog.Logger().Errorf("unable to setup encryption for service[%s] %v", *service.Name, err)
+		return nil, false
 	}
-	return edgeCh
+	return keyPair, true
+}
+
+// applyReplyState copies post-dial state (circuit ID, stickiness token) from
+// the reply into the conn's base.
+func applyReplyState(base *edgeConnBase, replyMsg *channel.Message, circuitId string) {
+	base.circuitId = circuitId
+	if stickinessToken, ok := replyMsg.Headers[edge.StickinessTokenHeader]; ok {
+		if base.customState == nil {
+			base.customState = map[int32][]byte{}
+		}
+		base.customState[edge.StickinessTokenHeader] = stickinessToken
+	}
+}
+
+// establishClientCryptoFromReply reads the crypto method and host public key
+// from the dial reply and establishes the client side of the secretstream.
+// When the reply carries no host key, the connection is left unencrypted.
+func establishClientCryptoFromReply(
+	logger *logrus.Entry,
+	replyMsg *channel.Message,
+	keyPair *kx.KeyPair,
+	establish func(*kx.KeyPair, []byte, edge.CryptoMethod) error,
+) error {
+	method, _ := replyMsg.GetByteHeader(edge.CryptoMethodHeader)
+	hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
+	if hostPubKey == nil {
+		logger.Warn("connection is not end-to-end-encrypted")
+		return nil
+	}
+	logger.Debug("setting up end-to-end encryption")
+	if err := establish(keyPair, hostPubKey, edge.CryptoMethod(method)); err != nil {
+		logger.WithError(err).Error("crypto failure")
+		return err
+	}
+	logger.Debug("client tx encryption setup done")
+	return nil
 }
 
 func (conn *routerConn) SendPosture(responses []rest_model.PostureResponseCreate) error {
@@ -211,17 +237,259 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 	return edgeCh
 }
 
-func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
-	ec := conn.NewDialConn(service)
-	dialConn, err := ec.Connect(ctx, session, options, envF)
+// SupportsConnectV2 returns true if the router advertises ConnectV2 capability in its hello headers.
+func (conn *routerConn) SupportsConnectV2() bool {
+	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), edge.RouterCapabilityConnectV2)
+}
+
+// ConnectV2 performs a sessionless dial via the V2 protocol. The router
+// authorizes locally via RDM, so no service session token is required. The
+// resulting connection always uses xgress flow control.
+func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+	connId := conn.mux.GetNextId()
+	marker := newMarker()
+	keyPair, crypto := maybeKeyPair(service)
+
+	ec := &edgeConnXgress{
+		edgeConnBase: edgeConnBase{
+			closeNotify: make(chan struct{}),
+			serviceName: *service.Name,
+			marker:      marker,
+			crypto:      crypto,
+			keyPair:     keyPair,
+		},
+		connId: connId,
+	}
+	ec.initChunkReader()
+
+	logger := pfxlog.Logger().
+		WithField("marker", marker).
+		WithField("connId", connId).
+		WithField("serviceId", *service.ID)
+
+	var pub []byte
+	if crypto {
+		pub = keyPair.Public()
+	}
+	connectRequest := edge.NewConnectV2Msg(connId, *service.ID, edge.ServiceIdentifierById, pub, options)
+	// The go sdk's V2 implementation always uses sdk xgress flow control — the returned conn
+	// is always an edgeConnXgress. Override whatever the caller set on options.SdkFlowControl
+	// so the router picks the xgEdgeForwarder handler and returns xgress headers.
+	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, true)
+	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, marker)
+
+	// Register a buffering sink before the dial goes out: the hosting side may
+	// send (e.g. its e2e crypto header) the moment the circuit is established,
+	// and that can arrive before this goroutine resumes from SendForReply. With
+	// nothing registered, the mux would drop it.
+	pending := newPendingMsgSink(connId)
+	if err := conn.mux.Add(pending); err != nil {
+		return nil, err
+	}
+
+	replyMsg, err := connectRequest.WithContext(ctx).SendForReply(conn.ch.GetControlSender())
 	if err != nil {
-		if !conn.ch.GetChannel().IsClosed() {
-			if err2 := ec.Close(); err2 != nil {
-				pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
-			}
+		conn.mux.RemoveByConnId(connId)
+		logger.Error(err)
+		return nil, err
+	}
+
+	if replyMsg.ContentType == edge.ContentTypeStateClosed {
+		conn.mux.RemoveByConnId(connId)
+		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
+	}
+	if replyMsg.ContentType != edge.ContentTypeStateConnected {
+		conn.mux.RemoveByConnId(connId)
+		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+	}
+
+	circuitId, _ := replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
+	logger = logger.WithField("circuitId", circuitId)
+
+	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux); err != nil {
+		conn.mux.RemoveByConnId(connId)
+		return nil, err
+	}
+
+	// Hand anything the pending sink buffered to the conn, in order, then route
+	// subsequent messages to it directly.
+	pending.delegateTo(ec)
+	if err := conn.mux.Replace(ec); err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, connId, err)
+	}
+
+	// Start the xgress only after the sink is registered, so any reply that
+	// arrives once CircuitStart releases terminator data has somewhere to land.
+	ec.start()
+
+	if crypto {
+		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+			_ = ec.Close()
+			return nil, err
 		}
 	}
-	return dialConn, err
+
+	logger.Debug("connected via v2")
+	return ec, nil
+}
+
+// Connect performs a V1 dial. Depending on what the router grants in its
+// reply, the resulting connection runs in either legacy or xgress flow-control
+// mode.
+func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+	connId := conn.mux.GetNextId()
+	marker := newMarker()
+	keyPair, crypto := maybeKeyPair(service)
+
+	logger := pfxlog.Logger().
+		WithField("marker", marker).
+		WithField("connId", connId).
+		WithField("sessionId", session.ID)
+
+	var pub []byte
+	if crypto {
+		pub = keyPair.Public()
+	}
+	connectRequest := edge.NewConnectMsg(connId, *session.Token, pub, options)
+	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, marker)
+	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, options.SdkFlowControl)
+
+	// Register a buffering sink before the dial goes out: the hosting side may
+	// send (e.g. its e2e crypto header) the moment the circuit is established,
+	// and that can arrive before this goroutine resumes from SendForReply. With
+	// nothing registered, the mux would drop it. The real conn can't be
+	// registered yet because its type (legacy vs xgress) depends on the reply.
+	pending := newPendingMsgSink(connId)
+	if err := conn.mux.Add(pending); err != nil {
+		return nil, err
+	}
+
+	replyMsg, err := connectRequest.WithContext(ctx).SendForReply(conn.ch.GetControlSender())
+	if err != nil {
+		conn.mux.RemoveByConnId(connId)
+		logger.Error(err)
+		return nil, err
+	}
+	if replyMsg.ContentType == edge.ContentTypeStateClosed {
+		conn.mux.RemoveByConnId(connId)
+		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
+	}
+	if replyMsg.ContentType != edge.ContentTypeStateConnected {
+		conn.mux.RemoveByConnId(connId)
+		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
+	}
+
+	circuitId, _ := replyMsg.GetStringHeader(edge.CircuitIdHeader)
+	logger = logger.WithField("circuitId", circuitId)
+
+	useXg, _ := replyMsg.GetBoolHeader(edge.UseXgressToSdkHeader)
+	if useXg {
+		return conn.buildV1XgressConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, crypto, envF, *service.Name)
+	}
+
+	if defaultConnections := conn.ch.GetChannel().GetUnderlayCountsByType()[edge.ChannelTypeDefault]; defaultConnections > 1 {
+		conn.mux.RemoveByConnId(connId)
+		return nil, errors.New("edge connections must use sdk flow control when using multiple default connections")
+	}
+	return conn.buildV1LegacyConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, crypto, *service.Name)
+}
+
+// buildV1XgressConn constructs an xgress-mode connection for a V1 dial reply,
+// taking over the conn id's pre-registered pending sink.
+func (conn *routerConn) buildV1XgressConn(
+	logger *logrus.Entry,
+	replyMsg *channel.Message,
+	pending *pendingMsgSink,
+	connId uint32,
+	marker string,
+	circuitId string,
+	keyPair *kx.KeyPair,
+	crypto bool,
+	envF func() xgress.Env,
+	serviceName string,
+) (edge.Conn, error) {
+	ec := &edgeConnXgress{
+		edgeConnBase: edgeConnBase{
+			closeNotify: make(chan struct{}),
+			serviceName: serviceName,
+			marker:      marker,
+			crypto:      crypto,
+			keyPair:     keyPair,
+		},
+		connId: connId,
+	}
+	ec.initChunkReader()
+	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
+
+	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux); err != nil {
+		conn.mux.RemoveByConnId(connId)
+		return nil, err
+	}
+
+	pending.delegateTo(ec)
+	if err := conn.mux.Replace(ec); err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", serviceName, connId, err)
+	}
+
+	// Start the xgress only after the sink is registered (see C1).
+	ec.start()
+
+	if crypto {
+		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+			_ = ec.Close()
+			return nil, err
+		}
+	}
+
+	logger.Debug("connected (xgress)")
+	return ec, nil
+}
+
+// buildV1LegacyConn constructs a legacy-mode connection for a V1 dial reply,
+// taking over the conn id's pre-registered pending sink.
+func (conn *routerConn) buildV1LegacyConn(
+	logger *logrus.Entry,
+	replyMsg *channel.Message,
+	pending *pendingMsgSink,
+	connId uint32,
+	marker string,
+	circuitId string,
+	keyPair *kx.KeyPair,
+	crypto bool,
+	serviceName string,
+) (edge.Conn, error) {
+	closeNotify := make(chan struct{})
+	msgCh := edge.NewEdgeMsgChannel(conn.ch, connId)
+	ec := &edgeConnLegacy{
+		edgeConnBase: edgeConnBase{
+			closeNotify: closeNotify,
+			serviceName: serviceName,
+			marker:      marker,
+			crypto:      crypto,
+			keyPair:     keyPair,
+		},
+		msgCh: *msgCh,
+		mux:   conn.mux,
+		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
+	}
+	ec.initChunkReader()
+	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
+
+	pending.delegateTo(ec)
+	if err := conn.mux.Replace(ec); err != nil {
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", serviceName, connId, err)
+	}
+
+	if crypto {
+		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+			_ = ec.Close()
+			return nil, err
+		}
+	}
+
+	logger.Debug("connected (legacy)")
+	return ec, nil
 }
 
 func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.RouterHostConn, error) {
