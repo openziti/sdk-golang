@@ -73,9 +73,10 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 
 	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
-		ZitiEdgeClient:      newApi,
-		TotpCodeProvider:    config.TotpCodeProvider,
-		ClientTransportPool: transportPool,
+		ZitiEdgeClient:         newApi,
+		TotpCodeProvider:       config.TotpCodeProvider,
+		TotpEnrollmentProvider: config.TotpEnrollmentProvider,
+		ClientTransportPool:    transportPool,
 	}
 	ret.API = &api
 	ret.AuthEnabledApi = &api
@@ -103,9 +104,10 @@ type ZitiEdgeClient struct {
 	versionInfo *rest_model.Version
 	versionOnce sync.Once
 
-	TotpCodeProvider    TotpCodeProvider
-	ClientTransportPool ClientTransportPool
-	OidcRedirectUri     string
+	TotpCodeProvider       TotpCodeProvider
+	TotpEnrollmentProvider TotpEnrollmentProvider
+	ClientTransportPool    ClientTransportPool
+	OidcRedirectUri        string
 }
 
 func (self *ZitiEdgeClient) SetOidcRedirectUri(redirectUri string) {
@@ -182,12 +184,13 @@ func (self *ZitiEdgeClient) legacyAuth(credentials Credentials, configTypes []st
 // oidcAuth performs OIDC OAuth flow based authentication.
 func (self *ZitiEdgeClient) oidcAuth(credentials Credentials, configTypeOverrides []string, httpClient *http.Client) (ApiSession, error) {
 	config := &EdgeOidcAuthConfig{
-		ClientTransportPool: self.ClientTransportPool,
-		Credentials:         credentials,
-		ConfigTypeOverrides: configTypeOverrides,
-		HttpClient:          httpClient,
-		TotpCodeProvider:    self.TotpCodeProvider,
-		RedirectUri:         self.OidcRedirectUri,
+		ClientTransportPool:    self.ClientTransportPool,
+		Credentials:            credentials,
+		ConfigTypeOverrides:    configTypeOverrides,
+		HttpClient:             httpClient,
+		TotpCodeProvider:       self.TotpCodeProvider,
+		TotpEnrollmentProvider: self.TotpEnrollmentProvider,
+		RedirectUri:            self.OidcRedirectUri,
 	}
 
 	return oidcAuth(config)

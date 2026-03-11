@@ -15,6 +15,32 @@ type TotpCodeResult struct {
 	Err  error
 }
 
+// TotpEnrollmentResult represents the outcome of a TOTP enrollment request. A non-empty Code
+// means the user scanned the QR code and entered the resulting code to complete enrollment.
+// A non-nil Err means the user cancelled or denied enrollment.
+type TotpEnrollmentResult struct {
+	Code string
+	Err  error
+}
+
+// TotpEnrollmentProvider is called during OIDC authentication when an identity has not yet
+// enrolled in TOTP but their auth policy requires it. Implementations show the provisioning
+// URL (as a QR code or plain text) to the user, collect their initial TOTP code, and return
+// it via the channel. Send a non-nil Err to cancel enrollment.
+type TotpEnrollmentProvider interface {
+	// GetTotpEnrollmentCode receives the provisioning URL for QR code display and returns
+	// a channel that delivers the TOTP code entered by the user, or an error to cancel.
+	GetTotpEnrollmentCode(provisioningUrl string) <-chan TotpEnrollmentResult
+}
+
+// TotpEnrollmentProviderFunc is a function adapter that implements TotpEnrollmentProvider.
+type TotpEnrollmentProviderFunc func(provisioningUrl string) <-chan TotpEnrollmentResult
+
+// GetTotpEnrollmentCode implements TotpEnrollmentProvider.
+func (f TotpEnrollmentProviderFunc) GetTotpEnrollmentCode(provisioningUrl string) <-chan TotpEnrollmentResult {
+	return f(provisioningUrl)
+}
+
 // TotpTokenResult represents the outcome of exchanging a TOTP code for a session token,
 // including the token value, issuance timestamp, and any errors encountered.
 type TotpTokenResult struct {

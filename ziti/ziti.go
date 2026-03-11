@@ -89,6 +89,11 @@ const (
 // MfaCodeResponse is a handler used to return a string (TOTP) code
 type MfaCodeResponse func(code string) error
 
+// MfaTotpEnrollmentResponse is called by a listener of EventMfaTotpEnrollment to respond to a
+// TOTP enrollment challenge. Provide the user's TOTP code to complete enrollment, or a non-nil
+// error to cancel/deny enrollment.
+type MfaTotpEnrollmentResponse func(code string, err error)
+
 // Context is the main interface for SDK instances that may be used to authenticate, connect to services, or host
 // services.
 type Context interface {
@@ -486,6 +491,38 @@ func (context *ContextImpl) AddMfaTotpCodeListener(handler func(Context, *rest_m
 
 	return func() {
 		context.RemoveListener(EventMfaTotpCode, listener)
+	}
+}
+
+// AddMfaTotpEnrollmentListener adds a listener for EventMfaTotpEnrollment and returns a function
+// that removes it. The listener is called during OIDC authentication when the identity has not yet
+// enrolled in TOTP but their auth policy requires it. Display the provisioning URL as a QR code,
+// collect the user's initial TOTP code, and call the MfaTotpEnrollmentResponse to complete enrollment.
+func (context *ContextImpl) AddMfaTotpEnrollmentListener(handler func(Context, string, MfaTotpEnrollmentResponse)) func() {
+	listener := func(args ...interface{}) {
+		provisioningUrl, ok := args[0].(string)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[0] to string was %T", args[0])
+		}
+
+		responder, ok := args[1].(MfaTotpEnrollmentResponse)
+
+		if !ok {
+			pfxlog.Logger().Fatalf("could not convert args[1] to %T was %T", responder, args[1])
+		}
+
+		if responder == nil {
+			pfxlog.Logger().Fatalf("expected args[1] was nil, unexpected")
+		}
+
+		handler(context, provisioningUrl, responder)
+	}
+
+	context.AddListener(EventMfaTotpEnrollment, listener)
+
+	return func() {
+		context.RemoveListener(EventMfaTotpEnrollment, listener)
 	}
 }
 

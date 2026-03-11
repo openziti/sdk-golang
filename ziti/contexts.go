@@ -159,6 +159,25 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 				}
 			}
 		}),
+		TotpEnrollmentProvider: edgeApis.TotpEnrollmentProviderFunc(func(provisioningUrl string) <-chan edgeApis.TotpEnrollmentResult {
+			resultCh := make(chan edgeApis.TotpEnrollmentResult, 1)
+
+			if newContext.Events().ListenerCount(EventMfaTotpEnrollment) == 0 {
+				resultCh <- edgeApis.TotpEnrollmentResult{
+					Err: errors.New("totp enrollment is required but no enrollment provider has been added via zitiContext.Events().AddMfaTotpEnrollmentListener()"),
+				}
+				return resultCh
+			}
+
+			newContext.Emit(EventMfaTotpEnrollment, provisioningUrl, MfaTotpEnrollmentResponse(func(code string, err error) {
+				resultCh <- edgeApis.TotpEnrollmentResult{
+					Code: code,
+					Err:  err,
+				}
+			}))
+
+			return resultCh
+		}),
 		Proxy: cfg.CtrlProxy,
 	}
 

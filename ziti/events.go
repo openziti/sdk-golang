@@ -68,6 +68,18 @@ const (
 	// 3) codeResponse MfaCodeResponse - a function that accepts a string to return to the authentication process. This codeResponse should be invoked with the user supplied TOTP code.
 	EventMfaTotpCode = events.EventName("mfa-totp-code")
 
+	// EventMfaTotpEnrollment is emitted during OIDC authentication when an identity has not yet enrolled
+	// in TOTP but their authentication policy requires it. The parent application should display the
+	// provisioning URL as a QR code, collect the resulting TOTP code from the user, and call the
+	// MfaTotpEnrollmentResponse to complete enrollment. Pass a non-nil error to cancel enrollment.
+	//
+	// Arguments:
+	// 1) Context - the context that triggered the listener
+	// 2) provisioningUrl string - the TOTP provisioning URL; encode as a QR code for the user to scan
+	// 3) response MfaTotpEnrollmentResponse - call with the user's TOTP code to complete enrollment,
+	//    or with a non-nil error to cancel
+	EventMfaTotpEnrollment = events.EventName("mfa-totp-enrollment")
+
 	// EventAuthQuery is emitted when a Ziti context requires an answer to an authentication query. MFA TOTP is
 	// modeled as an authentication query as well and will also trigger the event EventMfaTotpCode.
 	//
@@ -146,6 +158,15 @@ type Eventer interface {
 	// MFA TOTP challenge only. All authentication queries, including MFA TOTP ones, are also available through
 	// AddAuthQueryListener, but does not provide typed response callbacks.
 	AddMfaTotpCodeListener(func(Context, *rest_model.AuthQueryDetail, MfaCodeResponse)) func()
+
+	// AddMfaTotpEnrollmentListener adds an event listener for the EventMfaTotpEnrollment event and returns a function
+	// to remove the listener. It is emitted during OIDC authentication when an identity has not yet enrolled in TOTP
+	// but their authentication policy requires it.
+	//
+	// The listener receives the TOTP provisioning URL, which should be displayed as a QR code so the user can add it
+	// to their authenticator app. Once the user provides the resulting TOTP code, call the MfaTotpEnrollmentResponse
+	// with that code to complete enrollment. Pass a non-nil error to cancel enrollment.
+	AddMfaTotpEnrollmentListener(func(Context, string, MfaTotpEnrollmentResponse)) func()
 
 	// AddAuthQueryListener adds an event listener for the EventAuthQuery event and returns a function to remove
 	// the listener. The event is emitted any time the current API Session is required to pass additional authentication
