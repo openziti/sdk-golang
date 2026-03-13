@@ -43,6 +43,8 @@ type Options struct {
 	RetxStartMs  uint32
 	RetxScale    float64
 	RetxAddMs    uint32
+	RetxMaxMs    uint32
+	MaxRttScale  uint16
 
 	MaxCloseWait        time.Duration
 	GetCircuitTimeout   time.Duration
@@ -109,6 +111,16 @@ func LoadOptions(data OptionsData) (*Options, error) {
 		if value, found := data["retxAddMs"]; found {
 			options.RetxAddMs = uint32(value.(int))
 		}
+		if value, found := data["retxMaxMs"]; found {
+			options.RetxMaxMs = uint32(value.(int))
+		}
+		if value, found := data["maxRttScale"]; found {
+			v := uint16(value.(int))
+			if v == 1 {
+				v = 2
+			}
+			options.MaxRttScale = v
+		}
 
 		if value, found := data["maxCloseWaitMs"]; found {
 			options.MaxCloseWait = time.Duration(value.(int)) * time.Millisecond
@@ -161,6 +173,8 @@ func DefaultOptions() *Options {
 		RetxStartMs:            200,
 		RetxScale:              1.5,
 		RetxAddMs:              0,
+		RetxMaxMs:              10000,
+		MaxRttScale:            4,
 		MaxCloseWait:           30 * time.Second,
 		GetCircuitTimeout:      30 * time.Second,
 		CircuitStartTimeout:    3 * time.Minute,
