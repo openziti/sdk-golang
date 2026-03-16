@@ -1,3 +1,11 @@
+# Release notes 1.7.0
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.6.0 -> v1.7.0](https://github.com/openziti/sdk-golang/compare/v1.6.0...v1.7.0)
+    * [Issue #897](https://github.com/openziti/sdk-golang/issues/897) - Allow xgress to use pull model for reads when appropriate
+
+
 # Release notes 1.6.0
 
 ## What's New

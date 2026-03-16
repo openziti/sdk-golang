@@ -18,11 +18,12 @@ package xgress
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
+
 	"github.com/emirpasic/gods/trees/btree"
 	"github.com/emirpasic/gods/utils"
 	"github.com/michaelquigley/pfxlog"
-	"sync"
-	"sync/atomic"
 )
 
 type LinkReceiveBuffer struct {
@@ -92,7 +93,7 @@ func (buffer *LinkReceiveBuffer) queueNext() {
 	}
 }
 
-func (buffer *LinkReceiveBuffer) NextPayload(closeNotify <-chan struct{}) *Payload {
+func (buffer *LinkReceiveBuffer) NextPayload(closeNotify <-chan struct{}, deadlineNotify <-chan struct{}) *Payload {
 	select {
 	case payload := <-buffer.txQueue:
 		return payload
@@ -107,9 +108,10 @@ func (buffer *LinkReceiveBuffer) NextPayload(closeNotify <-chan struct{}) *Paylo
 	case payload := <-buffer.txQueue:
 		return payload
 	case <-closeNotify:
+	case <-deadlineNotify:
 	}
 
-	// closed, check if there's anything pending in the queue
+	// closed or deadline, check if there's anything pending in the queue
 	select {
 	case payload := <-buffer.txQueue:
 		return payload
