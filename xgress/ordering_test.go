@@ -71,10 +71,6 @@ func (n noopReceiveHandler) GetMetrics() Metrics {
 	return noopMetrics{}
 }
 
-func (n noopReceiveHandler) GetRetransmitter() *Retransmitter {
-	return nil
-}
-
 func (n noopReceiveHandler) GetPayloadIngester() *PayloadIngester {
 	return n.payloadIngester
 }
@@ -167,3 +163,7 @@ func (n noopMetrics) BufferUnblocked(time.Duration) {}
 func (n noopMetrics) SendPayloadBuffered(int64) {}
 
 func (n noopMetrics) SendPayloadDelivered(int64) {}
+
+func (n noopMetrics) MarkRetransmission() {}
+
+func (n noopMetrics) MarkRetransmissionFailure() {}

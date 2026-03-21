@@ -77,7 +77,6 @@ type ControlReceiver interface {
 }
 
 type Env interface {
-	GetRetransmitter() *Retransmitter
 	GetPayloadIngester() *PayloadIngester
 	GetMetrics() Metrics
 }
