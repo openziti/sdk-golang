@@ -1,3 +1,38 @@
+# Release notes 1.5.4
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.5.3 -> v1.5.4](https://github.com/openziti/sdk-golang/compare/v1.5.3...v1.5.4)
+    * [Issue #902](https://github.com/openziti/sdk-golang/issues/902) - Inspect response message content types are mixed up
+
+* github.com/go-openapi/runtime: v0.29.2 -> v0.29.3
+* github.com/go-openapi/strfmt: v0.25.0 -> v0.26.0
+* github.com/openziti/channel/v4: [v4.3.7 -> v4.3.9](https://github.com/openziti/channel/compare/v4.3.7...v4.3.9)
+    * [Issue #235](https://github.com/openziti/channel/issues/235) - Bump allowed hello message headers size to 16k from 4k
+
+* github.com/openziti/edge-api: [v0.27.4 -> v0.27.5](https://github.com/openziti/edge-api/compare/v0.27.4...v0.27.5)
+* github.com/openziti/foundation/v2: [v2.0.88 -> v2.0.90](https://github.com/openziti/foundation/compare/v2.0.88...v2.0.90)
+* github.com/openziti/identity: [v1.0.126 -> v1.0.128](https://github.com/openziti/identity/compare/v1.0.126...v1.0.128)
+* github.com/openziti/metrics: [v1.4.3 -> v1.4.5](https://github.com/openziti/metrics/compare/v1.4.3...v1.4.5)
+    * [Issue #58](https://github.com/openziti/metrics/issues/58) - Add GaugeFloat64 support
+
+* github.com/openziti/secretstream: [v0.1.48 -> v0.1.49](https://github.com/openziti/secretstream/compare/v0.1.48...v0.1.49)
+* github.com/openziti/transport/v2: [v2.0.214 -> v2.0.215](https://github.com/openziti/transport/compare/v2.0.214...v2.0.215)
+* golang.org/x/oauth2: v0.35.0 -> v0.36.0
+* golang.org/x/sys: v0.41.0 -> v0.42.0
+* github.com/go-openapi/analysis: v0.24.1 -> v0.24.3
+* github.com/go-openapi/loads: v0.23.2 -> v0.23.3
+* github.com/go-openapi/validate: v0.25.1 -> v0.25.2
+* github.com/oklog/ulid/v2: v1.3.1 -> v2.1.1
+* go.opentelemetry.io/otel: v1.40.0 -> v1.41.0
+* go.opentelemetry.io/otel/metric: v1.40.0 -> v1.41.0
+* go.opentelemetry.io/otel/trace: v1.40.0 -> v1.41.0
+* golang.org/x/crypto: v0.48.0 -> v0.49.0
+* golang.org/x/net: v0.51.0 -> v0.52.0
+* golang.org/x/sync: v0.19.0 -> v0.20.0
+* golang.org/x/term: v0.40.0 -> v0.41.0
+* golang.org/x/text: v0.34.0 -> v0.35.0
+
 # Release notes 1.5.3
 
 ## Issues Fixed and Dependency Updates

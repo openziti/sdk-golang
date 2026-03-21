@@ -56,9 +56,9 @@ const (
 	ContentTypeTraceRouteResponse = int32(edge_client_pb.ContentType_TraceRouteResponseType)
 
 	ContentTypeConnInspectRequest  = int32(edge_client_pb.ContentType_ConnInspectRequest)
-	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_InspectResponse)
+	ContentTypeConnInspectResponse = int32(edge_client_pb.ContentType_ConnInspectResponse)
 	ContentTypeInspectRequest      = int32(edge_client_pb.ContentType_InspectRequest)
-	ContentTypeInspectResponse     = int32(edge_client_pb.ContentType_ConnInspectResponse)
+	ContentTypeInspectResponse     = int32(edge_client_pb.ContentType_InspectResponse)
 
 	ContentTypeBindSuccess = int32(edge_client_pb.ContentType_BindSuccess)
 
