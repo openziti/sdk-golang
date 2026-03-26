@@ -1,3 +1,23 @@
+# Release notes 1.6.0
+
+## What's New
+
+* New xgress options for controlling RTT estimation and retransmission behavior:
+    * `maxRttScale` (default `4`) - Caps how much a single RTT sample can raise the moving average.
+      A new sample is clamped to `lastRtt * maxRttScale` before being averaged in. This prevents a
+      single network hiccup from blowing up the retransmission threshold. Set to `0` to disable the
+      cap. The minimum effective value is `2`; a value of `1` is bumped to `2` since it would
+      prevent RTT from ever increasing.
+    * `retxMaxMs` (default `10000`) - Hard ceiling in milliseconds for the retransmission threshold.
+      Regardless of measured RTT or scale adjustments, the threshold will never exceed this value.
+      Set to `0` to disable the cap.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.5.4 -> v1.6.0](https://github.com/openziti/sdk-golang/compare/v1.5.4...v1.6.0)
+    * [Issue #902](https://github.com/openziti/sdk-golang/issues/902) - Inspect response message content types are mixed up
+
+
 # Release notes 1.5.4
 
 ## Issues Fixed and Dependency Updates

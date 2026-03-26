@@ -31,7 +31,6 @@ import (
 // https://pkg.go.dev/sync/atomic#pkg-note-BUG
 // https://github.com/golang/go/issues/36606
 type LinkSendBuffer struct {
-	retxScale             float64
 	x                     *Xgress
 	buffer                map[int32]*txPayload
 	newlyBuffered         chan *txPayload
@@ -47,6 +46,7 @@ type LinkSendBuffer struct {
 	closed                atomic.Bool
 	blockedByLocalWindow  bool
 	blockedByRemoteWindow bool
+	retxScale             float64
 	retxThreshold         uint32
 	lastRtt               uint16
 	lastRetransmitTime    int64
@@ -372,11 +372,24 @@ func (buffer *LinkSendBuffer) receiveAcknowledgement(ack *Acknowledgement) {
 	buffer.linkRecvBufferSize = ack.RecvBufferSize
 	if ack.RTT > 0 {
 		rtt := uint16(time.Now().UnixMilli()) - ack.RTT
+
+		// Cap RTT growth rate — a single sample can move at most MaxRttScale * lastRtt.
+		// MaxRttScale == 0 disables the cap.
+		if buffer.lastRtt > 0 && buffer.x.Options.MaxRttScale > 0 {
+			maxRtt := buffer.lastRtt * buffer.x.Options.MaxRttScale
+			if rtt > maxRtt {
+				rtt = maxRtt
+			}
+		}
+
 		if buffer.lastRtt > 0 {
 			rtt = (rtt + buffer.lastRtt) >> 1
 		}
 		buffer.lastRtt = rtt
 		buffer.retxThreshold = uint32(float64(rtt)*buffer.retxScale) + buffer.x.Options.RetxAddMs
+		if buffer.x.Options.RetxMaxMs > 0 && buffer.retxThreshold > buffer.x.Options.RetxMaxMs {
+			buffer.retxThreshold = buffer.x.Options.RetxMaxMs
+		}
 	}
 }
 
