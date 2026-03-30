@@ -688,7 +688,7 @@ func (self *Xgress) sendCapabilitiesResponse() {
 			HeaderKeyCapabilities: self.capabilitiesHeader(),
 		},
 	}
-	_ = self.forwardPayload(payload, context.Background())
+	_ = self.forwardPayloadAsync(payload, context.Background())
 }
 
 func (self *Xgress) sendEOF() {
@@ -990,6 +990,18 @@ func (self *Xgress) sendUnchunkedBuffer(buf []byte, headers map[uint8][]byte, ct
 }
 
 func (self *Xgress) forwardPayload(payload *Payload, ctx context.Context) error {
+	return self.forwardPayloadImpl(payload, ctx, false)
+}
+
+// forwardPayloadAsync buffers the payload synchronously (preserving send-buffer ordering and
+// sequence numbering) but runs the dataPlane.ForwardPayload call in a goroutine. Use this
+// when forwardPayload is called from within the payload-ingester pool worker to avoid
+// deadlocking on pool re-entry.
+func (self *Xgress) forwardPayloadAsync(payload *Payload, ctx context.Context) error {
+	return self.forwardPayloadImpl(payload, ctx, true)
+}
+
+func (self *Xgress) forwardPayloadImpl(payload *Payload, ctx context.Context, async bool) error {
 	var sendCallback func()
 	var err error
 
@@ -1010,8 +1022,15 @@ func (self *Xgress) forwardPayload(payload *Payload, ctx context.Context) error 
 		peekHandler.Rx(self, payload)
 	}
 
-	self.dataPlane.ForwardPayload(payload, self, ctx)
-	sendCallback()
+	if async {
+		go func() {
+			self.dataPlane.ForwardPayload(payload, self, ctx)
+			sendCallback()
+		}()
+	} else {
+		self.dataPlane.ForwardPayload(payload, self, ctx)
+		sendCallback()
+	}
 	return nil
 }
 
