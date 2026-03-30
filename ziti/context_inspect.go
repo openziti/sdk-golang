@@ -59,7 +59,7 @@ func (context *ContextImpl) Inspect() *inspect.ContextInspectResult {
 	context.sessions.IterCb(func(key string, session *rest_model.SessionDetail) {
 		result.Sessions = append(result.Sessions, &inspect.ContextInspectSession{
 			Id:        *session.ID,
-			ServiceId: session.Service.ID,
+			ServiceId: *session.ServiceID,
 			Type:      string(*session.Type),
 		})
 	})
