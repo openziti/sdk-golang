@@ -18,13 +18,14 @@ package xgress
 
 import (
 	"context"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/sirupsen/logrus"
 	"math"
 	"os"
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/sirupsen/logrus"
 )
 
 // Note: if altering this struct, be sure to account for 64 bit alignment on 32 bit arm arch
@@ -51,7 +52,9 @@ type LinkSendBuffer struct {
 	lastRtt               uint16
 	lastRetransmitTime    int64
 	closeWhenEmpty        atomic.Bool
-	inspectRequests       chan *sendBufferInspectEvent
+	events                chan sendBufferEvent
+	readDeadlineCb        atomic.Pointer[deadlineCallback]
+	writeDeadlineCb       atomic.Pointer[deadlineCallback]
 	blockedSince          time.Time
 	closeStart            time.Time
 }
@@ -110,7 +113,7 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		windowsSize:       x.Options.TxPortalStartSize,
 		retxThreshold:     x.Options.RetxStartMs,
 		retxScale:         x.Options.RetxScale,
-		inspectRequests:   make(chan *sendBufferInspectEvent, 1),
+		events:            make(chan sendBufferEvent, 1),
 	}
 
 	return buffer
@@ -222,6 +225,7 @@ func (buffer *LinkSendBuffer) isBlocked() bool {
 func (buffer *LinkSendBuffer) run() {
 	log := pfxlog.ContextLogger(buffer.x.Label())
 	defer log.Debugf("[%p] exited", buffer)
+	defer buffer.drainDeadlines()
 	log.Debugf("[%p] started", buffer)
 
 	var buffered chan *txPayload
@@ -262,9 +266,21 @@ func (buffer *LinkSendBuffer) run() {
 			}
 		}
 
+		rdCb := buffer.readDeadlineCb.Load()
+		wrCb := buffer.writeDeadlineCb.Load()
+
+		var rdTimer <-chan time.Time
+		var wrTimer <-chan time.Time
+		if rdCb != nil {
+			rdTimer = rdCb.C
+		}
+		if wrCb != nil {
+			wrTimer = wrCb.C
+		}
+
 		select {
-		case inspectEvent := <-buffer.inspectRequests:
-			inspectEvent.handle(buffer)
+		case event := <-buffer.events:
+			event.handle(buffer)
 
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
@@ -283,6 +299,12 @@ func (buffer *LinkSendBuffer) run() {
 			buffer.retransmit()
 			buffer.checkForClose()
 
+		case <-rdTimer:
+			rdCb.fire()
+
+		case <-wrTimer:
+			wrCb.fire()
+
 		case <-buffer.closeNotify:
 			buffer.cleanupMetrics()
 			if len(buffer.buffer) > 0 {
@@ -296,6 +318,36 @@ func (buffer *LinkSendBuffer) run() {
 					log.WithField("payloadCount", len(buffer.buffer)).Warn("closing while buffer contains unacked payloads")
 				}
 			}
+			return
+		}
+	}
+}
+
+// drainDeadlines processes deadline timer callbacks after the send buffer has
+// closed but while the xgress is still alive. This handles the half-close case
+// where the write path is done but the read adapter still needs deadlines.
+func (buffer *LinkSendBuffer) drainDeadlines() {
+	for {
+		rdCb := buffer.readDeadlineCb.Load()
+		wrCb := buffer.writeDeadlineCb.Load()
+
+		var rdTimer <-chan time.Time
+		var wrTimer <-chan time.Time
+		if rdCb != nil {
+			rdTimer = rdCb.C
+		}
+		if wrCb != nil {
+			wrTimer = wrCb.C
+		}
+
+		select {
+		case <-rdTimer:
+			rdCb.fire()
+		case <-wrTimer:
+			wrCb.fire()
+		case event := <-buffer.events:
+			event.handle(buffer)
+		case <-buffer.x.closeNotify:
 			return
 		}
 	}
@@ -470,7 +522,7 @@ func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
 	}
 
 	select {
-	case buffer.inspectRequests <- inspectEvent:
+	case buffer.events <- inspectEvent:
 		select {
 		case result := <-inspectEvent.notifyComplete:
 			result.AcquiredSafely = true
@@ -485,6 +537,12 @@ func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
 	return result
 }
 
+// sendBufferEvent is processed by the LinkSendBuffer run loop. Implementations
+// include inspect requests and deadline wake signals.
+type sendBufferEvent interface {
+	handle(buffer *LinkSendBuffer)
+}
+
 type sendBufferInspectEvent struct {
 	notifyComplete chan *SendBufferDetail
 }
@@ -493,3 +551,9 @@ func (self *sendBufferInspectEvent) handle(buffer *LinkSendBuffer) {
 	result := buffer.inspect()
 	self.notifyComplete <- result
 }
+
+// deadlineWakeEvent is a no-op event that forces the run loop's select to
+// re-evaluate, picking up a newly registered deadline timer channel.
+type deadlineWakeEvent struct{}
+
+func (deadlineWakeEvent) handle(*LinkSendBuffer) {}
