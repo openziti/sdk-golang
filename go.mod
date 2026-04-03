@@ -29,7 +29,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	github.com/zitadel/oidc/v3 v3.45.6
+	github.com/zitadel/oidc/v3 v3.46.0
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.42.0
