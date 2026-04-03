@@ -3,6 +3,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.6.0 -> v1.7.0](https://github.com/openziti/sdk-golang/compare/v1.6.0...v1.7.0)
+    * [Issue #906](https://github.com/openziti/sdk-golang/issues/906) - Fix potential nil references on session service structs
     * [Issue #897](https://github.com/openziti/sdk-golang/issues/897) - Allow xgress to use pull model for reads when appropriate
 
 

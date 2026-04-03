@@ -1668,7 +1668,7 @@ func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, session *re
 		if refreshedSession, err := context.refreshSession(session); err != nil {
 			target := &rest_session.DetailSessionNotFound{}
 			if errors.As(err, &target) {
-				sessionKey := fmt.Sprintf("%s:%s", session.Service.ID, *session.Type)
+				sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
 				context.sessions.Remove(sessionKey)
 			}
 
