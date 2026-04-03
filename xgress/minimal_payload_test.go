@@ -168,7 +168,6 @@ func (self *testXgConn) HandleControlMsg(ControlType, channel.Headers, ControlRe
 
 type testIntermediary struct {
 	acker              AckSender
-	rtx                *Retransmitter
 	payloadIngester    *PayloadIngester
 	circuitId          string
 	dest               *Xgress
@@ -176,10 +175,6 @@ type testIntermediary struct {
 	payloadTransformer PayloadTransformer
 	counter            uint64
 	bytesCallback      func([]byte)
-}
-
-func (self *testIntermediary) GetRetransmitter() *Retransmitter {
-	return self.rtx
 }
 
 func (self *testIntermediary) GetPayloadIngester() *PayloadIngester {
@@ -273,17 +268,10 @@ func (self *testAcker) SendAck(ack *Acknowledgement, address Address) {
 	}
 }
 
-type mockFaulter struct{}
-
-func (m mockFaulter) ReportForwardingFault(circuitId string, ctrlId string) {
-}
-
 func Test_MinimalPayloadMarshalling(t *testing.T) {
 	logOptions := pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").NoColor()
 	pfxlog.GlobalInit(logrus.InfoLevel, logOptions)
 	pfxlog.SetFormatter(pfxlog.NewFormatter(pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").StartingToday()))
-
-	metricsRegistry := metrics.NewRegistry("test", nil)
 
 	closeNotify := make(chan struct{})
 	defer func() {
@@ -291,7 +279,6 @@ func Test_MinimalPayloadMarshalling(t *testing.T) {
 	}()
 
 	payloadIngester := NewPayloadIngester(closeNotify)
-	rtx := NewRetransmitter(mockFaulter{}, metricsRegistry, closeNotify)
 	ackHandler := &testAcker{destinations: cmap.New[*Xgress]()}
 
 	options := DefaultOptions()
@@ -310,7 +297,6 @@ func Test_MinimalPayloadMarshalling(t *testing.T) {
 	msgStrategy := channel.DatagramMessageStrategy(UnmarshallPacketPayload)
 	srcXg.dataPlane = &testIntermediary{
 		acker:           ackHandler,
-		rtx:             rtx,
 		payloadIngester: payloadIngester,
 		circuitId:       circuitId,
 		dest:            dstXg,
@@ -319,7 +305,6 @@ func Test_MinimalPayloadMarshalling(t *testing.T) {
 
 	dstXg.dataPlane = &testIntermediary{
 		acker:           ackHandler,
-		rtx:             rtx,
 		payloadIngester: payloadIngester,
 		circuitId:       circuitId,
 		dest:            srcXg,
@@ -351,7 +336,6 @@ func Test_PayloadSize(t *testing.T) {
 	}()
 
 	payloadIngester := NewPayloadIngester(closeNotify)
-	rtx := NewRetransmitter(mockFaulter{}, metricsRegistry, closeNotify)
 	ackHandler := &testAcker{destinations: cmap.New[*Xgress]()}
 
 	options := DefaultOptions()
@@ -372,7 +356,6 @@ func Test_PayloadSize(t *testing.T) {
 	msgStrategy := channel.DatagramMessageStrategy(UnmarshallPacketPayload)
 	srcXg.dataPlane = &testIntermediary{
 		acker:           ackHandler,
-		rtx:             rtx,
 		payloadIngester: payloadIngester,
 		circuitId:       circuitId,
 		dest:            dstXg,
@@ -384,7 +367,6 @@ func Test_PayloadSize(t *testing.T) {
 
 	dstXg.dataPlane = &testIntermediary{
 		acker:           ackHandler,
-		rtx:             rtx,
 		payloadIngester: payloadIngester,
 		circuitId:       circuitId,
 		dest:            srcXg,

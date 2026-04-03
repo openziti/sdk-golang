@@ -37,6 +37,9 @@ type Metrics interface {
 
 	SendPayloadBuffered(payloadSize int64)
 	SendPayloadDelivered(payloadSize int64)
+
+	MarkRetransmission()
+	MarkRetransmissionFailure()
 }
 
 type metricsImpl struct {
@@ -56,6 +59,9 @@ type metricsImpl struct {
 	buffersBlockedByRemoteWindowMeter metrics.Meter
 
 	bufferBlockedTime metrics.Timer
+
+	retransmissionsMeter        metrics.Meter
+	retransmissionFailuresMeter metrics.Meter
 }
 
 func (self *metricsImpl) SendPayloadBuffered(payloadSize int64) {
@@ -110,6 +116,14 @@ func (self *metricsImpl) BufferUnblocked(duration time.Duration) {
 	self.bufferBlockedTime.Update(duration)
 }
 
+func (self *metricsImpl) MarkRetransmission() {
+	self.retransmissionsMeter.Mark(1)
+}
+
+func (self *metricsImpl) MarkRetransmissionFailure() {
+	self.retransmissionFailuresMeter.Mark(1)
+}
+
 func NewMetrics(registry metrics.Registry) Metrics {
 	impl := &metricsImpl{
 		droppedPayloadsMeter:              registry.Meter("xgress.dropped_payloads"),
@@ -120,6 +134,8 @@ func NewMetrics(registry metrics.Registry) Metrics {
 		buffersBlockedByLocalWindowMeter:  registry.Meter("xgress.blocked_by_local_window_rate"),
 		buffersBlockedByRemoteWindowMeter: registry.Meter("xgress.blocked_by_remote_window_rate"),
 		bufferBlockedTime:                 registry.Timer("xgress.blocked_time"),
+		retransmissionsMeter:              registry.Meter("xgress.retransmissions"),
+		retransmissionFailuresMeter:       registry.Meter("xgress.retransmission_failures"),
 	}
 
 	registry.FuncGauge("xgress.blocked_by_local_window", func() int64 {

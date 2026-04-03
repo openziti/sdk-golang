@@ -43,19 +43,13 @@ func (self *XgAdapter) ForwardPayload(payload *xgress.Payload, _ *xgress.Xgress,
 
 func (self *XgAdapter) RetransmitPayload(srcAddr xgress.Address, payload *xgress.Payload) error {
 	msg := payload.Marshall()
-	sent, err := self.conn.MsgChannel.GetDefaultSender().TrySend(msg)
-	if err != nil {
+	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
 		// if the channel is closed, close the xgress
 		if self.conn.MsgChannel.GetChannel().IsClosed() {
 			self.xg.Close()
 		}
 		return err
 	}
-
-	if !sent {
-		pfxlog.Logger().WithField("circuitId", payload.CircuitId).WithError(err).Debug("payload dropped")
-	}
-
 	return nil
 }
 
@@ -71,10 +65,6 @@ func (self *XgAdapter) ForwardAcknowledgement(ack *xgress.Acknowledgement, addre
 	if err := self.conn.MsgChannel.GetDefaultSender().Send(msg); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send acknowledgement")
 	}
-}
-
-func (self *XgAdapter) GetRetransmitter() *xgress.Retransmitter {
-	return self.env.GetRetransmitter()
 }
 
 func (self *XgAdapter) GetPayloadIngester() *xgress.PayloadIngester {

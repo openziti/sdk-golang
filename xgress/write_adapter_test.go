@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openziti/metrics"
 	"github.com/stretchr/testify/require"
 )
 
@@ -194,7 +193,6 @@ func TestWriteTimeout(t *testing.T) {
 type capturingAdapter struct {
 	dataCh          chan []byte
 	payloadIngester *PayloadIngester
-	rtx             *Retransmitter
 }
 
 func (c *capturingAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) {
@@ -206,9 +204,8 @@ func (c *capturingAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context
 func (c *capturingAdapter) RetransmitPayload(Address, *Payload) error { return nil }
 func (c *capturingAdapter) ForwardControlMessage(*Control, *Xgress)   {}
 func (c *capturingAdapter) ForwardAcknowledgement(*Acknowledgement, Address) {}
-func (c *capturingAdapter) GetMetrics() Metrics                       { return noopMetrics{} }
-func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester      { return c.payloadIngester }
-func (c *capturingAdapter) GetRetransmitter() *Retransmitter          { return c.rtx }
+func (c *capturingAdapter) GetMetrics() Metrics                  { return noopMetrics{} }
+func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester { return c.payloadIngester }
 
 func TestWriteAdapterPushOrdering(t *testing.T) {
 	closeNotify := make(chan struct{})
@@ -221,11 +218,9 @@ func TestWriteAdapterPushOrdering(t *testing.T) {
 
 	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
 
-	metricsRegistry := metrics.NewRegistry("test", nil)
 	adapter := &capturingAdapter{
 		dataCh:          make(chan []byte, 1024),
 		payloadIngester: NewPayloadIngester(closeNotify),
-		rtx:             NewRetransmitter(mockFaulter{}, metricsRegistry, closeNotify),
 	}
 	x.dataPlane = adapter
 

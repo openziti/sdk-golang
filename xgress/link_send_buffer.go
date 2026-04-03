@@ -21,6 +21,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +37,10 @@ type LinkSendBuffer struct {
 	buffer                map[int32]*txPayload
 	newlyBuffered         chan *txPayload
 	newlyReceivedAcks     chan *Acknowledgement
+	retxLock              sync.Mutex
+	retxHead              *txPayload
+	retxTail              *txPayload
+	retransmitNotify      chan struct{}
 	windowsSize           uint32
 	linkSendBufferSize    uint32
 	linkRecvBufferSize    uint32
@@ -109,6 +114,7 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		buffer:            make(map[int32]*txPayload),
 		newlyBuffered:     make(chan *txPayload),
 		newlyReceivedAcks: make(chan *Acknowledgement, 4),
+		retransmitNotify:  make(chan struct{}, 1),
 		closeNotify:       make(chan struct{}),
 		windowsSize:       x.Options.TxPortalStartSize,
 		retxThreshold:     x.Options.RetxStartMs,
@@ -227,6 +233,8 @@ func (buffer *LinkSendBuffer) run() {
 	defer log.Debugf("[%p] exited", buffer)
 	defer buffer.drainDeadlines()
 	log.Debugf("[%p] started", buffer)
+
+	go buffer.retransmitSender()
 
 	var buffered chan *txPayload
 
@@ -386,9 +394,7 @@ func (buffer *LinkSendBuffer) receiveAcknowledgement(ack *Acknowledgement) {
 
 	for _, sequence := range ack.Sequence {
 		if txPayload, found := buffer.buffer[sequence]; found {
-			if txPayload.markAcked() { // if it's been queued for retransmission, remove it from the queue
-				buffer.x.dataPlane.GetRetransmitter().queue(txPayload)
-			}
+			txPayload.markAcked()
 
 			payloadSize := uint32(len(txPayload.payload.Data))
 			buffer.accumulator += payloadSize
@@ -465,7 +471,7 @@ func (buffer *LinkSendBuffer) retransmit() {
 
 		for _, v := range rtxList {
 			v.markQueued()
-			buffer.x.dataPlane.GetRetransmitter().queue(v)
+			buffer.retransmitPush(v)
 			retransmitted++
 			buffer.retransmits++
 			if buffer.retransmits >= buffer.x.Options.TxPortalRetxThresh {
@@ -479,6 +485,79 @@ func (buffer *LinkSendBuffer) retransmit() {
 			log.WithField("circuitId", buffer.x.circuitId).Debugf("retransmitted [%d] payloads, [%d] buffered, linkSendBufferSize: %d", retransmitted, len(buffer.buffer), buffer.linkSendBufferSize)
 		}
 		buffer.lastRetransmitTime = now
+	}
+}
+
+// retransmitPush adds a payload to the retransmit list and notifies the sender goroutine.
+// Called from run() via retransmit(). Always succeeds — the list is bounded by the send window.
+func (buffer *LinkSendBuffer) retransmitPush(p *txPayload) {
+	buffer.retxLock.Lock()
+	if buffer.retxHead == nil {
+		buffer.retxHead = p
+		buffer.retxTail = p
+	} else {
+		p.next = buffer.retxTail
+		buffer.retxTail.prev = p
+		buffer.retxTail = p
+	}
+	buffer.retxLock.Unlock()
+
+	select {
+	case buffer.retransmitNotify <- struct{}{}:
+	default:
+	}
+}
+
+// retransmitPop removes and returns the head of the retransmit list, or nil if empty.
+func (buffer *LinkSendBuffer) retransmitPop() *txPayload {
+	buffer.retxLock.Lock()
+	defer buffer.retxLock.Unlock()
+
+	result := buffer.retxHead
+	if result == nil {
+		return nil
+	}
+
+	if result.prev == nil {
+		buffer.retxHead = nil
+		buffer.retxTail = nil
+	} else {
+		buffer.retxHead = result.prev
+		result.prev.next = nil
+	}
+	result.prev = nil
+	result.next = nil
+	return result
+}
+
+// retransmitSender processes the retransmit list using blocking sends. Each LinkSendBuffer
+// gets its own goroutine so one slow xgress can't stall others.
+func (buffer *LinkSendBuffer) retransmitSender() {
+	log := pfxlog.ContextLogger(buffer.x.Label())
+	for {
+		for p := buffer.retransmitPop(); p != nil; p = buffer.retransmitPop() {
+			if !p.isAcked() {
+				p.payload.MarkAsRetransmit()
+				if err := buffer.x.dataPlane.RetransmitPayload(buffer.x.address, p.payload); err != nil {
+					if !buffer.IsClosed() {
+						log.WithError(err).Errorf("unexpected error while retransmitting payload from [@/%v]", buffer.x.address)
+						buffer.metrics().MarkRetransmissionFailure()
+					} else {
+						log.WithError(err).Tracef("unexpected error while retransmitting payload from [@/%v] (already closed)", buffer.x.address)
+					}
+				} else {
+					p.markSent()
+					buffer.metrics().MarkRetransmission()
+				}
+			}
+			p.dequeued()
+		}
+
+		select {
+		case <-buffer.retransmitNotify:
+		case <-buffer.closeNotify:
+			return
+		}
 	}
 }
 
