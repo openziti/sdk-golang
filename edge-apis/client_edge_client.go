@@ -67,10 +67,6 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 		transportPool.Add(apiUrl, newRuntime)
 	}
 
-	if len(config.ApiUrls) > 1 {
-		ret.SetUseOidc(true)
-	}
-
 	newApi := rest_client_api_client.New(transportPool, nil)
 	api := ZitiEdgeClient{
 		ZitiEdgeClient:         newApi,
@@ -80,6 +76,10 @@ func NewClientApiClientWithConfig(config *ApiClientConfig) *ClientApiClient {
 	}
 	ret.API = &api
 	ret.AuthEnabledApi = &api
+
+	if len(config.ApiUrls) > 1 {
+		ret.SetUseOidc(true)
+	}
 
 	go api.doOnceCacheVersionInfo()
 
