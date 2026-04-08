@@ -119,7 +119,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 
 	var apiUrls []*url.URL
 	for _, apiStr := range apiStrs {
-		apiUrl, err := url.Parse(cfg.ZtAPI)
+		apiUrl, err := url.Parse(apiStr)
 
 		if err != nil {
 			return nil, fmt.Errorf("could not parse ZtAPI from configuration as URI: %s: %w", apiStr, err)
