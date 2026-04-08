@@ -178,7 +178,9 @@ func (c *BaseCredentials) AuthenticateRequest(request runtime.ClientRequest, _ s
 		}
 	}
 
-	request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
+	if c.SecondaryJwt != "" {
+		request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
+	}
 
 	return nil
 }
@@ -197,7 +199,9 @@ func (c *BaseCredentials) ProcessRequest(request runtime.ClientRequest, _ strfmt
 		}
 	}
 
-	request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
+	if c.SecondaryJwt != "" {
+		request.GetHeaderParams().Add("Authorization", "Bearer "+c.SecondaryJwt)
+	}
 
 	if len(errors) > 0 {
 		return network.MultipleErrors(errors)
