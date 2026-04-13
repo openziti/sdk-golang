@@ -17,6 +17,9 @@ const (
 	DefaultSessionRefreshInterval = time.Hour
 	MinRefreshInterval            = time.Second
 	DefaultRefreshJitter          = 0.1
+
+	DefaultAuthBackoffInitial = 5 * time.Second
+	DefaultAuthBackoffMax     = 5 * time.Minute
 )
 
 type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetail)
@@ -35,6 +38,19 @@ type Options struct {
 	// to randomize. For example, 0.1 means each refresh will fire at a random time within ±10%
 	// of the configured interval, helping avoid thundering-herd load spikes on the controller.
 	RefreshJitter float64
+
+	// AuthBackoffInitial is the initial backoff interval after a failed authentication
+	// attempt. Subsequent failures double the interval (with jitter) up to
+	// AuthBackoffMax. Defaults to 5 seconds.
+	AuthBackoffInitial time.Duration
+
+	// AuthBackoffMax is the maximum backoff interval between authentication attempts
+	// after repeated failures. Defaults to 5 minutes.
+	AuthBackoffMax time.Duration
+
+	// HttpTimeout sets the overall timeout for individual HTTP requests to the
+	// controller (OIDC auth, service list fetches, etc.). Defaults to 30 seconds.
+	HttpTimeout time.Duration
 
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
@@ -55,6 +71,8 @@ var DefaultOptions = &Options{
 	RefreshInterval:        DefaultServiceRefreshInterval,
 	SessionRefreshInterval: DefaultSessionRefreshInterval,
 	RefreshJitter:          DefaultRefreshJitter,
+	AuthBackoffInitial:     DefaultAuthBackoffInitial,
+	AuthBackoffMax:         DefaultAuthBackoffMax,
 	OnServiceUpdate:        nil,
 }
 
