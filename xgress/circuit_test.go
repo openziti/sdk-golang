@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/openziti/channel/v4"
-	"github.com/openziti/metrics"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +35,6 @@ import (
 type circuitAdapter struct {
 	peer            *Xgress
 	payloadIngester *PayloadIngester
-	rtx             *Retransmitter
 }
 
 func (self *circuitAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) {
@@ -52,9 +50,8 @@ func (self *circuitAdapter) RetransmitPayload(Address, *Payload) error {
 	return nil
 }
 
-func (self *circuitAdapter) GetRetransmitter() *Retransmitter          { return self.rtx }
-func (self *circuitAdapter) GetPayloadIngester() *PayloadIngester      { return self.payloadIngester }
-func (self *circuitAdapter) GetMetrics() Metrics                       { return noopMetrics{} }
+func (self *circuitAdapter) GetPayloadIngester() *PayloadIngester { return self.payloadIngester }
+func (self *circuitAdapter) GetMetrics() Metrics                  { return noopMetrics{} }
 
 // e2eConn is a versatile test connection that implements SignalConnection.
 // txClosedCh is closed when FlowFromFabricToXgressClosed is called (half-close signal).
@@ -161,9 +158,7 @@ func (m adapterMode) usesReadAdapter() bool {
 }
 
 type testCircuit struct {
-	closeNotify     chan struct{}
-	payloadIngester *PayloadIngester
-	rtx             *Retransmitter
+	closeNotify chan struct{}
 
 	src     *Xgress
 	srcConn *e2eConn
@@ -180,11 +175,6 @@ func newTestCircuit(mode adapterMode) *testCircuit {
 	tc := &testCircuit{
 		closeNotify: make(chan struct{}),
 	}
-
-	tc.payloadIngester = NewPayloadIngester(tc.closeNotify)
-
-	metricsRegistry := metrics.NewRegistry("test", nil)
-	tc.rtx = NewRetransmitter(mockFaulter{}, metricsRegistry, tc.closeNotify)
 
 	// Configure connections based on mode
 	tc.srcConn = &e2eConn{closeNotify: make(chan struct{}), txClosedCh: make(chan struct{})}
@@ -218,16 +208,17 @@ func newTestCircuit(mode adapterMode) *testCircuit {
 		tc.dstRA = tc.dst.NewReadAdapter()
 	}
 
-	// Wire data planes: src forwards to dst and vice versa
+	// Wire data planes: src forwards to dst and vice versa.
+	// Each side gets its own PayloadIngester to avoid deadlock — a pool worker
+	// handling acceptPayload may call sendCapabilitiesResponse back to the peer,
+	// which queues into the peer's ingester. A shared single-worker pool deadlocks.
 	tc.src.dataPlane = &circuitAdapter{
 		peer:            tc.dst,
-		payloadIngester: tc.payloadIngester,
-		rtx:             tc.rtx,
+		payloadIngester: NewPayloadIngester(tc.closeNotify),
 	}
 	tc.dst.dataPlane = &circuitAdapter{
 		peer:            tc.src,
-		payloadIngester: tc.payloadIngester,
-		rtx:             tc.rtx,
+		payloadIngester: NewPayloadIngester(tc.closeNotify),
 	}
 
 	tc.src.Start()

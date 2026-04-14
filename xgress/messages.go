@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync/atomic"
 
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/info"
@@ -235,8 +236,8 @@ func (payload *Payload) Marshall() *channel.Message {
 	msg := channel.NewMessage(ContentTypePayloadType, payload.Data)
 	addPayloadHeadersToMsg(msg, payload.Headers)
 	msg.Headers[HeaderKeyCircuitId] = []byte(payload.CircuitId)
-	if payload.Flags != 0 {
-		msg.PutUint32Header(HeaderKeyFlags, payload.Flags)
+	if flags := payload.GetFlags(); flags != 0 {
+		msg.PutUint32Header(HeaderKeyFlags, flags)
 	}
 
 	msg.PutUint64Header(HeaderKeySequence, uint64(payload.Sequence))
@@ -307,36 +308,38 @@ func (payload *Payload) GetCircuitId() string {
 	return payload.CircuitId
 }
 
+// GetFlags returns the payload's flags using an atomic load, safe for concurrent access.
 func (payload *Payload) GetFlags() uint32 {
-	return payload.Flags
+	return atomic.LoadUint32(&payload.Flags)
 }
 
 func (payload *Payload) IsCircuitEndFlagSet() bool {
-	return isFlagSet(payload.Flags, PayloadFlagCircuitEnd)
+	return isFlagSet(payload.GetFlags(), PayloadFlagCircuitEnd)
 }
 
 func (payload *Payload) IsFlagEOFSet() bool {
-	return isFlagSet(payload.Flags, PayloadFlagEOF)
+	return isFlagSet(payload.GetFlags(), PayloadFlagEOF)
 }
 
 func (payload *Payload) IsFlagWriteFailedSet() bool {
-	return isFlagSet(payload.Flags, PayloadFlagWriteFailed)
+	return isFlagSet(payload.GetFlags(), PayloadFlagWriteFailed)
 }
 
 func (payload *Payload) IsCircuitStartFlagSet() bool {
-	return isFlagSet(payload.Flags, PayloadFlagCircuitStart)
+	return isFlagSet(payload.GetFlags(), PayloadFlagCircuitStart)
 }
 
 func (payload *Payload) IsRetransmitFlagSet() bool {
-	return isFlagSet(payload.Flags, PayloadFlagRetransmit)
+	return isFlagSet(payload.GetFlags(), PayloadFlagRetransmit)
 }
 
+// MarkAsRetransmit atomically sets the retransmit flag. Safe for concurrent use.
 func (payload *Payload) MarkAsRetransmit() {
-	payload.Flags = setPayloadFlag(payload.Flags, PayloadFlagRetransmit)
+	atomic.OrUint32(&payload.Flags, uint32(PayloadFlagRetransmit))
 }
 
 func (payload *Payload) GetOriginator() Originator {
-	if isFlagSet(payload.Flags, PayloadFlagOriginator) {
+	if isFlagSet(payload.GetFlags(), PayloadFlagOriginator) {
 		return Terminator
 	}
 	return Initiator

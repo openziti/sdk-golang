@@ -3,9 +3,16 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.6.0 -> v1.7.0](https://github.com/openziti/sdk-golang/compare/v1.6.0...v1.7.0)
+    * [Issue #901](https://github.com/openziti/sdk-golang/issues/901) - Move xgress back to having retransmitter goroutine per-xgress
     * [Issue #906](https://github.com/openziti/sdk-golang/issues/906) - Fix potential nil references on session service structs
     * [Issue #897](https://github.com/openziti/sdk-golang/issues/897) - Allow xgress to use pull model for reads when appropriate
 
+* github.com/go-openapi/strfmt: v0.26.0 -> v0.26.1
+* github.com/zitadel/oidc/v3: v3.45.5 -> v3.45.6
+* github.com/go-jose/go-jose/v4: v4.0.5 -> v4.1.4
+* go.opentelemetry.io/otel: v1.41.0 -> v1.42.0
+* go.opentelemetry.io/otel/metric: v1.41.0 -> v1.42.0
+* go.opentelemetry.io/otel/trace: v1.41.0 -> v1.42.0
 
 # Release notes 1.6.0
 
@@ -24,8 +31,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.5.4 -> v1.6.0](https://github.com/openziti/sdk-golang/compare/v1.5.4...v1.6.0)
-    * [Issue #902](https://github.com/openziti/sdk-golang/issues/902) - Inspect response message content types are mixed up
-
+    * [Issue #895](https://github.com/openziti/sdk-golang/issues/895) - Limit effect sudden rtt spikes can have on rtt moving average
 
 # Release notes 1.5.4
 
@@ -67,6 +73,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.5.2 -> v1.5.3](https://github.com/openziti/sdk-golang/compare/v1.5.2...v1.5.3)
+    * [Issue openziti/ziti#3496](https://github.com/openziti/ziti/issues/3496) - Adds TOTP enrollment support during OIDC auth
 
 # Release notes 1.5.2
 
@@ -83,7 +90,6 @@
     * [Issue #885](https://github.com/openziti/sdk-golang/issues/885) - Only compare relevant service fields when looking for changes
     * [Issue #884](https://github.com/openziti/sdk-golang/issues/884) - Add deadline for bind establishment
     * [Issue #883](https://github.com/openziti/sdk-golang/issues/883) - Router level listener can be left open if multi-listener closes during listener establishment
-    * [Issue #877](https://github.com/openziti/sdk-golang/issues/877) - Handle differences in xgress eof/end-of-circuit handling by adding a capabilities exchange
 
 * github.com/openziti/channel/v4: [v4.3.6 -> v4.3.7](https://github.com/openziti/channel/compare/v4.3.6...v4.3.7)
 * github.com/openziti/edge-api: [v0.27.0 -> v0.27.4](https://github.com/openziti/edge-api/compare/v0.27.0...v0.27.4)
@@ -154,6 +160,7 @@ randomized timers, so each refresh cycle gets a newly randomized delay.
     * [Issue #878](https://github.com/openziti/sdk-golang/issues/878) - Fix responses from rx goroutines
     * [Issue #874](https://github.com/openziti/sdk-golang/issues/874) - Add inspect support at the context level
     * [Issue #871](https://github.com/openziti/sdk-golang/issues/871) - Make SDK better at sticking to MaxTerminator terminators
+    * [Issue #708](https://github.com/openziti/sdk-golang/issues/708) - Add support for using contexts for timeout/cancellation on dial
 
 * github.com/go-resty/resty/v2: v2.17.1 -> v2.17.2
 * github.com/openziti/channel/v4: [v4.3.2 -> v4.3.6](https://github.com/openziti/channel/compare/v4.3.2...v4.3.6)
@@ -175,6 +182,7 @@ This release exposes internal OIDC responses for structures for testing purposes
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.4.1 -> v1.4.2](https://github.com/openziti/sdk-golang/compare/v1.4.1...v1.4.2)
+    * [Issue openziti/ziti#3356](https://github.com/openziti/ziti/issues/3356) - Adds ability to see OIDC responses
 
 # Release notes 1.4.1
 
@@ -449,7 +457,6 @@ level. This release adds support for that workflow when it is available.
 * github.com/openziti/sdk-golang: [v1.2.0 -> v1.2.1](https://github.com/openziti/sdk-golang/compare/v1.2.0...v1.2.1)
     * [Issue #777](https://github.com/openziti/sdk-golang/issues/777) - OIDC auth token refresh doesn't fall back to re-auth if token has expired
     * [Issue #772](https://github.com/openziti/sdk-golang/issues/772) - xgress close tweaks
-    * [Issue #769](https://github.com/openziti/sdk-golang/issues/769) - Require sdk flow control when using more than one default connection
 
 * github.com/openziti/channel/v4: [v4.2.16 -> v4.2.18](https://github.com/openziti/channel/compare/v4.2.16...v4.2.18)
     * [Issue #201](https://github.com/openziti/channel/issues/201) - SendAndWait methods should return an error if the channel closes instead of blocking
