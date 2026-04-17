@@ -18,7 +18,6 @@ package network
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -29,12 +28,12 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/foundation/v2/info"
-	"github.com/openziti/sdk-golang/edgexg"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var _ edge.Conn = &edgeConnV2{}
@@ -61,20 +60,21 @@ func (conn *edgeConnV2) Id() uint32 {
 	return conn.connId
 }
 
-func (conn *edgeConnV2) ReadNext(_ *edgeConnBase) ([]byte, uint32, error) {
-	data, xgHeaders, err := conn.readAdapter.ReadPayload()
-	if err != nil {
-		return nil, 0, err
-	}
+// readSource supplies the chunk reader with the xgress read adapter as the
+// chunk source. V2 only ever runs in xgress mode.
+func (conn *edgeConnV2) readSource() ([]byte, uint32, error) {
+	return readXgressChunk(conn.readAdapter)
+}
 
-	var edgeFlags uint32
-	if flagsBytes, ok := xgHeaders[edgexg.PayloadFlagsHeader]; ok {
-		if len(flagsBytes) >= 4 {
-			edgeFlags = binary.LittleEndian.Uint32(flagsBytes)
-		}
-	}
-
-	return data, edgeFlags, nil
+// initChunkReader wires up the chunk reader with this conn's source and
+// logger. Must be called before the first Read.
+func (conn *edgeConnV2) initChunkReader() {
+	conn.chunkReader = newEdgeChunkReader(conn.readSource, func() *logrus.Entry {
+		return pfxlog.Logger().
+			WithField("connId", conn.Id()).
+			WithField("marker", conn.marker).
+			WithField("circuitId", conn.circuitId)
+	})
 }
 
 func (conn *edgeConnV2) DataSink() io.Writer {

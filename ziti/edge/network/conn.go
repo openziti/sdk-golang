@@ -18,8 +18,6 @@ package network
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -31,7 +29,6 @@ import (
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/info"
-	"github.com/openziti/sdk-golang/edgexg"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -73,30 +70,19 @@ func (conn *edgeConn) Id() uint32 {
 	return conn.msgCh.Id()
 }
 
-func (conn *edgeConn) ReadNext(base *edgeConnBase) ([]byte, uint32, error) {
+// readSource dispatches to the appropriate chunk source based on the current
+// mode. It is installed on the chunkReader by initChunkReader.
+func (conn *edgeConn) readSource() ([]byte, uint32, error) {
 	if conn.isXgress {
-		data, xgHeaders, err := conn.readAdapter.ReadPayload()
-		if err != nil {
-			return nil, 0, err
-		}
-
-		var edgeFlags uint32
-		if flagsBytes, ok := xgHeaders[edgexg.PayloadFlagsHeader]; ok {
-			if len(flagsBytes) >= 4 {
-				edgeFlags = binary.LittleEndian.Uint32(flagsBytes)
-			}
-		}
-
-		return data, edgeFlags, nil
+		return readXgressChunk(conn.readAdapter)
 	}
+	return conn.readLegacyChunk()
+}
 
-	// legacy mode
+func (conn *edgeConn) readLegacyChunk() ([]byte, uint32, error) {
 	for {
 		msg, err := conn.readQ.GetNext()
 		if err != nil {
-			if errors.Is(err, ErrClosed) {
-				return nil, 0, io.EOF
-			}
 			return nil, 0, err
 		}
 
@@ -104,16 +90,27 @@ func (conn *edgeConn) ReadNext(base *edgeConnBase) ([]byte, uint32, error) {
 
 		switch msg.ContentType {
 		case edge.ContentTypeStateClosed:
-			conn.HandleStateClosedInRead(base)
+			conn.HandleStateClosedInRead(&conn.edgeConnBase)
 			continue
 		case edge.ContentTypeData:
 			return msg.Body, flags, nil
 		default:
 			pfxlog.Logger().WithField("connId", conn.Id()).
-				WithField("type", msg.ContentType).Error("unexpected message in ReadNext")
+				WithField("type", msg.ContentType).Error("unexpected message in read")
 			continue
 		}
 	}
+}
+
+// initChunkReader wires up the chunk reader with this conn's source and
+// logger. Must be called before the first Read.
+func (conn *edgeConn) initChunkReader() {
+	conn.chunkReader = newEdgeChunkReader(conn.readSource, func() *logrus.Entry {
+		return pfxlog.Logger().
+			WithField("connId", conn.Id()).
+			WithField("marker", conn.marker).
+			WithField("circuitId", conn.circuitId)
+	})
 }
 
 func (conn *edgeConn) DataSink() io.Writer {
@@ -257,7 +254,7 @@ func (conn *edgeConn) HandleStateClosedInRead(base *edgeConnBase) {
 			WithField("marker", base.marker).
 			WithField("circuitId", base.circuitId)
 
-		base.readFIN.Store(true)
+		base.chunkReader.MarkFIN()
 		if base.sentFIN.Load() {
 			log.Debug("received ConnState_CLOSED message, fin sent, closing connection")
 			base.doClose(false, conn)

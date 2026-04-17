@@ -41,6 +41,7 @@ func BenchmarkConnWrite(b *testing.B) {
 		mux:          mux,
 		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	conn.initChunkReader()
 
 	req := require.New(b)
 
@@ -69,6 +70,7 @@ func BenchmarkConnRead(b *testing.B) {
 		mux:          mux,
 		readQ:        readQ,
 	}
+	conn.initChunkReader()
 
 	var stop atomic.Bool
 	defer stop.Store(true)
@@ -146,6 +148,7 @@ func TestReadMultipart(t *testing.T) {
 		mux:          mux,
 		readQ:        readQ,
 	}
+	conn.initChunkReader()
 
 	var stop atomic.Bool
 	defer stop.Store(true)

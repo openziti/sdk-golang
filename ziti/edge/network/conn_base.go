@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,7 +41,6 @@ import (
 // edgeConnOps is the minimal interface that edgeConnBase helpers need from the concrete connection type.
 type edgeConnOps interface {
 	Id() uint32
-	ReadNext(*edgeConnBase) ([]byte, uint32, error)
 	DataSink() io.Writer
 	CloseConn(*edgeConnBase, bool)
 	GetDelegateState() map[string]any
@@ -91,11 +89,8 @@ func (s *routerSenderImpl) IsClosed() bool {
 // edgeConnBase contains the shared fields and delegate-free methods for edge connections.
 // Both edgeConn (V1) and edgeConnV2 embed this type.
 type edgeConnBase struct {
-	inBuffer              [][]byte
-	flags                 uint32
 	closed                atomic.Bool
 	closeNotify           chan struct{}
-	readFIN               atomic.Bool
 	sentFIN               atomic.Bool
 	serviceName           string
 	sourceIdentity        string
@@ -105,9 +100,8 @@ type edgeConnBase struct {
 	customState           map[int32][]byte
 	crypto                bool
 	keyPair               *kx.KeyPair
-	rxKey                 []byte
-	receiver              secretstream.Decryptor
 	sender                secretstream.Encryptor
+	chunkReader           *edgeChunkReader
 	appData               []byte
 	sync.Mutex
 	data atomic.Value
@@ -168,8 +162,8 @@ func (base *edgeConnBase) getBaseState() map[string]any {
 	result["serviceName"] = base.serviceName
 	result["closed"] = base.closed.Load()
 	result["encryptionRequired"] = base.crypto
-	result["encrypted"] = base.rxKey != nil || base.receiver != nil
-	result["readFIN"] = base.readFIN.Load()
+	result["encrypted"] = base.chunkReader.IsEncrypted()
+	result["readFIN"] = base.chunkReader.ReadFIN()
 	result["sentFIN"] = base.sentFIN.Load()
 	result["marker"] = base.marker
 	result["circuitId"] = base.circuitId
@@ -249,115 +243,19 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 		return nil, errors.Wrap(err, "failed to establish crypto stream")
 	}
 
-	base.rxKey = rx
+	base.chunkReader.SetRxKey(rx)
 
 	return txHeader, nil
 }
 
-// doRead performs the Read logic, delegating mode-specific operations to the given edgeConnOps.
-func (base *edgeConnBase) doRead(p []byte, ops edgeConnOps) (int, error) {
-	connId := ops.Id()
-	log := pfxlog.Logger().WithField("connId", connId).
-		WithField("marker", base.marker).
-		WithField("circuitId", base.circuitId)
-
+// doRead performs the Read logic by delegating to the chunk reader, after
+// a fast-path check for closed connections. The reader handles buffering,
+// decryption, and multipart splitting.
+func (base *edgeConnBase) doRead(p []byte, _ edgeConnOps) (int, error) {
 	if base.closed.Load() {
-		log.Trace("edgeConn closed, returning EOF")
 		return 0, io.EOF
 	}
-
-	log.Tracef("read buffer = %d bytes", len(p))
-	if len(base.inBuffer) > 0 {
-		first := base.inBuffer[0]
-		log.Tracef("found %d buffered bytes", len(first))
-		n := copy(p, first)
-		first = first[n:]
-		if len(first) == 0 {
-			base.inBuffer = base.inBuffer[1:]
-		} else {
-			base.inBuffer[0] = first
-		}
-		return n, nil
-	}
-
-	for {
-		if base.readFIN.Load() {
-			log.Tracef("readFIN true, returning EOF")
-			return 0, io.EOF
-		}
-
-		data, flags, err := ops.ReadNext(base)
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, ErrClosed) {
-				log.Debug("read exhausted, marking readFIN")
-				base.readFIN.Store(true)
-				return 0, io.EOF
-			}
-			return 0, err
-		}
-
-		if flags&edge.FIN != 0 {
-			log.Trace("got fin msg, marking readFIN true")
-			base.readFIN.Store(true)
-		}
-		base.flags = base.flags | (flags & (edge.STREAM | edge.MULTIPART))
-
-		d := data
-		log.Tracef("got buffer from ops %d bytes", len(d))
-		if len(d) == 0 && base.readFIN.Load() {
-			return 0, io.EOF
-		}
-
-		multipart := (flags & edge.MULTIPART_MSG) != 0
-
-		// first data message should contain crypto header
-		if base.rxKey != nil {
-			if len(d) != secretstream.StreamHeaderBytes {
-				return 0, errors.Errorf("failed to receive crypto header bytes: read[%d]", len(d))
-			}
-			base.receiver, err = secretstream.NewDecryptor(base.rxKey, d)
-			if err != nil {
-				return 0, errors.Wrap(err, "failed to init decryptor")
-			}
-			base.rxKey = nil
-			continue
-		}
-
-		if base.receiver != nil {
-			d, _, err = base.receiver.Pull(d)
-			if err != nil {
-				log.Errorf("crypto failed on data of size=%v err=(%v)", len(data), err)
-				return 0, err
-			}
-		}
-		n := 0
-		if multipart && len(d) > 0 {
-			var parts [][]byte
-			for len(d) > 0 {
-				l := binary.LittleEndian.Uint16(d[0:2])
-				d = d[2:]
-				part := d[0:l]
-				d = d[l:]
-				parts = append(parts, part)
-			}
-			n = copy(p, parts[0])
-			parts[0] = parts[0][n:]
-			if len(parts[0]) == 0 {
-				parts = parts[1:]
-			}
-			base.inBuffer = append(base.inBuffer, parts...)
-		} else {
-			n = copy(p, d)
-			d = d[n:]
-			if len(d) > 0 {
-				base.inBuffer = append(base.inBuffer, d)
-			}
-		}
-
-		log.Tracef("%d chunks in incoming buffer", len(base.inBuffer))
-		log.Debugf("read %v bytes", n)
-		return n, nil
-	}
+	return base.chunkReader.Read(p)
 }
 
 // doWrite performs the Write logic, delegating mode-specific operations to the given edgeConnOps.
@@ -398,7 +296,7 @@ func (base *edgeConnBase) doClose(notifyCtrl bool, ops edgeConnOps) {
 
 	close(base.closeNotify)
 
-	base.readFIN.Store(true)
+	base.chunkReader.MarkFIN()
 	base.sentFIN.Store(true)
 
 	log := pfxlog.Logger().WithField("connId", int(ops.Id())).WithField("marker", base.marker).WithField("circuitId", base.circuitId)
@@ -427,7 +325,7 @@ func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey [
 		return errors.Wrap(err, "failed to establish crypto stream")
 	}
 
-	base.rxKey = rx
+	base.chunkReader.SetRxKey(rx)
 
 	if _, err = ops.DataSink().Write(txHeader); err != nil {
 		return errors.Wrap(err, "failed to write crypto header")

@@ -134,6 +134,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 		mux:   conn.mux,
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	edgeCh.initChunkReader()
 
 	var err error
 	if *service.EncryptionRequired {
@@ -163,6 +164,7 @@ func (conn *routerConn) NewDialConnV2(service *rest_model.ServiceDetail) *edgeCo
 		},
 		connId: id,
 	}
+	ec.initChunkReader()
 
 	if *service.EncryptionRequired {
 		if keyPair, err := kx.NewKeyPair(); err == nil {

@@ -313,6 +313,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		mux:   conn.msgMux,
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	edgeCh.initChunkReader()
 
 	if !conn.flags.IsSet(hostConnDoNotSaveDialerIdentity) {
 		if edgeCh.customState == nil {
