@@ -87,7 +87,7 @@ func (s *routerSenderImpl) IsClosed() bool {
 }
 
 // edgeConnBase contains the shared fields and delegate-free methods for edge connections.
-// Both edgeConn (V1) and edgeConnV2 embed this type.
+// Both edgeConnLegacy and edgeConnXgress embed this type.
 type edgeConnBase struct {
 	closed                atomic.Bool
 	closeNotify           chan struct{}
@@ -157,6 +157,17 @@ func (base *edgeConnBase) GetAppData() []byte {
 	return base.appData
 }
 
+// Marker returns the random tracing marker for this connection.
+func (base *edgeConnBase) Marker() string {
+	return base.marker
+}
+
+// setAcceptCompleteHandler installs the deferred-accept handler used for
+// manualStart listeners.
+func (base *edgeConnBase) setAcceptCompleteHandler(h *newConnHandler) {
+	base.acceptCompleteHandler = h
+}
+
 func (base *edgeConnBase) getBaseState() map[string]any {
 	result := map[string]interface{}{}
 	result["serviceName"] = base.serviceName
@@ -193,7 +204,7 @@ func (base *edgeConnBase) InspectSink(connId uint32) *inspect.VirtualConnDetail 
 }
 
 // CompleteAcceptSuccess completes a manual-start accept handshake successfully.
-func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32) error {
+func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32, ops edgeConnOps) error {
 	if base.acceptCompleteHandler != nil {
 		err, cleanupHandled := base.acceptCompleteHandler.dialSucceeded()
 
@@ -202,7 +213,7 @@ func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32) error {
 				WithField("connId", connId).
 				WithField("circuitId", base.circuitId)
 
-			base.doClose(false, base.acceptCompleteHandler.edgeCh)
+			base.doClose(false, ops)
 
 			reply := edge.NewDialFailedMsg(connId, err.Error())
 			reply.ReplyTo(base.acceptCompleteHandler.message)

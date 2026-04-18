@@ -35,7 +35,7 @@ func BenchmarkConnWrite(b *testing.B) {
 
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
-	conn := &edgeConn{
+	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
@@ -64,7 +64,7 @@ func BenchmarkConnRead(b *testing.B) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
-	conn := &edgeConn{
+	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
@@ -142,7 +142,7 @@ func TestReadMultipart(t *testing.T) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
-	conn := &edgeConn{
+	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
