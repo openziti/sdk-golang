@@ -183,12 +183,8 @@ func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
 
 // --- Standard conn methods ---
 
-func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
-	return conn.doRead(p, conn)
-}
-
 func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
-	return conn.doWrite(data, conn)
+	return conn.doWrite(data, &conn.msgCh)
 }
 
 func (conn *edgeConnLegacy) Close() error {
@@ -299,7 +295,16 @@ func (conn *edgeConnLegacy) TraceRoute(hops uint32, timeout time.Duration) (*edg
 }
 
 func (conn *edgeConnLegacy) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
-	return conn.doEstablishClientCrypto(keypair, peerKey, method, conn)
+	if err := conn.doEstablishClientCrypto(keypair, peerKey, method, &conn.msgCh); err != nil {
+		return err
+	}
+
+	pfxlog.Logger().
+		WithField("connId", conn.Id()).
+		WithField("marker", conn.marker).
+		Debug("crypto established")
+
+	return nil
 }
 
 func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChannel) {

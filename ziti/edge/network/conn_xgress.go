@@ -131,12 +131,8 @@ func (conn *edgeConnXgress) RemoteAddr() net.Addr {
 	return &xgressAddr{connId: conn.connId, routerId: conn.routerId, label: conn.channelLabel}
 }
 
-func (conn *edgeConnXgress) Read(p []byte) (int, error) {
-	return conn.doRead(p, conn)
-}
-
 func (conn *edgeConnXgress) Write(data []byte) (int, error) {
-	return conn.doWrite(data, conn)
+	return conn.doWrite(data, conn.writeAdapter)
 }
 
 func (conn *edgeConnXgress) Close() error {
@@ -303,7 +299,16 @@ func (conn *edgeConnXgress) TraceRoute(hops uint32, timeout time.Duration) (*edg
 }
 
 func (conn *edgeConnXgress) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
-	return conn.doEstablishClientCrypto(keypair, peerKey, method, conn)
+	if err := conn.doEstablishClientCrypto(keypair, peerKey, method, conn.writeAdapter); err != nil {
+		return err
+	}
+
+	pfxlog.Logger().
+		WithField("circuitId", conn.circuitId).
+		WithField("marker", conn.marker).
+		Debug("crypto established")
+
+	return nil
 }
 
 // AcceptMessage handles incoming messages for V2 xgress connections.

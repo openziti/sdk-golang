@@ -40,7 +40,6 @@ import (
 // edgeConnOps is the minimal interface that edgeConnBase helpers need from the concrete connection type.
 type edgeConnOps interface {
 	Id() uint32
-	DataSink() io.Writer
 	CloseConn(bool)
 	GetDelegateState() map[string]any
 	HandleInspectConn([]string, *inspect.SdkInspectResponse)
@@ -260,7 +259,7 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 // doRead performs the Read logic by delegating to the chunk reader, after
 // a fast-path check for closed connections. The reader handles buffering,
 // decryption, and multipart splitting.
-func (base *edgeConnBase) doRead(p []byte, _ edgeConnOps) (int, error) {
+func (base *edgeConnBase) Read(p []byte) (int, error) {
 	if base.closed.Load() {
 		return 0, io.EOF
 	}
@@ -268,7 +267,7 @@ func (base *edgeConnBase) doRead(p []byte, _ edgeConnOps) (int, error) {
 }
 
 // doWrite performs the Write logic, delegating mode-specific operations to the given edgeConnOps.
-func (base *edgeConnBase) doWrite(data []byte, ops edgeConnOps) (int, error) {
+func (base *edgeConnBase) doWrite(data []byte, w io.Writer) (int, error) {
 	if base.sentFIN.Load() {
 		if base.IsClosed() {
 			return 0, errors.New("connection closed")
@@ -276,7 +275,6 @@ func (base *edgeConnBase) doWrite(data []byte, ops edgeConnOps) (int, error) {
 		return 0, errors.New("connection closed for writes")
 	}
 
-	dataSink := ops.DataSink()
 	if base.sender != nil {
 		base.Lock()
 		defer base.Unlock()
@@ -286,13 +284,13 @@ func (base *edgeConnBase) doWrite(data []byte, ops edgeConnOps) (int, error) {
 			return 0, err
 		}
 
-		_, err = dataSink.Write(cipherData)
+		_, err = w.Write(cipherData)
 		return len(data), err
 	}
 
 	copyBuf := make([]byte, len(data))
 	copy(copyBuf, data)
-	return dataSink.Write(copyBuf)
+	return w.Write(copyBuf)
 }
 
 // doClose performs the close logic, delegating mode-specific operations to the given edgeConnOps.
@@ -317,7 +315,7 @@ func (base *edgeConnBase) doClose(notifyCtrl bool, ops edgeConnOps) {
 }
 
 // doEstablishClientCrypto sets up client-side encryption using the given ops' data sink.
-func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod, ops edgeConnOps) error {
+func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod, w io.Writer) error {
 	var err error
 	var rx, tx []byte
 
@@ -336,14 +334,10 @@ func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey [
 
 	base.chunkReader.SetRxKey(rx)
 
-	if _, err = ops.DataSink().Write(txHeader); err != nil {
+	if _, err = w.Write(txHeader); err != nil {
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
-	pfxlog.Logger().
-		WithField("connId", ops.Id()).
-		WithField("marker", base.marker).
-		Debug("crypto established")
 	return nil
 }
 
