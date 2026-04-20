@@ -36,7 +36,6 @@ import (
 )
 
 var _ edge.Conn = &edgeConnXgress{}
-var _ edgeConnOps = &edgeConnXgress{}
 
 // edgeConnXgress is an edge connection using xgress flow control. It is used
 // for both V1 dials that negotiated SDK-side xgress and for V2 dials (which
@@ -80,15 +79,6 @@ func (conn *edgeConnXgress) DataSink() io.Writer {
 	return conn.writeAdapter
 }
 
-func (conn *edgeConnXgress) CloseConn(_ bool) {
-	// cancel any pending writes
-	_ = conn.writeAdapter.SetWriteDeadline(time.Now())
-
-	// if we're using xgress, wait to remove the connection from the mux until the xgress closes,
-	// otherwise it becomes unroutable.
-	conn.xg.PeerClosed()
-}
-
 // --- Direct methods ---
 
 func (conn *edgeConnXgress) TraceMsg(string, *channel.Message) {
@@ -104,17 +94,29 @@ func (conn *edgeConnXgress) RemoteAddr() net.Addr {
 }
 
 func (conn *edgeConnXgress) Write(data []byte) (int, error) {
-	return conn.doWrite(data, conn.writeAdapter)
+	return conn.writeTo(data, conn.writeAdapter)
 }
 
 func (conn *edgeConnXgress) Close() error {
-	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn v2")
-	conn.doClose(true, conn)
+	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn xgress")
+	conn.close(true)
 	return nil
 }
 
-func (conn *edgeConnXgress) close(notifyCtrl bool) {
-	conn.doClose(notifyCtrl, conn)
+// close performs the full close sequence for an xgress conn: atomic close
+// flip, propagate FIN, cancel pending writes, and signal the xgress that the
+// peer is closed. The mux entry is not removed here — xgress tear-down removes
+// it once the xgress actually finishes, so in-flight payloads stay routable.
+func (conn *edgeConnXgress) close(_ bool) {
+	if !conn.beginClose() {
+		return
+	}
+	log := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
+	log.Debug("close: begin")
+	defer log.Debug("close: end")
+
+	_ = conn.writeAdapter.SetWriteDeadline(time.Now())
+	conn.xg.PeerClosed()
 }
 
 func (conn *edgeConnXgress) CloseWrite() error {
@@ -243,7 +245,7 @@ func (conn *edgeConnXgress) SetReadDeadline(t time.Time) error {
 }
 
 func (conn *edgeConnXgress) HandleMuxClose() error {
-	conn.doClose(false, conn)
+	conn.close(false)
 	// If the channel is closed, stop the send buffer as we can't rtx anything anyway
 	conn.xg.Close()
 	return nil
@@ -252,12 +254,12 @@ func (conn *edgeConnXgress) HandleMuxClose() error {
 func (conn *edgeConnXgress) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
-	conn.doClose(false, conn)
+	conn.close(false)
 	conn.xg.CloseSendBuffer()
 }
 
 func (conn *edgeConnXgress) CompleteAcceptSuccess() error {
-	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn)
+	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn.close)
 }
 
 // TraceRoute initiates a trace route from this xgress conn. Uses the
@@ -313,7 +315,7 @@ func (conn *edgeConnXgress) TraceRoute(hops uint32, timeout time.Duration) (*edg
 }
 
 func (conn *edgeConnXgress) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
-	if err := conn.doEstablishClientCrypto(keypair, peerKey, method, conn.writeAdapter); err != nil {
+	if err := conn.establishClientCryptoTo(keypair, peerKey, method, conn.writeAdapter); err != nil {
 		return err
 	}
 

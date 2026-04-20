@@ -37,7 +37,6 @@ import (
 var unsupportedCrypto = pkgerrors.New("unsupported crypto")
 
 var _ edge.Conn = &edgeConnLegacy{}
-var _ edgeConnOps = &edgeConnLegacy{}
 
 // edgeConnLegacy is an edge connection in "legacy" flow-control mode: data
 // is carried as discrete ContentTypeData messages on the edge channel, with
@@ -92,19 +91,6 @@ func (conn *edgeConnLegacy) DataSink() io.Writer {
 	return &conn.msgCh
 }
 
-func (conn *edgeConnLegacy) CloseConn(notifyCtrl bool) {
-	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
-
-	if notifyCtrl {
-		msg := edge.NewStateClosedMsg(conn.Id(), "")
-		if err := conn.msgCh.SendState(msg); err != nil {
-			log.WithError(err).Error("failed to send close message")
-		}
-	}
-
-	conn.mux.RemoveByConnId(conn.Id())
-}
-
 // --- Direct methods ---
 
 func (conn *edgeConnLegacy) TraceMsg(source string, msg *channel.Message) {
@@ -143,18 +129,18 @@ func (conn *edgeConnLegacy) handleStateClosedInRead() {
 		WithField("marker", conn.marker).
 		WithField("circuitId", conn.circuitId).
 		Debug("received ConnState_CLOSED message, closing connection")
-	conn.doClose(false, conn)
+	conn.close(false)
 }
 
 func (conn *edgeConnLegacy) HandleMuxClose() error {
-	conn.doClose(false, conn)
+	conn.close(false)
 	return nil
 }
 
 func (conn *edgeConnLegacy) HandleClose(channel.Channel) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	defer logger.Debug("received HandleClose from underlying channel, marking conn closed")
-	conn.doClose(false, conn)
+	conn.close(false)
 }
 
 func (conn *edgeConnLegacy) queueMessage(msg *channel.Message) {
@@ -176,17 +162,33 @@ func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
 // --- Standard conn methods ---
 
 func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
-	return conn.doWrite(data, &conn.msgCh)
+	return conn.writeTo(data, &conn.msgCh)
 }
 
 func (conn *edgeConnLegacy) Close() error {
 	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn")
-	conn.doClose(true, conn)
+	conn.close(true)
 	return nil
 }
 
+// close performs the full close sequence for a legacy conn: atomic close flip,
+// propagate FIN, optionally notify the router, and remove this sink from the
+// mux. Safe to call multiple times — only the first call does work.
 func (conn *edgeConnLegacy) close(notifyCtrl bool) {
-	conn.doClose(notifyCtrl, conn)
+	if !conn.beginClose() {
+		return
+	}
+	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
+	log.Debug("close: begin")
+	defer log.Debug("close: end")
+
+	if notifyCtrl {
+		msg := edge.NewStateClosedMsg(conn.Id(), "")
+		if err := conn.msgCh.SendState(msg); err != nil {
+			log.WithError(err).Error("failed to send close message")
+		}
+	}
+	conn.mux.RemoveByConnId(conn.Id())
 }
 
 func (conn *edgeConnLegacy) InspectSink() *inspect.VirtualConnDetail {
@@ -267,7 +269,7 @@ func (conn *edgeConnLegacy) SetDeadline(t time.Time) error {
 }
 
 func (conn *edgeConnLegacy) CompleteAcceptSuccess() error {
-	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn)
+	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn.close)
 }
 
 // TraceRoute initiates a trace route from this legacy conn. Uses the
@@ -301,7 +303,7 @@ func (conn *edgeConnLegacy) TraceRoute(hops uint32, timeout time.Duration) (*edg
 }
 
 func (conn *edgeConnLegacy) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
-	if err := conn.doEstablishClientCrypto(keypair, peerKey, method, &conn.msgCh); err != nil {
+	if err := conn.establishClientCryptoTo(keypair, peerKey, method, &conn.msgCh); err != nil {
 		return err
 	}
 

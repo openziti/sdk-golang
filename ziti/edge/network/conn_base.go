@@ -37,12 +37,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// edgeConnOps is the minimal interface that edgeConnBase helpers need from the concrete connection type.
-type edgeConnOps interface {
-	Id() uint32
-	CloseConn(bool)
-}
-
 // RouterSender provides access to the router channel for sending protocol messages.
 // This is the interface that becomes pluggable for P2P multi-path.
 type RouterSender interface {
@@ -227,7 +221,9 @@ func sendInspectReply(connId uint32, msg *channel.Message, ch edge.SdkChannel, r
 }
 
 // CompleteAcceptSuccess completes a manual-start accept handshake successfully.
-func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32, ops edgeConnOps) error {
+// closeFunc is the conn's close method — invoked (with notifyCtrl=false) if the
+// deferred accept fails and cleanup was not handled by dialSucceeded itself.
+func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32, closeFunc func(bool)) error {
 	if base.acceptCompleteHandler != nil {
 		err, cleanupHandled := base.acceptCompleteHandler.dialSucceeded()
 
@@ -236,7 +232,7 @@ func (base *edgeConnBase) CompleteAcceptSuccess(connId uint32, ops edgeConnOps) 
 				WithField("connId", connId).
 				WithField("circuitId", base.circuitId)
 
-			base.doClose(false, ops)
+			closeFunc(false)
 
 			reply := edge.NewDialFailedMsg(connId, err.Error())
 			reply.ReplyTo(base.acceptCompleteHandler.message)
@@ -282,9 +278,9 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 	return txHeader, nil
 }
 
-// doRead performs the Read logic by delegating to the chunk reader, after
-// a fast-path check for closed connections. The reader handles buffering,
-// decryption, and multipart splitting.
+// Read delegates to the chunk reader, after a fast-path check for closed
+// connections. The reader handles buffering, decryption, and multipart
+// splitting.
 func (base *edgeConnBase) Read(p []byte) (int, error) {
 	if base.closed.Load() {
 		return 0, io.EOF
@@ -292,8 +288,10 @@ func (base *edgeConnBase) Read(p []byte) (int, error) {
 	return base.chunkReader.Read(p)
 }
 
-// doWrite performs the Write logic, delegating mode-specific operations to the given edgeConnOps.
-func (base *edgeConnBase) doWrite(data []byte, w io.Writer) (int, error) {
+// writeTo writes data to the given writer, applying end-to-end encryption via
+// base.sender when configured. Mode-specific conn types pass their own writer
+// (msgCh for legacy, xgress writeAdapter for xgress).
+func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 	if base.sentFIN.Load() {
 		if base.IsClosed() {
 			return 0, errors.New("connection closed")
@@ -319,29 +317,23 @@ func (base *edgeConnBase) doWrite(data []byte, w io.Writer) (int, error) {
 	return w.Write(copyBuf)
 }
 
-// doClose performs the close logic, delegating mode-specific operations to the given edgeConnOps.
-func (base *edgeConnBase) doClose(notifyCtrl bool, ops edgeConnOps) {
-	// everything in here should be safe to execute concurrently from outside the muxer loop,
-	// except the remove from mux call
+// beginClose performs the shared first stage of connection close: atomically
+// flips the closed flag (returning false if already closed), and propagates
+// the end-of-stream signal to readers and writers. Type-specific close logic
+// runs after a true return.
+func (base *edgeConnBase) beginClose() bool {
 	if !base.closed.CompareAndSwap(false, true) {
-		return
+		return false
 	}
-
 	close(base.closeNotify)
-
 	base.chunkReader.MarkFIN()
 	base.sentFIN.Store(true)
-
-	log := pfxlog.Logger().WithField("connId", int(ops.Id())).WithField("marker", base.marker).WithField("circuitId", base.circuitId)
-
-	log.Debug("close: begin")
-	defer log.Debug("close: end")
-
-	ops.CloseConn(notifyCtrl)
+	return true
 }
 
-// doEstablishClientCrypto sets up client-side encryption using the given ops' data sink.
-func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod, w io.Writer) error {
+// establishClientCryptoTo sets up client-side encryption and writes the tx
+// crypto header to the given writer.
+func (base *edgeConnBase) establishClientCryptoTo(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod, w io.Writer) error {
 	var err error
 	var rx, tx []byte
 
