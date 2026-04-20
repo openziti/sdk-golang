@@ -89,34 +89,6 @@ func (conn *edgeConnXgress) CloseConn(_ bool) {
 	conn.xg.PeerClosed()
 }
 
-func (conn *edgeConnXgress) GetDelegateState() map[string]any {
-	if conn.xg != nil {
-		return map[string]any{
-			"xg": conn.xg.GetInspectDetail(true),
-		}
-	}
-	return nil
-}
-
-func (conn *edgeConnXgress) HandleInspectConn(requestedValues []string, resp *inspect.SdkInspectResponse) {
-	for _, requested := range requestedValues {
-		lc := strings.ToLower(requested)
-		if strings.HasPrefix(lc, "circuit:") {
-			circuitId := requested[len("circuit:"):]
-			if conn.circuitId == circuitId {
-				detail := conn.xg.GetInspectDetail(false)
-				resp.Values[requested] = detail
-			}
-		} else if strings.HasPrefix(lc, "circuitandstacks:") {
-			circuitId := requested[len("circuitAndStacks:"):]
-			if conn.circuitId == circuitId {
-				detail := conn.xg.GetInspectDetail(true)
-				resp.Values[requested] = detail
-			}
-		}
-	}
-}
-
 // --- Direct methods ---
 
 func (conn *edgeConnXgress) TraceMsg(string, *channel.Message) {
@@ -157,16 +129,30 @@ func (conn *edgeConnXgress) InspectSink() *inspect.VirtualConnDetail {
 	return conn.edgeConnBase.InspectSink(conn.Id())
 }
 
+// Inspect returns a JSON snapshot of this xgress connection's state. circuitId
+// (included via baseState) is the primary identifier; connId is emitted as a
+// diagnostic for correlating with edge-channel logs.
 func (conn *edgeConnXgress) Inspect() string {
-	return conn.edgeConnBase.Inspect(conn.Id())
+	state := conn.baseState()
+	state["connId"] = conn.Id()
+	return marshalState(state)
 }
 
+// GetState returns a JSON dump of this connection's state, including the
+// xgress inspect detail when an xg is attached.
 func (conn *edgeConnXgress) GetState() string {
-	return conn.doGetState(conn.Id(), conn)
+	state := conn.baseState()
+	state["connId"] = conn.Id()
+	if conn.xg != nil {
+		state["xg"] = conn.xg.GetInspectDetail(true)
+	}
+	return marshalState(state)
 }
 
+// HandleConnInspect replies to a ContentTypeConnInspectRequest with the JSON
+// state from Inspect.
 func (conn *edgeConnXgress) HandleConnInspect(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleConnInspect(conn.Id(), msg, ch)
+	conn.edgeConnBase.HandleConnInspect(conn.Id(), conn.Inspect(), msg, ch)
 }
 
 // handleTraceRouteControl handles an incoming xgress trace route request as
@@ -187,8 +173,36 @@ func (conn *edgeConnXgress) handleTraceRouteControl(ctrl *xgress.Control, ch edg
 	}
 }
 
+// HandleInspect replies to a ContentTypeInspectRequest. Supports the
+// "circuit:<id>" and "circuitAndStacks:<id>" inspect keys by returning the
+// xgress inspect detail when the requested circuit matches this conn.
 func (conn *edgeConnXgress) HandleInspect(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleInspect(conn.Id(), conn, msg, ch)
+	resp := &inspect.SdkInspectResponse{
+		Success: true,
+		Values:  make(map[string]any),
+	}
+	requestedValues, _, err := msg.GetStringSliceHeader(edge.InspectRequestValuesHeader)
+	if err != nil {
+		resp.Errors = append(resp.Errors, err.Error())
+		resp.Success = false
+		sendInspectReply(conn.Id(), msg, ch, resp)
+		return
+	}
+	for _, requested := range requestedValues {
+		lc := strings.ToLower(requested)
+		if strings.HasPrefix(lc, "circuit:") {
+			circuitId := requested[len("circuit:"):]
+			if conn.circuitId == circuitId && conn.xg != nil {
+				resp.Values[requested] = conn.xg.GetInspectDetail(false)
+			}
+		} else if strings.HasPrefix(lc, "circuitandstacks:") {
+			circuitId := requested[len("circuitAndStacks:"):]
+			if conn.circuitId == circuitId && conn.xg != nil {
+				resp.Values[requested] = conn.xg.GetInspectDetail(true)
+			}
+		}
+	}
+	sendInspectReply(conn.Id(), msg, ch, resp)
 }
 
 func (conn *edgeConnXgress) GetCircuitDetail() *xgress.CircuitDetail {

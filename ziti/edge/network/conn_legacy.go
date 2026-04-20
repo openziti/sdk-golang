@@ -105,14 +105,6 @@ func (conn *edgeConnLegacy) CloseConn(notifyCtrl bool) {
 	conn.mux.RemoveByConnId(conn.Id())
 }
 
-func (conn *edgeConnLegacy) GetDelegateState() map[string]any {
-	return nil
-}
-
-func (conn *edgeConnLegacy) HandleInspectConn(_ []string, _ *inspect.SdkInspectResponse) {
-	// no circuit-level inspect data in legacy mode
-}
-
 // --- Direct methods ---
 
 func (conn *edgeConnLegacy) TraceMsg(source string, msg *channel.Message) {
@@ -201,16 +193,25 @@ func (conn *edgeConnLegacy) InspectSink() *inspect.VirtualConnDetail {
 	return conn.edgeConnBase.InspectSink(conn.Id())
 }
 
+// Inspect returns a JSON snapshot of this legacy connection's state. connId is
+// the primary identifier for legacy conns — it's what disambiguates conns on
+// the edge channel.
 func (conn *edgeConnLegacy) Inspect() string {
-	return conn.edgeConnBase.Inspect(conn.Id())
+	state := conn.baseState()
+	state["id"] = conn.Id()
+	return marshalState(state)
 }
 
+// GetState returns a JSON dump of this connection's state. For legacy conns
+// this matches Inspect exactly — there are no mode-specific fields.
 func (conn *edgeConnLegacy) GetState() string {
-	return conn.doGetState(conn.Id(), conn)
+	return conn.Inspect()
 }
 
+// HandleConnInspect replies to a ContentTypeConnInspectRequest with the JSON
+// state from Inspect.
 func (conn *edgeConnLegacy) HandleConnInspect(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleConnInspect(conn.Id(), msg, ch)
+	conn.edgeConnBase.HandleConnInspect(conn.Id(), conn.Inspect(), msg, ch)
 }
 
 // handleTraceRoute handles an incoming trace route request. The dialer's edge
@@ -241,8 +242,13 @@ func (conn *edgeConnLegacy) handleTraceRoute(msg *channel.Message, ch edge.SdkCh
 	}
 }
 
+// HandleInspect replies to a ContentTypeInspectRequest. Legacy conns have no
+// circuit-level inspect data to return, so the reply is an empty success.
 func (conn *edgeConnLegacy) HandleInspect(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleInspect(conn.Id(), conn, msg, ch)
+	sendInspectReply(conn.Id(), msg, ch, &inspect.SdkInspectResponse{
+		Success: true,
+		Values:  map[string]any{},
+	})
 }
 
 func (conn *edgeConnLegacy) String() string {

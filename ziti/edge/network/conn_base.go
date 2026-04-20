@@ -41,8 +41,6 @@ import (
 type edgeConnOps interface {
 	Id() uint32
 	CloseConn(bool)
-	GetDelegateState() map[string]any
-	HandleInspectConn([]string, *inspect.SdkInspectResponse)
 }
 
 // RouterSender provides access to the router channel for sending protocol messages.
@@ -165,28 +163,22 @@ func (base *edgeConnBase) setAcceptCompleteHandler(h *newConnHandler) {
 	base.acceptCompleteHandler = h
 }
 
-func (base *edgeConnBase) getBaseState() map[string]any {
-	result := map[string]interface{}{}
-	result["serviceName"] = base.serviceName
-	result["closed"] = base.closed.Load()
-	result["encryptionRequired"] = base.crypto
-	result["encrypted"] = base.chunkReader.IsEncrypted()
-	result["readFIN"] = base.chunkReader.ReadFIN()
-	result["sentFIN"] = base.sentFIN.Load()
-	result["marker"] = base.marker
-	result["circuitId"] = base.circuitId
-	return result
-}
-
-// Inspect returns a JSON string of this connection's base state.
-func (base *edgeConnBase) Inspect(connId uint32) string {
-	state := base.getBaseState()
-	state["id"] = connId
-	jsonOutput, err := json.Marshal(state)
-	if err != nil {
-		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
+// baseState returns the connection state fields that are common to all conn
+// types. Type-specific GetState/Inspect implementations start from this map
+// and layer their own identifier ("id" for legacy, "connId" for xgress) and
+// any extra fields on top. circuitId is already included and serves as the
+// primary identifier for xgress conns.
+func (base *edgeConnBase) baseState() map[string]any {
+	return map[string]any{
+		"serviceName":        base.serviceName,
+		"closed":             base.closed.Load(),
+		"encryptionRequired": base.crypto,
+		"encrypted":          base.chunkReader.IsEncrypted(),
+		"readFIN":            base.chunkReader.ReadFIN(),
+		"sentFIN":            base.sentFIN.Load(),
+		"marker":             base.marker,
+		"circuitId":          base.circuitId,
 	}
-	return string(jsonOutput)
 }
 
 // InspectSink returns a VirtualConnDetail for this connection.
@@ -197,6 +189,40 @@ func (base *edgeConnBase) InspectSink(connId uint32) *inspect.VirtualConnDetail 
 		ServiceName: base.serviceName,
 		Closed:      base.closed.Load(),
 		CircuitId:   base.circuitId,
+	}
+}
+
+// HandleConnInspect handles a ContentTypeConnInspectRequest. The wire-level
+// connId is used to address the reply; the body is supplied by the caller
+// (each conn type owns the content of its own inspect payload).
+func (base *edgeConnBase) HandleConnInspect(connId uint32, body string, msg *channel.Message, ch edge.SdkChannel) {
+	resp := edge.NewConnInspectResponse(connId, edge.ConnTypeDial, body)
+	if err := resp.ReplyTo(msg).Send(ch.GetControlSender()); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send inspect response")
+	}
+}
+
+// marshalState JSON-encodes a state map. Errors are logged but not returned —
+// callers receive a (possibly empty) string and no recovery is meaningful.
+func marshalState(state map[string]any) string {
+	out, err := json.Marshal(state)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
+	}
+	return string(out)
+}
+
+// sendInspectReply wraps the wire-level reply for ContentTypeInspectResponse.
+func sendInspectReply(connId uint32, msg *channel.Message, ch edge.SdkChannel, resp *inspect.SdkInspectResponse) {
+	reply, err := edge.NewInspectResponse(connId, resp)
+	if err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to create inspect response")
+		return
+	}
+	reply.ReplyTo(msg)
+	if err = reply.WithTimeout(5 * time.Second).Send(ch.GetControlSender()); err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to send inspect response")
 	}
 }
 
@@ -339,64 +365,6 @@ func (base *edgeConnBase) doEstablishClientCrypto(keypair *kx.KeyPair, peerKey [
 	}
 
 	return nil
-}
-
-// doGetState returns the combined base + ops state as a JSON string.
-func (base *edgeConnBase) doGetState(connId uint32, ops edgeConnOps) string {
-	state := base.getBaseState()
-	state["id"] = connId
-	if delegateState := ops.GetDelegateState(); delegateState != nil {
-		for k, v := range delegateState {
-			state[k] = v
-		}
-	}
-	jsonOutput, err := json.Marshal(state)
-	if err != nil {
-		pfxlog.Logger().WithError(err).Error("unable to marshal inspect result")
-	}
-	return string(jsonOutput)
-}
-
-// doHandleConnInspect handles a conn inspect request message.
-func (base *edgeConnBase) doHandleConnInspect(connId uint32, msg *channel.Message, ch edge.SdkChannel) {
-	resp := edge.NewConnInspectResponse(connId, edge.ConnTypeDial, base.Inspect(connId))
-	if err := resp.ReplyTo(msg).Send(ch.GetControlSender()); err != nil {
-		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			Error("failed to send inspect response")
-	}
-}
-
-// doHandleInspect handles an inspect request message.
-func (base *edgeConnBase) doHandleInspect(connId uint32, ops edgeConnOps, msg *channel.Message, ch edge.SdkChannel) {
-	resp := &inspect.SdkInspectResponse{
-		Success: true,
-		Values:  make(map[string]any),
-	}
-	requestedValues, _, err := msg.GetStringSliceHeader(edge.InspectRequestValuesHeader)
-	if err != nil {
-		resp.Errors = append(resp.Errors, err.Error())
-		resp.Success = false
-		base.doReturnInspectResponse(connId, msg, ch, resp)
-		return
-	}
-
-	ops.HandleInspectConn(requestedValues, resp)
-
-	base.doReturnInspectResponse(connId, msg, ch, resp)
-}
-
-// doReturnInspectResponse sends an inspect response message.
-func (base *edgeConnBase) doReturnInspectResponse(connId uint32, msg *channel.Message, ch edge.SdkChannel, resp *inspect.SdkInspectResponse) {
-	reply, err := edge.NewInspectResponse(connId, resp)
-	if err != nil {
-		pfxlog.Logger().WithError(err).Error("failed to create inspect response")
-		return
-	}
-	reply.ReplyTo(msg)
-
-	if err = reply.WithTimeout(5 * time.Second).Send(ch.GetControlSender()); err != nil {
-		pfxlog.Logger().WithError(err).Error("failed to send inspect response")
-	}
 }
 
 // xgressAddr implements net.Addr for xgress mode connections.
