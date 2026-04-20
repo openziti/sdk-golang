@@ -92,8 +92,8 @@ func (conn *edgeConnLegacy) DataSink() io.Writer {
 	return &conn.msgCh
 }
 
-func (conn *edgeConnLegacy) CloseConn(base *edgeConnBase, notifyCtrl bool) {
-	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", base.marker).WithField("circuitId", base.circuitId)
+func (conn *edgeConnLegacy) CloseConn(notifyCtrl bool) {
+	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 
 	if notifyCtrl {
 		msg := edge.NewStateClosedMsg(conn.Id(), "")
@@ -109,13 +109,8 @@ func (conn *edgeConnLegacy) GetDelegateState() map[string]any {
 	return nil
 }
 
-func (conn *edgeConnLegacy) HandleInspectConn(_ *edgeConnBase, _ []string, _ *inspect.SdkInspectResponse) {
+func (conn *edgeConnLegacy) HandleInspectConn(_ []string, _ *inspect.SdkInspectResponse) {
 	// no circuit-level inspect data in legacy mode
-}
-
-func (conn *edgeConnLegacy) SendTraceRoute(connId uint32, hops uint32, timeout time.Duration) (*channel.Message, error) {
-	msg := edge.NewTraceRouteMsg(connId, hops, uint64(info.NowInMilliseconds()))
-	return msg.WithTimeout(timeout).SendForReply(conn.msgCh.GetDefaultSender())
 }
 
 // --- Direct methods ---
@@ -222,8 +217,32 @@ func (conn *edgeConnLegacy) HandleConnInspect(msg *channel.Message, ch edge.SdkC
 	conn.doHandleConnInspect(conn.Id(), msg, ch)
 }
 
+// handleTraceRoute handles an incoming trace route request. The dialer's edge
+// router invokes this when hops reaches this SDK-side terminator (via the
+// router's msgMux connId routing). The response is keyed by connId and rides
+// the edge channel directly.
 func (conn *edgeConnLegacy) handleTraceRoute(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleTraceRoute(msg, ch)
+	hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
+	if hops > 0 {
+		hops--
+		msg.PutUint32Header(edge.TraceHopCountHeader, hops)
+	}
+
+	ts, _ := msg.GetUint64Header(edge.TimestampHeader)
+	connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
+	resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
+
+	sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
+	resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
+
+	if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
+		resp.Headers[edge.UUIDHeader] = msgUUID
+	}
+
+	if err := ch.GetControlSender().Send(resp); err != nil {
+		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
+			Error("failed to send trace route response")
+	}
 }
 
 func (conn *edgeConnLegacy) HandleInspect(msg *channel.Message, ch edge.SdkChannel) {
@@ -249,8 +268,34 @@ func (conn *edgeConnLegacy) CompleteAcceptSuccess() error {
 	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn)
 }
 
+// TraceRoute initiates a trace route from this legacy conn. Uses the
+// connId-keyed edge protocol: ContentTypeTraceRoute / ContentTypeTraceRouteResponse.
 func (conn *edgeConnLegacy) TraceRoute(hops uint32, timeout time.Duration) (*edge.TraceRouteResult, error) {
-	return conn.doTraceRoute(conn, hops, timeout)
+	msg := edge.NewTraceRouteMsg(conn.Id(), hops, uint64(info.NowInMilliseconds()))
+	resp, err := msg.WithTimeout(timeout).SendForReply(conn.msgCh.GetDefaultSender())
+	if err != nil {
+		return nil, err
+	}
+	if resp.ContentType != edge.ContentTypeTraceRouteResponse {
+		return nil, pkgerrors.Errorf("unexpected response: %v", resp.ContentType)
+	}
+	respHops, _ := resp.GetUint32Header(edge.TraceHopCountHeader)
+	ts, _ := resp.GetUint64Header(edge.TimestampHeader)
+	elapsed := time.Duration(0)
+	if ts > 0 {
+		elapsed = time.Duration(info.NowInMilliseconds()-int64(ts)) * time.Millisecond
+	}
+	hopType, _ := resp.GetStringHeader(edge.TraceHopTypeHeader)
+	hopId, _ := resp.GetStringHeader(edge.TraceHopIdHeader)
+	hopErr, _ := resp.GetStringHeader(edge.TraceError)
+
+	return &edge.TraceRouteResult{
+		Hops:    respHops,
+		Time:    elapsed,
+		HopType: hopType,
+		HopId:   hopId,
+		Error:   hopErr,
+	}, nil
 }
 
 func (conn *edgeConnLegacy) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {

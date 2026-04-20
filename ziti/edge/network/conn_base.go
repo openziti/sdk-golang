@@ -29,7 +29,6 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
-	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream"
@@ -42,10 +41,9 @@ import (
 type edgeConnOps interface {
 	Id() uint32
 	DataSink() io.Writer
-	CloseConn(*edgeConnBase, bool)
+	CloseConn(bool)
 	GetDelegateState() map[string]any
-	HandleInspectConn(*edgeConnBase, []string, *inspect.SdkInspectResponse)
-	SendTraceRoute(uint32, uint32, time.Duration) (*channel.Message, error)
+	HandleInspectConn([]string, *inspect.SdkInspectResponse)
 }
 
 // RouterSender provides access to the router channel for sending protocol messages.
@@ -315,7 +313,7 @@ func (base *edgeConnBase) doClose(notifyCtrl bool, ops edgeConnOps) {
 	log.Debug("close: begin")
 	defer log.Debug("close: end")
 
-	ops.CloseConn(base, notifyCtrl)
+	ops.CloseConn(notifyCtrl)
 }
 
 // doEstablishClientCrypto sets up client-side encryption using the given ops' data sink.
@@ -374,31 +372,6 @@ func (base *edgeConnBase) doHandleConnInspect(connId uint32, msg *channel.Messag
 	}
 }
 
-// doHandleTraceRoute handles a trace route request message.
-func (base *edgeConnBase) doHandleTraceRoute(msg *channel.Message, ch edge.SdkChannel) {
-	hops, _ := msg.GetUint32Header(edge.TraceHopCountHeader)
-	if hops > 0 {
-		hops--
-		msg.PutUint32Header(edge.TraceHopCountHeader, hops)
-	}
-
-	ts, _ := msg.GetUint64Header(edge.TimestampHeader)
-	connId, _ := msg.GetUint32Header(edge.ConnIdHeader)
-	resp := edge.NewTraceRouteResponseMsg(connId, hops, ts, "sdk/golang", "")
-
-	sourceRequestId, _ := msg.GetUint32Header(edge.TraceSourceRequestIdHeader)
-	resp.PutUint32Header(edge.TraceSourceRequestIdHeader, sourceRequestId)
-
-	if msgUUID := msg.Headers[edge.UUIDHeader]; msgUUID != nil {
-		resp.Headers[edge.UUIDHeader] = msgUUID
-	}
-
-	if err := ch.GetControlSender().Send(resp); err != nil {
-		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			Error("failed to send trace route response")
-	}
-}
-
 // doHandleInspect handles an inspect request message.
 func (base *edgeConnBase) doHandleInspect(connId uint32, ops edgeConnOps, msg *channel.Message, ch edge.SdkChannel) {
 	resp := &inspect.SdkInspectResponse{
@@ -413,7 +386,7 @@ func (base *edgeConnBase) doHandleInspect(connId uint32, ops edgeConnOps, msg *c
 		return
 	}
 
-	ops.HandleInspectConn(base, requestedValues, resp)
+	ops.HandleInspectConn(requestedValues, resp)
 
 	base.doReturnInspectResponse(connId, msg, ch, resp)
 }
@@ -430,36 +403,6 @@ func (base *edgeConnBase) doReturnInspectResponse(connId uint32, msg *channel.Me
 	if err = reply.WithTimeout(5 * time.Second).Send(ch.GetControlSender()); err != nil {
 		pfxlog.Logger().WithError(err).Error("failed to send inspect response")
 	}
-}
-
-// doTraceRoute sends a trace route request and returns the result.
-func (base *edgeConnBase) doTraceRoute(ops edgeConnOps, hops uint32, timeout time.Duration) (*edge.TraceRouteResult, error) {
-	connId := ops.Id()
-	resp, err := ops.SendTraceRoute(connId, hops, timeout)
-	if err != nil {
-		return nil, err
-	}
-	if resp.ContentType != edge.ContentTypeTraceRouteResponse {
-		return nil, errors.Errorf("unexpected response: %v", resp.ContentType)
-	}
-	hops, _ = resp.GetUint32Header(edge.TraceHopCountHeader)
-	ts, _ := resp.GetUint64Header(edge.TimestampHeader)
-	elapsed := time.Duration(0)
-	if ts > 0 {
-		elapsed = time.Duration(info.NowInMilliseconds()-int64(ts)) * time.Millisecond
-	}
-	hopType, _ := resp.GetStringHeader(edge.TraceHopTypeHeader)
-	hopId, _ := resp.GetStringHeader(edge.TraceHopIdHeader)
-	hopErr, _ := resp.GetStringHeader(edge.TraceError)
-
-	result := &edge.TraceRouteResult{
-		Hops:    hops,
-		Time:    elapsed,
-		HopType: hopType,
-		HopId:   hopId,
-		Error:   hopErr,
-	}
-	return result, nil
 }
 
 // xgressAddr implements net.Addr for xgress mode connections.

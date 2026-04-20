@@ -31,6 +31,7 @@ import (
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/openziti/secretstream/kx"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -79,7 +80,7 @@ func (conn *edgeConnXgress) DataSink() io.Writer {
 	return conn.writeAdapter
 }
 
-func (conn *edgeConnXgress) CloseConn(_ *edgeConnBase, _ bool) {
+func (conn *edgeConnXgress) CloseConn(_ bool) {
 	// cancel any pending writes
 	_ = conn.writeAdapter.SetWriteDeadline(time.Now())
 
@@ -97,28 +98,23 @@ func (conn *edgeConnXgress) GetDelegateState() map[string]any {
 	return nil
 }
 
-func (conn *edgeConnXgress) HandleInspectConn(base *edgeConnBase, requestedValues []string, resp *inspect.SdkInspectResponse) {
+func (conn *edgeConnXgress) HandleInspectConn(requestedValues []string, resp *inspect.SdkInspectResponse) {
 	for _, requested := range requestedValues {
 		lc := strings.ToLower(requested)
 		if strings.HasPrefix(lc, "circuit:") {
 			circuitId := requested[len("circuit:"):]
-			if base.circuitId == circuitId {
+			if conn.circuitId == circuitId {
 				detail := conn.xg.GetInspectDetail(false)
 				resp.Values[requested] = detail
 			}
 		} else if strings.HasPrefix(lc, "circuitandstacks:") {
 			circuitId := requested[len("circuitAndStacks:"):]
-			if base.circuitId == circuitId {
+			if conn.circuitId == circuitId {
 				detail := conn.xg.GetInspectDetail(true)
 				resp.Values[requested] = detail
 			}
 		}
 	}
-}
-
-func (conn *edgeConnXgress) SendTraceRoute(connId uint32, hops uint32, timeout time.Duration) (*channel.Message, error) {
-	msg := edge.NewTraceRouteMsg(connId, hops, uint64(info.NowInMilliseconds()))
-	return msg.WithTimeout(timeout).SendForReply(conn.defaultSender)
 }
 
 // --- Direct methods ---
@@ -177,8 +173,22 @@ func (conn *edgeConnXgress) HandleConnInspect(msg *channel.Message, ch edge.SdkC
 	conn.doHandleConnInspect(conn.Id(), msg, ch)
 }
 
-func (conn *edgeConnXgress) handleTraceRoute(msg *channel.Message, ch edge.SdkChannel) {
-	conn.doHandleTraceRoute(msg, ch)
+// handleTraceRouteControl handles an incoming xgress trace route request as
+// the terminator of a circuit. The request arrives wrapped in an edge
+// ContentTypeXgControl message; we respond with a ControlTypeTraceRouteResponse
+// and promote ControlUserVal to ReplyForHeader so the dialer's SendForReply
+// correlates through the fabric.
+func (conn *edgeConnXgress) handleTraceRouteControl(ctrl *xgress.Control, ch edge.SdkChannel) {
+	resp := ctrl.CreateTraceResponse("sdk/golang", "")
+	respMsg := resp.Marshall()
+	respMsg.PutUint32Header(edge.ConnIdHeader, conn.Id())
+	if userVal, ok := ctrl.Headers.GetUint32Header(xgress.ControlUserVal); ok {
+		respMsg.PutUint32Header(channel.ReplyForHeader, userVal)
+	}
+	if err := ch.GetControlSender().Send(respMsg); err != nil {
+		pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).
+			Error("failed to send xgress trace route response")
+	}
 }
 
 func (conn *edgeConnXgress) HandleInspect(msg *channel.Message, ch edge.SdkChannel) {
@@ -240,8 +250,56 @@ func (conn *edgeConnXgress) CompleteAcceptSuccess() error {
 	return conn.edgeConnBase.CompleteAcceptSuccess(conn.Id(), conn)
 }
 
+// TraceRoute initiates a trace route from this xgress conn. Uses the
+// circuit-id-keyed xgress.Control protocol wrapped in ContentTypeXgControl
+// edge messages, so trace traverses the fabric via the existing forwarder
+// control path rather than the edge mux's connId routing.
 func (conn *edgeConnXgress) TraceRoute(hops uint32, timeout time.Duration) (*edge.TraceRouteResult, error) {
-	return conn.doTraceRoute(conn, hops, timeout)
+	ts := uint64(info.NowInMilliseconds())
+	ctrl := &xgress.Control{
+		Type:      xgress.ControlTypeTraceRoute,
+		CircuitId: conn.circuitId,
+		Headers:   channel.Headers{},
+	}
+	ctrl.Headers.PutUint32Header(xgress.ControlHopCount, hops)
+	ctrl.Headers.PutUint64Header(xgress.ControlTimestamp, ts)
+
+	msg := ctrl.Marshall()
+	msg.PutUint32Header(edge.ConnIdHeader, conn.Id())
+
+	resp, err := msg.WithTimeout(timeout).SendForReply(conn.defaultSender)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ContentType != edge.ContentTypeXgControl {
+		return nil, pkgerrors.Errorf("unexpected response content type: %v", resp.ContentType)
+	}
+
+	respCtrl, err := xgress.UnmarshallControl(resp)
+	if err != nil {
+		return nil, pkgerrors.Wrap(err, "failed to unmarshal trace route response control")
+	}
+	if !respCtrl.IsTypeTraceRouteResponse() {
+		return nil, pkgerrors.Errorf("unexpected control type in response: %v", respCtrl.Type)
+	}
+
+	respHops, _ := respCtrl.Headers.GetUint32Header(xgress.ControlHopCount)
+	respTs, _ := respCtrl.Headers.GetUint64Header(xgress.ControlTimestamp)
+	elapsed := time.Duration(0)
+	if respTs > 0 {
+		elapsed = time.Duration(info.NowInMilliseconds()-int64(respTs)) * time.Millisecond
+	}
+	hopType, _ := respCtrl.Headers.GetStringHeader(xgress.ControlHopType)
+	hopId, _ := respCtrl.Headers.GetStringHeader(xgress.ControlHopId)
+	hopErr, _ := respCtrl.Headers.GetStringHeader(xgress.ControlError)
+
+	return &edge.TraceRouteResult{
+		Hops:    respHops,
+		Time:    elapsed,
+		HopType: hopType,
+		HopId:   hopId,
+		Error:   hopErr,
+	}, nil
 }
 
 func (conn *edgeConnXgress) establishClientCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) error {
@@ -294,8 +352,18 @@ func (conn *edgeConnXgress) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg, ch)
 
-	case edge.ContentTypeTraceRoute:
-		go conn.handleTraceRoute(msg, ch)
+	case edge.ContentTypeXgControl:
+		ctrl, err := xgress.UnmarshallControl(msg)
+		if err != nil {
+			pfxlog.Logger().WithField("circuitId", conn.circuitId).WithError(err).Error("failed to unmarshal xgress control")
+			return
+		}
+		if ctrl.IsTypeTraceRoute() {
+			go conn.handleTraceRouteControl(ctrl, ch)
+		}
+		// ControlTypeTraceRouteResponse arrives only as a reply to a SendForReply
+		// we initiated; the channel layer delivers it directly to that waiter, so
+		// we never see it here.
 	}
 }
 
