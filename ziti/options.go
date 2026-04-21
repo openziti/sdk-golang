@@ -77,7 +77,14 @@ type DialOptions struct {
 	// 3. Note that if config.MaxDefaultConnects is set to a value greater than one, the SDK will
 	//    always use sdk flow-control, as otherwise multiple data channels can lead to out-of-order
 	//    data corruption.
+	// 4. Only applies to V1 dials and listens. The V2 dial path always uses sdk flow-control in
+	//    the go sdk and ignores this flag.
 	SdkFlowControl *bool
+
+	// ForceConnectV1 skips the ConnectV2 path for this dial even when the router advertises V2
+	// support, falling back to the legacy session-based Connect flow. Intended as an escape hatch;
+	// leave nil/false for normal use.
+	ForceConnectV1 *bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {

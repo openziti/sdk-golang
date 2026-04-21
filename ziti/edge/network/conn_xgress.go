@@ -394,14 +394,15 @@ func (conn *edgeConnXgress) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 func (conn *edgeConnXgress) setupXgressFlowControl(msg *channel.Message, originator xgress.Originator,
 	envF func() xgress.Env, ch edge.SdkChannel, mux edge.ConnMux[any]) error {
 
+	// On header-validation failures here, there is nothing to clean up: the conn
+	// has no xgress, no write adapter, and is not yet registered in the mux.
+	// Calling Close() would NPE on the nil xg/writeAdapter.
 	ctrlId, ok := msg.GetStringHeader(edge.XgressCtrlIdHeader)
 	if !ok {
-		_ = conn.Close()
 		return fmt.Errorf("xgress conn id header not found for circuit %s", conn.circuitId)
 	}
 	addr, ok := msg.GetStringHeader(edge.XgressAddressHeader)
 	if !ok {
-		_ = conn.Close()
 		return fmt.Errorf("xgress address header not found for circuit %s", conn.circuitId)
 	}
 

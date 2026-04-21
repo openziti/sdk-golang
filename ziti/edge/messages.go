@@ -581,12 +581,10 @@ func NewUpdateTokenSuccessMsg() *channel.Message {
 
 // NewConnectV2Msg creates a ConnectV2 message for sessionless dialing. The service is identified
 // by the serviceId parameter, with identifierType indicating whether it is a service ID or name.
-// The requestId correlates this request to the route_circuit message the router will send back.
-func NewConnectV2Msg(connId uint32, serviceId string, identifierType ServiceIdentifierType, requestId string, pubKey []byte, options *DialOptions) *channel.Message {
+func NewConnectV2Msg(connId uint32, serviceId string, identifierType ServiceIdentifierType, pubKey []byte, options *DialOptions) *channel.Message {
 	msg := newMsg(ContentTypeConnectV2, connId, nil)
 	msg.PutStringHeader(ServiceIdHeader, serviceId)
 	msg.PutByteHeader(ServiceIdentifierTypeHeader, byte(identifierType))
-	msg.PutStringHeader(ConnectRequestIdHeader, requestId)
 	msg.PutBoolHeader(UseXgressToSdkHeader, options.SdkFlowControl)
 
 	if pubKey != nil {
@@ -605,15 +603,6 @@ func NewConnectV2Msg(connId uint32, serviceId string, identifierType ServiceIden
 	if options.StickinessToken != nil {
 		msg.Headers[StickinessTokenHeader] = options.StickinessToken
 	}
-	return msg
-}
-
-// NewRouteCircuitMsg creates a route_circuit message sent from router to SDK to notify
-// the SDK of the circuit ID before the full circuit is established.
-func NewRouteCircuitMsg(circuitId string, requestId string) *channel.Message {
-	msg := channel.NewMessage(ContentTypeRouteCircuit, nil)
-	msg.PutStringHeader(CircuitIdHeader, circuitId)
-	msg.PutStringHeader(ConnectRequestIdHeader, requestId)
 	return msg
 }
 

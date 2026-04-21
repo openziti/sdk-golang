@@ -37,12 +37,11 @@ type RouterConnOwner interface {
 }
 
 type routerConn struct {
-	routerName   string
-	routerAddr   string
-	ch           edge.SdkChannel
-	mux          edge.ConnMux[any]
-	owner        RouterConnOwner
-	pendingDials *pendingDialTracker
+	routerName string
+	routerAddr string
+	ch         edge.SdkChannel
+	mux        edge.ConnMux[any]
+	owner      RouterConnOwner
 }
 
 func (conn *routerConn) GetBoolHeader(key int32) bool {
@@ -82,11 +81,10 @@ func (conn *routerConn) HandleClose(channel.Channel) {
 
 func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspectF func() *inspect.ContextInspectResult) edge.RouterConn {
 	conn := &routerConn{
-		routerAddr:   routerAddr,
-		routerName:   routerName,
-		mux:          edge.NewChannelConnMapMux[any](inspectF),
-		owner:        owner,
-		pendingDials: newPendingDialTracker(),
+		routerAddr: routerAddr,
+		routerName: routerName,
+		mux:        edge.NewChannelConnMapMux[any](inspectF),
+		owner:      owner,
 	}
 
 	return conn
@@ -110,7 +108,6 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.mux.HandleReceive)
-	binding.AddReceiveHandlerF(edge.ContentTypeRouteCircuit, conn.pendingDials.HandleRouteCircuit)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddTypedReceiveHandler(conn.mux)
@@ -269,39 +266,31 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 		WithField("connId", connId).
 		WithField("serviceId", *service.ID)
 
-	requestId := newMarker()
-	pd := conn.pendingDials.Register(requestId, ec, conn.mux)
-	defer conn.pendingDials.Remove(requestId)
-
 	var pub []byte
 	if crypto {
 		pub = keyPair.Public()
 	}
-	connectRequest := edge.NewConnectV2Msg(connId, *service.ID, edge.ServiceIdentifierById, requestId, pub, options)
+	connectRequest := edge.NewConnectV2Msg(connId, *service.ID, edge.ServiceIdentifierById, pub, options)
+	// The go sdk's V2 implementation always uses sdk xgress flow control — the returned conn
+	// is always an edgeConnXgress. Override whatever the caller set on options.SdkFlowControl
+	// so the router picks the xgEdgeForwarder handler and returns xgress headers.
+	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, true)
 	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, marker)
 
 	replyMsg, err := connectRequest.WithContext(ctx).SendForReply(conn.ch.GetControlSender())
 	if err != nil {
-		pd.DialFailed()
 		logger.Error(err)
 		return nil, err
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		pd.DialFailed()
 		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
 	}
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
-		pd.DialFailed()
 		return nil, errors.Errorf("unexpected response to connect attempt: %v", replyMsg.ContentType)
 	}
 
-	// Prefer circuit ID from route_circuit (guaranteed by channel ordering);
-	// fall back to CircuitIdHeader on the reply.
-	circuitId := pd.GetCircuitId()
-	if circuitId == "" {
-		circuitId, _ = replyMsg.GetStringHeader(edge.CircuitIdHeader)
-	}
+	circuitId, _ := replyMsg.GetStringHeader(edge.CircuitIdHeader)
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
 	logger = logger.WithField("circuitId", circuitId)
 

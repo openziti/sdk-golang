@@ -255,6 +255,9 @@ type DialOptions struct {
 	AppData         []byte
 	StickinessToken []byte
 	SdkFlowControl  bool
+	// ForceConnectV1 skips the ConnectV2 path even if the router advertises support.
+	// Intended as an escape hatch; normal callers should leave this false.
+	ForceConnectV1 bool
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {

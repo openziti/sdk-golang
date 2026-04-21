@@ -1444,6 +1444,7 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 		AppData:         options.AppData,
 		StickinessToken: options.StickinessToken,
 		SdkFlowControl:  (options.SdkFlowControl != nil && *options.SdkFlowControl) || context.maxDefaultConnections > 1,
+		ForceConnectV1:  options.ForceConnectV1 != nil && *options.ForceConnectV1,
 	}
 
 	if edgeDialOptions.GetConnectTimeout() < 1 {
@@ -1591,7 +1592,7 @@ func (context *ContextImpl) dialSession(ctx gocontext.Context, service *rest_mod
 	if err != nil {
 		return nil, err
 	}
-	if edgeConnFactory.SupportsConnectV2() {
+	if edgeConnFactory.SupportsConnectV2() && !options.ForceConnectV1 {
 		return edgeConnFactory.ConnectV2(ctx, service, options, context.getXgressEnv)
 	}
 	return edgeConnFactory.Connect(ctx, service, session, options, context.getXgressEnv)
