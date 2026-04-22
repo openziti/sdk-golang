@@ -159,7 +159,10 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 		}
 
 		multipart := flags&edge.MULTIPART_MSG != 0
-		n := r.deliver(p, data, multipart)
+		n, err := r.deliver(p, data, multipart)
+		if err != nil {
+			return 0, err
+		}
 		log.Tracef("%d chunks in incoming buffer", len(r.inBuffer))
 		log.Debugf("read %d bytes", n)
 		return n, nil
@@ -181,23 +184,30 @@ func (r *edgeChunkReader) drainBuffer(p []byte) int {
 
 // deliver copies the head of the decoded data into p, splitting multipart
 // chunks on length prefixes. Anything that doesn't fit is queued in inBuffer.
-func (r *edgeChunkReader) deliver(p, data []byte, multipart bool) int {
+// Returns an error if the multipart framing is malformed.
+func (r *edgeChunkReader) deliver(p, data []byte, multipart bool) (int, error) {
 	if multipart && len(data) > 0 {
-		parts := splitMultipart(data)
+		parts, err := splitMultipart(data)
+		if err != nil {
+			return 0, err
+		}
+		if len(parts) == 0 {
+			return 0, nil
+		}
 		n := copy(p, parts[0])
 		parts[0] = parts[0][n:]
 		if len(parts[0]) == 0 {
 			parts = parts[1:]
 		}
 		r.inBuffer = append(r.inBuffer, parts...)
-		return n
+		return n, nil
 	}
 
 	n := copy(p, data)
 	if n < len(data) {
 		r.inBuffer = append(r.inBuffer, data[n:])
 	}
-	return n
+	return n, nil
 }
 
 // readXgressChunk reads the next payload from an xgress ReadAdapter and
@@ -215,14 +225,21 @@ func readXgressChunk(readAdapter *xgress.ReadAdapter) ([]byte, uint32, error) {
 }
 
 // splitMultipart parses a MULTIPART_MSG chunk body. Each part is prefixed by
-// a little-endian uint16 length.
-func splitMultipart(data []byte) [][]byte {
+// a little-endian uint16 length. Returns an error if the length prefix is
+// truncated or if a declared length exceeds the remaining bytes.
+func splitMultipart(data []byte) ([][]byte, error) {
 	var parts [][]byte
 	for len(data) > 0 {
-		l := binary.LittleEndian.Uint16(data[0:2])
+		if len(data) < 2 {
+			return nil, errors.New("malformed multipart chunk: length prefix truncated")
+		}
+		l := int(binary.LittleEndian.Uint16(data[0:2]))
 		data = data[2:]
+		if len(data) < l {
+			return nil, errors.Errorf("malformed multipart chunk: declared part length %d exceeds remaining %d bytes", l, len(data))
+		}
 		parts = append(parts, data[0:l])
 		data = data[l:]
 	}
-	return parts
+	return parts, nil
 }
