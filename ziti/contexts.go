@@ -94,6 +94,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		maxControlConnections: int(cfg.MaxControlConnections),
 		services:              cmap.New[*rest_model.ServiceDetail](),
 		sessions:              cmap.New[*rest_model.SessionDetail](),
+		serviceEdgeRouters:    cmap.New[[]*rest_model.SessionEdgeRouter](),
 		intercepts:            cmap.New[*edge.InterceptV1Config](),
 		activeBinds:           cmap.New[*rest_model.ServiceDetail](),
 		activeDials:           cmap.New[*rest_model.ServiceDetail](),

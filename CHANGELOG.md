@@ -1,3 +1,27 @@
+# Release notes 2.0.0
+
+## Breaking Changes
+
+* **Minimum controller/router version is now 1.0.0.** The dial path was reworked to be sessionless
+  on ConnectV2, fetching the per-service edge router list directly via the
+  `GET /edge/client/v1/services/{id}/edge-routers` endpoint on the client API instead of creating
+  a service session. That endpoint first reached the client API in ziti 0.34.0, but the SDK
+  enforces a floor of 1.0.0 to keep the supported controller set coherent with the rest of the
+  1.x feature set. Dev builds that report a semantic version of `0.0.0` are accepted. Connecting
+  to an older controller results in a panic with a clear message; there is no automatic V1
+  fallback.
+
+* Bind/listen (hosting) still creates and refreshes service sessions — terminators require the
+  session token as the routing key for incoming dials, so that path is unchanged.
+
+## What's New
+
+* `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
+  endpoint. Used internally by the new dial path.
+* `ContextImpl.serviceEdgeRouters` — per-service ER cache, refreshed on the same cadence as the
+  legacy session cache (`sessionRefreshInterval`) and invalidated whenever a service is removed
+  or a dial fails.
+
 # Release notes 1.7.0
 
 ## Issues Fixed and Dependency Updates

@@ -216,9 +216,10 @@ type ContextImpl struct {
 
 	CtrlClt *CtrlClient
 
-	services   cmap.ConcurrentMap[string, *rest_model.ServiceDetail] // name -> Service
-	sessions   cmap.ConcurrentMap[string, *rest_model.SessionDetail] // svcID:type -> Session
-	intercepts cmap.ConcurrentMap[string, *edge.InterceptV1Config]
+	services           cmap.ConcurrentMap[string, *rest_model.ServiceDetail]       // name -> Service
+	sessions           cmap.ConcurrentMap[string, *rest_model.SessionDetail]       // svcID:type -> Session
+	serviceEdgeRouters cmap.ConcurrentMap[string, []*rest_model.SessionEdgeRouter] // svcID -> ERs for sessionless dial
+	intercepts         cmap.ConcurrentMap[string, *edge.InterceptV1Config]
 
 	activeDials cmap.ConcurrentMap[string, *rest_model.ServiceDetail]
 	activeBinds cmap.ConcurrentMap[string, *rest_model.ServiceDetail]
@@ -859,6 +860,36 @@ func (context *ContextImpl) refreshSessions() {
 	}
 }
 
+// refreshServiceEdgeRouters walks the sessionless dial cache, re-fetches each entry from the
+// controller, and warms a router connection for every fresh ER URL it sees (mirroring the
+// pre-connect behavior refreshSessions() provides for the session cache).
+func (context *ContextImpl) refreshServiceEdgeRouters() {
+	log := pfxlog.Logger()
+	edgeRouters := make(map[string]string)
+
+	for entry := range context.serviceEdgeRouters.IterBuffered() {
+		serviceId := entry.Key
+		log.Debugf("refreshing service edge routers for %s", serviceId)
+
+		ers, err := context.fetchServiceEdgeRouters(serviceId)
+		if err != nil {
+			log.WithError(err).Errorf("failed to refresh edge routers for service %s", serviceId)
+			continue
+		}
+		for _, er := range ers {
+			for _, u := range er.SupportedProtocols {
+				if context.options.isEdgeRouterUrlAccepted(u) {
+					edgeRouters[u] = *er.Name
+				}
+			}
+		}
+	}
+
+	for u, name := range edgeRouters {
+		go context.handleConnectEdgeRouter(name, u, nil)
+	}
+}
+
 func (context *ContextImpl) GetExternalSigners() ([]*rest_model.ClientExternalJWTSignerDetail, error) {
 	result, err := context.CtrlClt.GetExternalSigners()
 	return result, err
@@ -1078,8 +1109,9 @@ func (context *ContextImpl) runRefreshes() {
 			svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
 
 		case <-sessionRefreshTimer:
-			log.Debug("refreshing sessions")
+			log.Debug("refreshing sessions and service edge routers")
 			context.refreshSessions()
+			context.refreshServiceEdgeRouters()
 			sessionRefreshTimer = time.After(jitteredDuration(sessionRefreshInterval, jitter))
 		}
 	}
@@ -1473,39 +1505,22 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 
 	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
 
-	session, err := context.GetSession(*svc.ID)
-	if err != nil {
-		context.deleteServiceSessions(*svc.ID)
-		if session, err = context.createSessionWithBackoff(ctx, svc, SessionType(SessionDial), options); err != nil {
-			return nil, fmt.Errorf("unable to dial service '%v' (%w)", serviceName, err)
-		}
-	}
-
-	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session")
-	conn, err := context.dialSession(ctx, svc, session, edgeDialOptions)
+	conn, err := context.dialService(ctx, svc, options, edgeDialOptions)
 	if err == nil {
 		return conn, nil
 	}
 
-	var refreshErr error
-	if _, refreshErr = context.refreshSession(session); refreshErr == nil {
-		// if the session wasn't expired, no reason to try again, return the failure
-		return nil, fmt.Errorf("unable to dial service '%s' (%w)", serviceName, err)
-	}
-
+	// On first failure, invalidate any cached per-service state and retry once with fresh
+	// ER list + (for V1 fallback) a fresh session. Mirrors the pre-sessionless behavior
+	// where a session refresh gated a single retry.
 	context.deleteServiceSessions(*svc.ID)
-	if session, refreshErr = context.createSessionWithBackoff(ctx, svc, SessionType(SessionDial), options); refreshErr != nil {
-		// couldn't create a new session, report the error
-		return nil, fmt.Errorf("unable to dial service '%s' (%w)", serviceName, refreshErr)
+
+	retryConn, retryErr := context.dialService(ctx, svc, options, edgeDialOptions)
+	if retryErr == nil {
+		return retryConn, nil
 	}
 
-	// retry with new session
-	conn, err = context.dialSession(ctx, svc, session, edgeDialOptions)
-	if err == nil {
-		return conn, nil
-	}
-
-	return nil, fmt.Errorf("unable to dial service '%s' (%w)", serviceName, err)
+	return nil, fmt.Errorf("unable to dial service '%s' (%w)", serviceName, retryErr)
 }
 
 // GetServiceForAddr finds the service with intercept that matches best to given address
@@ -1587,14 +1602,36 @@ func (context *ContextImpl) DialAddr(network string, addr string) (edge.Conn, er
 	return context.dialServiceFromAddr(*svc.Name, network, host, uint16(port))
 }
 
-func (context *ContextImpl) dialSession(ctx gocontext.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions) (edge.Conn, error) {
-	edgeConnFactory, err := context.getEdgeRouterConn(ctx, session, options)
+// dialService selects an edge router for the given service and issues a ConnectV2 (sessionless)
+// or, if the router or the caller requires V1, a session-scoped Connect. The service session is
+// created lazily only when the V1 path is actually taken.
+func (context *ContextImpl) dialService(ctx gocontext.Context, service *rest_model.ServiceDetail, userOptions *DialOptions, options *edge.DialOptions) (edge.Conn, error) {
+	ers, err := context.getOrFetchServiceEdgeRouters(*service.ID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to list edge routers for service '%s' (%w)", *service.Name, err)
+	}
+
+	refresh := func() ([]*rest_model.SessionEdgeRouter, error) {
+		return context.fetchServiceEdgeRouters(*service.ID)
+	}
+
+	edgeConnFactory, err := context.getEdgeRouterConn(ctx, ers, refresh, options)
 	if err != nil {
 		return nil, err
 	}
 	if edgeConnFactory.SupportsConnectV2() && !options.ForceConnectV1 {
 		return edgeConnFactory.ConnectV2(ctx, service, options, context.getXgressEnv)
 	}
+
+	// V1 fallback: create (or reuse) a service session just for the wire-level token.
+	session, err := context.GetSession(*service.ID)
+	if err != nil {
+		context.deleteServiceSessions(*service.ID)
+		if session, err = context.createSessionWithBackoff(ctx, service, SessionType(SessionDial), userOptions); err != nil {
+			return nil, fmt.Errorf("unable to create session for V1 dial of service '%s' (%w)", *service.Name, err)
+		}
+	}
+	pfxlog.Logger().WithField("sessionId", *session.ID).WithField("sessionToken", session.Token).Debug("connecting with session (V1 path)")
 	return edgeConnFactory.Connect(ctx, service, session, options, context.getXgressEnv)
 }
 
@@ -1665,32 +1702,31 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	return listenerMgr.listener, nil
 }
 
-func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, session *rest_model.SessionDetail, options edge.ConnOptions) (edge.RouterConn, error) {
-	logger := pfxlog.Logger().WithField("sessionId", *session.ID)
+// getEdgeRouterConn picks the best router connection for a dial from the supplied ER list.
+// If the list is empty, refresh() is called once to try to obtain a non-empty list (e.g. for
+// a newly-created session). Returns an error if no ER can be reached before ctx expires.
+func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, ers []*rest_model.SessionEdgeRouter, refresh func() ([]*rest_model.SessionEdgeRouter, error), options edge.ConnOptions) (edge.RouterConn, error) {
+	logger := pfxlog.Logger()
 
-	if len(session.EdgeRouters) == 0 {
-		if refreshedSession, err := context.refreshSession(session); err != nil {
-			target := &rest_session.DetailSessionNotFound{}
-			if errors.As(err, &target) {
-				sessionKey := fmt.Sprintf("%s:%s", *session.ServiceID, *session.Type)
-				context.sessions.Remove(sessionKey)
-			}
-
-			return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
-		} else {
-			if len(refreshedSession.EdgeRouters) == 0 {
-				return nil, errors.New("no edge routers available, refresh yielded no new edge routers")
-			}
-
-			session = refreshedSession
+	if len(ers) == 0 {
+		if refresh == nil {
+			return nil, errors.New("no edge routers available")
 		}
+		refreshed, err := refresh()
+		if err != nil {
+			return nil, fmt.Errorf("no edge routers available, refresh errored: %v", err)
+		}
+		if len(refreshed) == 0 {
+			return nil, errors.New("no edge routers available, refresh yielded no new edge routers")
+		}
+		ers = refreshed
 	}
 
 	// go through connected routers first
 	bestLatency := time.Duration(math.MaxInt64)
 	var bestER edge.RouterConn
 	var unconnected []*rest_model.SessionEdgeRouter
-	for _, edgeRouter := range session.EdgeRouters {
+	for _, edgeRouter := range ers {
 		for _, addr := range edgeRouter.SupportedProtocols {
 			if er, found := context.routerConnections.Get(addr); found {
 				h := context.metrics.Histogram("latency." + addr).(metrics2.Histogram)
@@ -2145,6 +2181,33 @@ func (context *ContextImpl) cacheSession(op string, session *rest_model.SessionD
 func (context *ContextImpl) deleteServiceSessions(svcId string) {
 	context.sessions.Remove(fmt.Sprintf("%s:%s", svcId, SessionBind))
 	context.sessions.Remove(fmt.Sprintf("%s:%s", svcId, SessionDial))
+	context.serviceEdgeRouters.Remove(svcId)
+}
+
+// getOrFetchServiceEdgeRouters returns the cached ER list for the given service, fetching
+// from the controller via the sessionless GET /services/{id}/edge-routers endpoint on miss.
+// The returned list is owned by the cache; callers must not mutate it.
+func (context *ContextImpl) getOrFetchServiceEdgeRouters(serviceId string) ([]*rest_model.SessionEdgeRouter, error) {
+	if ers, ok := context.serviceEdgeRouters.Get(serviceId); ok {
+		return ers, nil
+	}
+	return context.fetchServiceEdgeRouters(serviceId)
+}
+
+// fetchServiceEdgeRouters always hits the controller and updates the cache.
+func (context *ContextImpl) fetchServiceEdgeRouters(serviceId string) ([]*rest_model.SessionEdgeRouter, error) {
+	ers, err := context.CtrlClt.GetServiceEdgeRouters(serviceId)
+	if err != nil {
+		return nil, err
+	}
+	sessionERs := make([]*rest_model.SessionEdgeRouter, 0, len(ers))
+	for _, er := range ers {
+		sessionERs = append(sessionERs, &rest_model.SessionEdgeRouter{
+			CommonEdgeRouterProperties: *er,
+		})
+	}
+	context.serviceEdgeRouters.Set(serviceId, sessionERs)
+	return sessionERs, nil
 }
 
 func (context *ContextImpl) Close() {

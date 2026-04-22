@@ -69,6 +69,7 @@ type CtrlClient struct {
 	ConfigTypes                      []string
 	supportsConfigTypesOnServiceList atomic.Bool
 	capabilitiesLoaded               atomic.Bool
+	controllerVersion                atomic.Pointer[versions.SemVer]
 }
 
 // RequestTotpToken implements TotpTokenRequestor, exchanging a TOTP code for a TOTP token.
@@ -529,23 +530,30 @@ func (self *CtrlClient) RemoveMfa(code string) error {
 // any addresses that cannot be parsed
 func (self *CtrlClient) sanitizeSessionUrls(session *rest_model.SessionDetail) {
 	for _, edgeRouter := range session.EdgeRouters {
-		newUrls := map[string]string{}
-		for protocol, url := range edgeRouter.SupportedProtocols {
-			url = strings.Replace(url, "://", ":", 1)
-			if _, err := transport.ParseAddress(url); err == nil {
-				newUrls[protocol] = url
-			} else {
-				pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(edgeRouter.Name))
-			}
-		}
-		edgeRouter.SupportedProtocols = newUrls
+		self.sanitizeEdgeRouterUrls(&edgeRouter.CommonEdgeRouterProperties)
 	}
+}
+
+// sanitizeEdgeRouterUrls normalizes the SupportedProtocols map of a single ER, dropping
+// any addresses the transport package can't parse.
+func (self *CtrlClient) sanitizeEdgeRouterUrls(er *rest_model.CommonEdgeRouterProperties) {
+	newUrls := map[string]string{}
+	for protocol, url := range er.SupportedProtocols {
+		url = strings.Replace(url, "://", ":", 1)
+		if _, err := transport.ParseAddress(url); err == nil {
+			newUrls[protocol] = url
+		} else {
+			pfxlog.Logger().WithError(err).Debugf("ignoring address [%s] for router [%s], as it can't be parsed", url, genext.OrDefault(er.Name))
+		}
+	}
+	er.SupportedProtocols = newUrls
 }
 
 func (self *CtrlClient) loadCtrlCapabilities() {
 	result, _ := self.API.Informational.ListVersion(informational.NewListVersionParams())
 	if result != nil && result.Payload != nil && result.Payload.Data != nil {
 		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
+			self.controllerVersion.Store(sv)
 			if sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.1.0")) >= 0 {
 				self.supportsConfigTypesOnServiceList.Store(true)
 			}
@@ -559,6 +567,46 @@ func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
 		self.loadCtrlCapabilities()
 	}
 	return self.supportsConfigTypesOnServiceList.Load()
+}
+
+// requireMinControllerVersion panics if the controller's reported version is below the SDK's
+// minimum (v1.0.0). Version "0.0.0" is treated as a dev build and allowed. Transient failures
+// to read the version are ignored — the check only fires on a successfully parsed, provably
+// too-old version.
+func (self *CtrlClient) requireMinControllerVersion() {
+	if !self.capabilitiesLoaded.Load() {
+		self.loadCtrlCapabilities()
+	}
+	sv := self.controllerVersion.Load()
+	if sv == nil {
+		return
+	}
+	if sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.0.0")) >= 0 {
+		return
+	}
+	panic(fmt.Sprintf("controller version %s too old, missing required APIs, minimum supported version is 1.0.0", sv))
+}
+
+// GetServiceEdgeRouters returns the edge routers the current identity may use to reach the given
+// service. It calls the sessionless GET /services/{id}/edge-routers endpoint, which filters by
+// the authenticated API-session identity and the provided service id (same logic CreateSession
+// would use). No service-session token is required.
+func (self *CtrlClient) GetServiceEdgeRouters(serviceId string) ([]*rest_model.CommonEdgeRouterProperties, error) {
+	self.requireMinControllerVersion()
+
+	params := service.NewListServiceEdgeRoutersParams()
+	params.ID = serviceId
+
+	resp, err := self.API.Service.ListServiceEdgeRouters(params, self.GetCurrentApiSession())
+	if err != nil {
+		return nil, rest_util.WrapErr(err)
+	}
+
+	ers := resp.Payload.Data.EdgeRouters
+	for _, er := range ers {
+		self.sanitizeEdgeRouterUrls(er)
+	}
+	return ers, nil
 }
 
 // GetAvailableERs retrieves edge routers accessible to the current identity from the controller.
