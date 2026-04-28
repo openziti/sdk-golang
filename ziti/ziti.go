@@ -1923,6 +1923,7 @@ func (context *ContextImpl) listenSession(service *rest_model.ServiceDetail, opt
 	edgeListenOptions.BindUsingEdgeIdentity = options.BindUsingEdgeIdentity
 	edgeListenOptions.ManualStart = options.ManualStart
 	edgeListenOptions.DoNotSaveDialerIdentity = options.DoNotSaveDialerIdentity
+	edgeListenOptions.ConnectQueueSize = options.ConnectQueueSize
 
 	if edgeListenOptions.ConnectTimeout == 0 {
 		edgeListenOptions.ConnectTimeout = time.Minute
@@ -2522,7 +2523,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 		closeNotify: context.closeNotify,
 	}
 
-	listenerMgr.listener = network.NewMultiListener(service, listenerMgr.GetCurrentSession)
+	listenerMgr.listener = network.NewMultiListener(service, options.ConnectQueueSize, listenerMgr.GetCurrentSession)
 
 	var helper *waitForNHelper
 	if waitForN > 0 {
@@ -2550,6 +2551,39 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 	}
 
 	return listenerMgr, nil
+}
+
+// listenerHost adapts a multi-listener to the per-attempt edge.ListenerHost
+// surface. QueueDial and AcceptConn delegate straight to the multi-listener;
+// NotifyRouterConnClosed performs both the multi-listener cleanup and the
+// per-attempt event notification (carrying routerName/attemptId so the
+// listenerManager can ignore stale close events).
+type listenerHost struct {
+	multi       network.MultiListener
+	eventChan   chan<- listenerEvent
+	closeNotify <-chan struct{}
+	routerName  string
+	attemptId   uint64
+	logger      *logrus.Entry
+}
+
+func (h *listenerHost) QueueDial(work func()) error {
+	return h.multi.QueueDial(work)
+}
+
+func (h *listenerHost) AcceptConn(c edge.Conn) bool {
+	return h.multi.AcceptConn(c)
+}
+
+func (h *listenerHost) NotifyRouterConnClosed(child edge.RouterHostConn) {
+	h.multi.NotifyRouterConnClosed(child)
+	go func() {
+		select {
+		case h.eventChan <- &routerConnectionListenFailedEvent{router: h.routerName, attemptId: h.attemptId}:
+		case <-h.closeNotify:
+			h.logger.Debugf("listener closed, exiting from createListener")
+		}
+	}()
 }
 
 type listenerManager struct {
@@ -2770,18 +2804,30 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	logger := pfxlog.Logger().WithField("serviceName", *mgr.service.Name).
 		WithField("router", routerName)
 	svc := mgr.listener.GetService()
-	listener, err := routerConnection.Listen(svc, session, mgr.options, mgr.context.getXgressEnv)
+
+	// Build a per-Listen options copy with everything routerConn.Listen needs.
+	// Host wraps the multi-listener with the per-attempt context (router
+	// name, attempt id, logger) so that close-time events carry the right
+	// identifiers without polluting the multi-listener's surface.
+	listenOpts := *mgr.options
+	listenOpts.Service = svc
+	listenOpts.Session = session
+	listenOpts.Env = mgr.context.getXgressEnv
+	listenOpts.Host = &listenerHost{
+		multi:       mgr.listener,
+		eventChan:   mgr.eventChan,
+		closeNotify: mgr.context.closeNotify,
+		routerName:  routerName,
+		attemptId:   attemptId,
+		logger:      logger,
+	}
+
+	listener, err := routerConnection.Listen(&listenOpts)
 	elapsed := time.Since(start)
 	if err == nil {
 		logger = logger.WithField("connId", listener.Id())
 		logger.Debugf("listener established to %v in %vms", routerConnection.GetRouterAddr(), elapsed.Milliseconds())
-		mgr.listener.AddListener(listener, func() {
-			select {
-			case mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerName, attemptId: attemptId}:
-			case <-mgr.context.closeNotify:
-				logger.Debugf("listener closed, exiting from createListener")
-			}
-		})
+		mgr.listener.AddListener(listener)
 		mgr.eventChan <- &listenSuccessEvent{router: routerName, attemptId: attemptId}
 		if !routerConnection.GetBoolHeader(edge.SupportsBindSuccessHeader) {
 			mgr.eventChan <- &listenerEstablishedEvent{}
@@ -2789,11 +2835,11 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	} else {
 		logger.Errorf("creating listener failed after %vms: %v", elapsed.Milliseconds(), err)
 		mgr.listener.NotifyOfChildError(err)
-		select {
-		case mgr.eventChan <- &routerConnectionListenFailedEvent{router: routerName, attemptId: attemptId}:
-		case <-mgr.context.closeNotify:
-			logger.Debugf("listener closed, exiting from createListener")
-		}
+		// The routerConnectionListenFailedEvent is fired from the close
+		// path inside routerConn.Listen (via host.NotifyRouterConnClosed
+		// during ec.Close()), so we don't send it here. Sending in both
+		// places caused duplicate notify/refreshSession/makeMoreListeners
+		// cycles for a single failure.
 	}
 }
 

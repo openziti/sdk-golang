@@ -155,6 +155,13 @@ type ListenOptions struct {
 	// Wait for N listeners before returning from the Listen call. By default it will return
 	// before any listeners have been established.
 	WaitForNEstablishedListeners uint
+
+	// ConnectQueueSize sets the buffer size of the hosting-side accept queue.
+	// Incoming dials queue here until the hosting application reads them via
+	// Accept. If the queue fills, new dials are rejected immediately with
+	// DialFailed so the router can try another terminator instead of timing out.
+	// Defaults to 10 when zero.
+	ConnectQueueSize int
 }
 
 func DefaultListenOptions() *ListenOptions {

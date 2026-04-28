@@ -29,15 +29,17 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/foundation/v2/goroutines"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/pkg/errors"
 )
 
 type baseListener struct {
-	service *rest_model.ServiceDetail
-	acceptC chan edge.Conn
-	err     concurrenz.AtomicValue[error]
-	closed  atomic.Bool
+	service     *rest_model.ServiceDetail
+	acceptC     chan edge.Conn
+	closeNotify chan struct{}
+	err         concurrenz.AtomicValue[error]
+	closed      atomic.Bool
 }
 
 func (listener *baseListener) Network() string {
@@ -88,7 +90,9 @@ func (listener *baseListener) AcceptEdge() (edge.Conn, error) {
 
 type MultiListener interface {
 	edge.Listener
-	AddListener(listener edge.RouterHostConn, closeHandler func())
+	edge.ListenerHost
+	// AddListener registers an established child listener
+	AddListener(listener edge.RouterHostConn)
 	NotifyOfChildError(err error)
 	GetServiceName() string
 	GetService() *rest_model.ServiceDetail
@@ -100,15 +104,42 @@ type MultiListener interface {
 	GetListenerCount() int
 }
 
-func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
-	return &multiListener{
+func NewMultiListener(service *rest_model.ServiceDetail, queueSize int, getSessionF func() *rest_model.SessionDetail) MultiListener {
+	if queueSize < 1 {
+		queueSize = 10
+	}
+	ml := &multiListener{
 		baseListener: baseListener{
 			service: service,
-			acceptC: make(chan edge.Conn),
+			// Buffer matches pool size so a worker can hand off and pick up
+			// the next dial without blocking on Accept().
+			acceptC:     make(chan edge.Conn, queueSize),
+			closeNotify: make(chan struct{}),
 		},
 		listeners:   map[*edgeHostConn]struct{}{},
 		getSessionF: getSessionF,
 	}
+	pool, err := goroutines.NewPool(goroutines.PoolConfig{
+		// QueueSize 1 means "essentially no waiting room": if all workers are
+		// busy and the next dial can't be picked up immediately, fail fast and
+		// let the router try another terminator.
+		QueueSize:  1,
+		MinWorkers: 0,
+		MaxWorkers: uint32(queueSize),
+		IdleTime:   30 * time.Second,
+		PanicHandler: func(err interface{}) {
+			pfxlog.Logger().
+				WithField("serviceName", *service.Name).
+				Errorf("panic in dial worker: %v", err)
+		},
+	})
+	if err != nil {
+		// PoolConfig.Validate only fails on misconfiguration we control here;
+		// log and continue with a nil pool which is treated as "always full".
+		pfxlog.Logger().WithError(err).Error("failed to create dial worker pool")
+	}
+	ml.dialPool = pool
+	return ml
 }
 
 type multiListener struct {
@@ -118,6 +149,42 @@ type multiListener struct {
 	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
+	dialPool             goroutines.Pool
+}
+
+func (self *multiListener) QueueDial(work func()) error {
+	if self.dialPool == nil {
+		return goroutines.PoolStoppedError
+	}
+	return self.dialPool.QueueOrError(work)
+}
+
+// AcceptConn delivers an established conn to the application accept queue.
+// Returns false when the multi-listener has been closed and the conn could
+// not be delivered.
+func (self *multiListener) AcceptConn(c edge.Conn) bool {
+	select {
+	case self.acceptC <- c:
+		return true
+	case <-self.closeNotify:
+		return false
+	}
+}
+
+// NotifyRouterConnClosed is invoked exactly once when a child listener
+// closes. Removes the child from the listener set and fires the
+// connection-change notification. Safe to call from edgeHostConn.close()
+// because multi-listener Close spawns child closes in goroutines rather than
+// calling them inline while holding listenerLock.
+func (self *multiListener) NotifyRouterConnClosed(child edge.RouterHostConn) {
+	listener, ok := child.(*edgeHostConn)
+	if !ok {
+		return
+	}
+	self.listenerLock.Lock()
+	delete(self.listeners, listener)
+	self.notifyOfConnectionChange()
+	self.listenerLock.Unlock()
 }
 
 func (self *multiListener) Id() uint32 {
@@ -270,97 +337,72 @@ func (self *multiListener) GetService() *rest_model.ServiceDetail {
 	return self.service
 }
 
-func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHandler func()) {
+// AddListener registers an established edge.RouterHostConn as a child of this
+// multiListener. The listener's host wiring (NotifyRouterConnClosed) must
+// already be set on the underlying edgeHostConn (via edge.ListenOptions.Host
+// at routerConn.Listen time).
+func (self *multiListener) AddListener(netListener edge.RouterHostConn) {
 	listener, ok := netListener.(*edgeHostConn)
 	if !ok {
 		pfxlog.Logger().Errorf("multi-listener expects only listeners created by the SDK, not %v", reflect.TypeOf(self))
 		return
 	}
 
+	self.listenerLock.Lock()
+	// Check closed under the lock: Close() takes listenerLock and sets
+	// self.listeners = nil, so writing without this guard would race and
+	// panic if Close ran between an unlocked check and the lock acquire.
 	if self.closed.Load() {
+		self.listenerLock.Unlock()
 		if err := listener.Close(); err != nil {
 			pfxlog.Logger().WithError(err).Error("error closing listener added after multi-listener was closed")
 		}
 		return
 	}
-
-	self.listenerLock.Lock()
-	defer self.listenerLock.Unlock()
 	self.listeners[listener] = struct{}{}
-
-	closer := func() {
-		self.listenerLock.Lock()
-		defer self.listenerLock.Unlock()
-		delete(self.listeners, listener)
-
-		self.notifyOfConnectionChange()
-		go closeHandler()
-	}
-
 	self.notifyOfConnectionChange()
+	self.listenerLock.Unlock()
 
-	go self.forward(listener, closer)
-}
-
-func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func()) {
-	defer func() {
-		if err := edgeListener.Close(); err != nil {
-			pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)
-		}
-		closeHandler()
-	}()
-
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-	establishDeadline := time.Now().Add(time.Minute)
-
-	for !self.closed.Load() && !edgeListener.flags.IsSet(hostConnClosedFlag) {
-		select {
-		case conn, ok := <-edgeListener.acceptC:
-			if !ok || conn == nil {
-				// closed, returning
-				return
-			}
-			self.accept(conn, ticker)
-		case <-ticker.C:
-			// lets us check if the listener is closed, and exit if it has
-			if !edgeListener.established.Load() && time.Now().After(establishDeadline) {
-				pfxlog.Logger().
-					WithField("connId", edgeListener.Id()).
-					WithField("routerName", edgeListener.routerInfo.Name).
-					WithField("serviceName", edgeListener.serviceName).
-					Warn("listener was not established in time, closing")
-				return
+	time.AfterFunc(time.Minute, func() {
+		if !listener.established.Load() {
+			pfxlog.Logger().
+				WithField("connId", listener.Id()).
+				WithField("routerName", listener.routerInfo.Name).
+				WithField("serviceName", *listener.service.Name).
+				Warn("listener was not established in time, closing")
+			if err := listener.Close(); err != nil {
+				pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)
 			}
 		}
-	}
-}
-
-func (self *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
-	for !self.closed.Load() {
-		select {
-		case self.acceptC <- conn:
-			return
-		case <-ticker.C:
-			// lets us check if the listener is closed, and exit if it has
-		}
-	}
+	})
 }
 
 func (self *multiListener) Close() error {
 	if self.closed.CompareAndSwap(false, true) {
+		// Signal closeNotify before taking listenerLock so any pool worker
+		// blocked in AcceptConn unblocks and bails before we tear down state.
+		close(self.closeNotify)
+
 		self.listenerLock.Lock()
 		defer self.listenerLock.Unlock()
 
-		var resultErrors []error
+		// Spawn each child close in its own goroutine. The child's close path
+		// calls back into NotifyRouterConnClosed, which re-acquires listenerLock
+		// to remove itself from self.listeners; doing those calls inline here
+		// while we hold listenerLock would deadlock.
 		for child := range self.listeners {
-			if err := child.Close(); err != nil {
-				resultErrors = append(resultErrors, err)
-			}
+			go func(c *edgeHostConn) {
+				if err := c.Close(); err != nil {
+					pfxlog.Logger().WithError(err).Error("error closing child listener")
+				}
+			}(child)
 		}
 
 		self.listeners = nil
+
+		if self.dialPool != nil {
+			self.dialPool.Shutdown()
+		}
 
 		select {
 		case self.acceptC <- nil:
@@ -368,8 +410,6 @@ func (self *multiListener) Close() error {
 			// If the queue is full, bail out, we're just popping a nil on the
 			// accept queue to let it return from accept more quickly
 		}
-
-		return self.condenseErrors(resultErrors)
 	}
 
 	return nil

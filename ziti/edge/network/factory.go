@@ -175,22 +175,21 @@ func (conn *routerConn) UpdateToken(token []byte, timeout time.Duration) error {
 	return fmt.Errorf("could not update token for router [%s]: %w", conn.GetRouterAddr(), err)
 }
 
-func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) *edgeHostConn {
+func (conn *routerConn) newListenConn(options *edge.ListenOptions) *edgeHostConn {
 	id := conn.mux.GetNextId()
 
 	edgeCh := &edgeHostConn{
 		MsgChannel:   *edge.NewEdgeMsgChannel(conn.ch, id),
 		msgMux:       conn.mux,
-		serviceName:  *service.Name,
 		routerInfo:   edge.EdgeRouterInfo{Name: conn.routerName, Addr: conn.routerAddr},
 		keyPair:      options.KeyPair,
 		crypto:       options.KeyPair != nil,
-		service:      service,
-		acceptC:      make(chan edge.Conn, 10),
-		token:        *session.Token,
+		service:      options.Service,
+		host:         options.Host,
+		token:        *options.Session.Token,
 		manualStart:  options.ManualStart,
 		eventHandler: options.EventHandler,
-		envF:         envF,
+		envF:         options.Env,
 	}
 
 	if options.DoNotSaveDialerIdentity {
@@ -199,13 +198,13 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 
 	// duplicate errors only happen on the server side, since the client controls ids
 	if err := conn.mux.Add(edgeCh); err != nil {
-		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, id, err)
+		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *options.Service.Name, id, err)
 	}
 
 	pfxlog.Logger().WithField("connId", id).
 		WithField("routerName", conn.routerName).
-		WithField("serviceId", *service.ID).
-		WithField("serviceName", *service.Name).
+		WithField("serviceId", *options.Service.ID).
+		WithField("serviceName", *options.Service.Name).
 		Debug("created new listener connection")
 
 	return edgeCh
@@ -224,16 +223,20 @@ func (conn *routerConn) Connect(ctx context.Context, service *rest_model.Service
 	return dialConn, err
 }
 
-func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.ListenOptions, envF func() xgress.Env) (edge.RouterHostConn, error) {
-	ec := conn.NewListenConn(service, session, options, envF)
+func (conn *routerConn) Listen(options *edge.ListenOptions) (edge.RouterHostConn, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+
+	ec := conn.newListenConn(options)
 
 	log := pfxlog.Logger().
 		WithField("connId", ec.Id()).
 		WithField("router", conn.routerName).
-		WithField("serviceId", *service.ID).
-		WithField("serviceName", *service.Name)
+		WithField("serviceId", *options.Service.ID).
+		WithField("serviceName", *options.Service.Name)
 
-	if err := ec.listen(session, service, options); err != nil {
+	if err := ec.listen(options); err != nil {
 		log.WithError(err).Error("failed to establish listener")
 
 		if closeErr := ec.Close(); closeErr != nil {

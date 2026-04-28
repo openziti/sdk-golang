@@ -67,10 +67,6 @@ type edgeHostConn struct {
 	// Future messages for specific clients are routed directly to their edgeConn.
 	msgMux edge.ConnMux[any]
 
-	// serviceName is the name of the service being hosted by this connection.
-	// Used for logging and debugging purposes.
-	serviceName string
-
 	// marker is a unique identifier for this hosting connection instance.
 	// Used for tracing and debugging across the distributed system.
 	marker string
@@ -91,7 +87,10 @@ type edgeHostConn struct {
 
 	flags   concurrenz.AtomicBitSet
 	service *rest_model.ServiceDetail
-	acceptC chan edge.Conn
+
+	// host is the parent listener surface used for queueing dial work,
+	// delivering accepted conns, and reporting close.
+	host edge.ListenerHost
 
 	routerInfo   edge.EdgeRouterInfo
 	token        string
@@ -161,7 +160,20 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message) {
 		logrus.WithFields(edge.GetLoggerFields(msg)).
 			WithField("circuitId", circuitId).
 			WithField("newConnId", newConnId).Debug("received dial request")
-		go conn.newChildConnection(msg)
+		dialMsg := msg
+		queueErr := conn.host.QueueDial(func() {
+			conn.newChildConnection(dialMsg)
+		})
+		if queueErr != nil {
+			// Pool is saturated or shut down. Reply DialFailed in a separate
+			// goroutine so the channel-receive loop isn't blocked on the wire
+			// send to the router.
+			logrus.WithFields(edge.GetLoggerFields(msg)).
+				WithField("circuitId", circuitId).
+				WithError(queueErr).
+				Warn("hosting dial pool saturated; rejecting dial")
+			go conn.rejectDial(dialMsg, queueErr)
+		}
 	case edge.ContentTypeStateClosed:
 		if err := edge.ErrorFromMsg(msg); err != nil {
 			log := pfxlog.Logger().WithFields(edge.GetLoggerFields(msg)).
@@ -213,7 +225,7 @@ func (conn *edgeHostConn) UpdateCostAndPrecedence(cost uint16, precedence edge.P
 func (conn *edgeHostConn) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
-		WithField("serviceName", conn.serviceName).
+		WithField("serviceName", *conn.service.Name).
 		WithField("session", conn.token)
 
 	logger.Debug("sending update bind request to edge router")
@@ -225,7 +237,7 @@ func (conn *edgeHostConn) updateCostAndPrecedence(cost *uint16, precedence *edge
 func (conn *edgeHostConn) SendHealthEvent(pass bool) error {
 	logger := pfxlog.Logger().
 		WithField("connId", conn.Id()).
-		WithField("serviceName", conn.serviceName).
+		WithField("serviceName", *conn.service.Name).
 		WithField("session", conn.token).
 		WithField("health.status", pass)
 
@@ -239,7 +251,7 @@ func (conn *edgeHostConn) InspectSink() *inspect.VirtualConnDetail {
 	return &inspect.VirtualConnDetail{
 		ConnId:      conn.Id(),
 		SinkType:    "host",
-		ServiceName: conn.serviceName,
+		ServiceName: *conn.service.Name,
 		Closed:      conn.flags.IsSet(hostConnClosedFlag),
 	}
 }
@@ -247,7 +259,7 @@ func (conn *edgeHostConn) InspectSink() *inspect.VirtualConnDetail {
 func (conn *edgeHostConn) Inspect() string {
 	result := map[string]interface{}{}
 	result["id"] = conn.Id()
-	result["serviceName"] = conn.serviceName
+	result["serviceName"] = *conn.service.Name
 	result["closed"] = conn.flags.IsSet(hostConnClosedFlag)
 	result["encryptionRequired"] = conn.crypto
 
@@ -392,7 +404,32 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 	newConnLogger.Debug("dial succeeded")
 
-	conn.acceptC <- edgeCh
+	// Hand off to the parent listener. The dial-worker pool already bounds
+	// concurrency at the listener's ConnectQueueSize and the host's accept
+	// queue is sized to match, so the only way this blocks is when the
+	// application is slow to Accept. In that case workers stay parked here,
+	// the pool fills, and new dials are rejected at submission with
+	// DialFailed — backpressure happens at one well-defined point.
+	// AcceptConn returns false only if the host has been closed; in that
+	// case the application will not consume the conn, so close it.
+	if !conn.host.AcceptConn(edgeCh) {
+		newConnLogger.Debug("host closed before accept handoff; closing conn")
+		edgeCh.close(false)
+	}
+}
+
+// rejectDial replies to a dial request with DialFailed without setting up any
+// connection state. Used when the listener's worker pool is saturated or shut
+// down: we never started establishing the connection, so there's nothing to
+// clean up beyond signalling the router. Runs the wire send in this goroutine,
+// so callers should invoke it via `go` to avoid blocking the channel-receive
+// loop on a slow router response.
+func (conn *edgeHostConn) rejectDial(message *channel.Message, cause error) {
+	reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("hosting dial pool unavailable (%s)", cause.Error()))
+	reply.ReplyTo(message)
+	if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+		pfxlog.Logger().WithError(err).Error("failed to send DialFailed for rejected dial")
+	}
 }
 
 func (conn *edgeHostConn) HandleMuxClose() error {
@@ -416,11 +453,9 @@ func (conn *edgeHostConn) close(closedByRemote bool) error {
 		return nil
 	}
 
-	conn.msgMux.Remove(conn)
+	defer conn.host.NotifyRouterConnClosed(conn)
 
-	defer func() {
-		conn.acceptC <- nil // signal listeners that listener is closed
-	}()
+	conn.msgMux.Remove(conn)
 
 	log := pfxlog.Logger().
 		WithField("connId", conn.Id()).
@@ -452,11 +487,11 @@ func (conn *edgeHostConn) close(closedByRemote bool) error {
 	return errors.Join(errList...)
 }
 
-func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *rest_model.ServiceDetail, options *edge.ListenOptions) error {
+func (conn *edgeHostConn) listen(options *edge.ListenOptions) error {
 	logger := pfxlog.ContextLogger(conn.GetChannel().Label()).
 		WithField("connId", conn.Id()).
-		WithField("serviceName", *service.Name).
-		WithField("sessionId", *session.ID)
+		WithField("serviceName", *options.Service.Name).
+		WithField("sessionId", *options.Session.ID)
 
 	success := false
 	defer func() {
@@ -471,7 +506,7 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 	if conn.crypto {
 		pub = conn.keyPair.Public()
 	}
-	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)
+	bindRequest := edge.NewBindMsg(conn.Id(), *options.Session.Token, pub, options)
 	conn.TraceMsg("listen", bindRequest)
 	replyMsg, err := bindRequest.WithTimeout(5 * time.Second).SendForReply(conn.GetControlSender())
 	if err != nil {

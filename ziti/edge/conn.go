@@ -18,6 +18,7 @@ package edge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -46,7 +47,7 @@ func init() {
 
 type RouterClient interface {
 	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
-	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)
+	Listen(options *ListenOptions) (RouterHostConn, error)
 
 	//UpdateToken will attempt to send token updates to the connected router. A success/failure response is expected
 	//within the timeout period.
@@ -66,6 +67,27 @@ type RouterHostConn interface {
 	Identifiable
 	// GetEdgeRouterInfo returns the name and address of the edge router for this connection.
 	GetEdgeRouterInfo() EdgeRouterInfo
+}
+
+// ListenerHost is the parent-facing surface that per-router child listeners
+// (edgeHostConn instances) call back into. A multi-listener implements this
+// directly; the listener manager wraps it with per-attempt context (router
+// name, attempt id) so that the wrapper handles close notification while
+// QueueDial and AcceptConn delegate straight to the multi-listener.
+type ListenerHost interface {
+	// QueueDial submits dial-handling work to the listener's bounded worker
+	// pool. Returns a non-nil error when the pool is saturated or shut down;
+	// the caller is responsible for replying DialFailed to the router.
+	QueueDial(work func()) error
+	// AcceptConn delivers an established Conn to the application accept queue.
+	// Returns false when the listener has been closed and the conn could not
+	// be delivered; the caller should close the conn since the application
+	// will not consume it.
+	AcceptConn(c Conn) bool
+	// NotifyRouterConnClosed is invoked exactly once when a child listener
+	// closes. Implementations typically remove the child from the listener
+	// set and, if applicable, queue a re-listen attempt for the same router.
+	NotifyRouterConnClosed(child RouterHostConn)
 }
 
 type RouterConn interface {
@@ -277,12 +299,48 @@ type ListenOptions struct {
 	DoNotSaveDialerIdentity bool
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
+	// ConnectQueueSize bounds the maximum number of dials this listener will
+	// process in parallel. Each accepted dial is handled by a worker drawn
+	// from a per-listener pool of this size. Once the pool is saturated and
+	// can't immediately pick up the next dial, the SDK replies DialFailed to
+	// the router so it can try another terminator. Defaults to 10 when zero.
+	ConnectQueueSize int
 	// EventHandler receives listener lifecycle notifications. If nil, events are discarded.
-	EventHandler            ListenerEventHandler
+	EventHandler ListenerEventHandler
+
+	// Below: per-Listen-call wiring. Set by the caller of RouterClient.Listen.
+	// These are required for a successful Listen.
+
+	// Service identifies what to host.
+	Service *rest_model.ServiceDetail
+	// Session is the bind session token.
+	Session *rest_model.SessionDetail
+	// Env is the xgress environment factory.
+	Env func() xgress.Env
+	// Host is the parent listener surface used for queueing dial work,
+	// delivering accepted conns, and notifying close.
+	Host ListenerHost
 }
 
 func (options *ListenOptions) GetConnectTimeout() time.Duration {
 	return options.ConnectTimeout
+}
+
+// Validate checks that all required per-Listen-call wiring is present.
+// Returns nil when all are set, otherwise an error naming the first missing
+// field.
+func (options *ListenOptions) Validate() error {
+	switch {
+	case options.Service == nil:
+		return errors.New("ListenOptions.Service is required")
+	case options.Session == nil:
+		return errors.New("ListenOptions.Session is required")
+	case options.Env == nil:
+		return errors.New("ListenOptions.Env is required")
+	case options.Host == nil:
+		return errors.New("ListenOptions.Host is required")
+	}
+	return nil
 }
 
 func (options *ListenOptions) String() string {
