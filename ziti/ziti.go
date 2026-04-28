@@ -238,6 +238,9 @@ type ContextImpl struct {
 	currentWait                     time.Duration
 	lastAuthErr                     error
 
+	servicesLoaded     chan struct{}
+	servicesLoadedFlag atomic.Bool
+
 	routerProxy func(addr string) *transport.ProxyConfiguration
 
 	maxControlConnections int
@@ -696,37 +699,134 @@ func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
 	}
 }
 
+// serviceUpdate captures a single service's classification (add/change/no-op)
+// and pre-parsed intercept config, computed during the read-only diff phase
+// so the apply and emit phases don't have to re-read state.
+type serviceUpdate struct {
+	service      *rest_model.ServiceDetail
+	intercept    *edge.InterceptV1Config
+	interceptOk  bool
+	isAdd        bool
+	valuesDiffer bool
+}
+
+type serviceDelete struct {
+	key string
+	svc *rest_model.ServiceDetail
+}
+
+// processServiceUpdates reconciles the context's services map with the given
+// service set. It runs in three phases so that:
+//
+//  1. callers blocked in waitForServicesLoaded don't unblock until the map is
+//     fully consistent (fixes a race where the channel close raced ahead of
+//     the cmap mutations);
+//  2. synchronous event handlers calling Listen/Dial from inside Phase 3 see
+//     the final map state and don't deadlock against waitForServicesLoaded
+//     (which is the reason we close the channel between Phase 2 and Phase 3
+//     rather than at the end).
+//
+// Phase 1 (read-only): compute the deletion set by diffing the current
+// services map against the new id set, classify each new service as
+// add/change/unchanged, and pre-parse intercept configs.
+//
+// Phase 2 (mutation, no events): apply all removes and upserts to the
+// services and intercepts maps, then signal servicesLoaded.
+//
+// Phase 3 (events, no further mutation): emit ServiceRemoved / ServiceAdded
+// / ServiceChanged via both the OnServiceUpdate callback and the event bus,
+// and clean up sessions for removed services.
 func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
 	pfxlog.Logger().Debugf("processing service updates with %v services", len(services))
 
-	idMap := make(map[string]*rest_model.ServiceDetail)
+	idMap := make(map[string]*rest_model.ServiceDetail, len(services))
 	for _, s := range services {
 		idMap[*s.ID] = s
 	}
 
-	// process Deletes
-	var deletes []string
+	// --- Phase 1: compute diff (no mutations, no events) ---
+	var deletes []serviceDelete
 	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
 		if _, found := idMap[*svc.ID]; !found {
-			deletes = append(deletes, key)
-			if context.options.OnServiceUpdate != nil {
-				context.options.OnServiceUpdate(ServiceRemoved, svc)
-			}
-			context.Emit(EventServiceRemoved, svc)
-
-			context.deleteServiceSessions(*svc.ID)
+			deletes = append(deletes, serviceDelete{key: key, svc: svc})
 		}
 	})
 
-	for _, deletedKey := range deletes {
-		context.services.Remove(deletedKey)
-		context.intercepts.Remove(deletedKey)
+	updates := make([]serviceUpdate, 0, len(services))
+	for _, s := range services {
+		u := serviceUpdate{service: s}
+		if existing, exist := context.services.Get(*s.Name); exist {
+			u.valuesDiffer = !serviceDetailsEqual(existing, s)
+		} else {
+			u.isAdd = true
+		}
+		u.intercept, u.interceptOk = parseInterceptConfig(s)
+		updates = append(updates, u)
 	}
 
-	// Adds and Updates
-	for _, s := range services {
-		context.processServiceAddOrUpdated(s)
+	// --- Phase 2: apply all mutations before unblocking waiters ---
+	for _, d := range deletes {
+		context.services.Remove(d.key)
+		context.intercepts.Remove(d.key)
 	}
+	for _, u := range updates {
+		context.services.Set(*u.service.Name, u.service)
+		if u.interceptOk {
+			context.intercepts.Set(*u.service.Name, u.intercept)
+		}
+	}
+
+	// Signal initial-load completion. Done between Phase 2 and Phase 3 so
+	// callers waking from waitForServicesLoaded see a fully-consistent map
+	// AND so synchronous event handlers in Phase 3 that call Listen/Dial
+	// don't deadlock waiting for this channel to close.
+	if context.servicesLoadedFlag.CompareAndSwap(false, true) {
+		close(context.servicesLoaded)
+	}
+
+	// --- Phase 3: emit events ---
+	for _, d := range deletes {
+		if context.options.OnServiceUpdate != nil {
+			context.options.OnServiceUpdate(ServiceRemoved, d.svc)
+		}
+		context.Emit(EventServiceRemoved, d.svc)
+		context.deleteServiceSessions(*d.svc.ID)
+	}
+	for _, u := range updates {
+		switch {
+		case u.isAdd:
+			context.Emit(EventServiceAdded, u.service)
+			if context.options.OnServiceUpdate != nil {
+				context.options.OnServiceUpdate(ServiceAdded, u.service)
+			}
+		case u.valuesDiffer:
+			context.Emit(EventServiceChanged, u.service)
+			if context.options.OnServiceUpdate != nil {
+				context.options.OnServiceUpdate(ServiceChanged, u.service)
+			}
+		}
+	}
+}
+
+// parseInterceptConfig returns the intercept config attached to s, preferring
+// InterceptV1 and falling back to ClientConfigV1. Returns (nil, false) if
+// neither config is present or both fail to parse.
+func parseInterceptConfig(s *rest_model.ServiceDetail) (*edge.InterceptV1Config, bool) {
+	intercept := &edge.InterceptV1Config{}
+	if ok, err := edge.ParseServiceConfig(s, InterceptV1, intercept); err != nil {
+		pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", InterceptV1, *s.Name)
+		return nil, false
+	} else if ok {
+		intercept.Service = s
+		return intercept, true
+	}
+	cltCfg := &edge.ClientConfig{}
+	if ok, err := edge.ParseServiceConfig(s, ClientConfigV1, cltCfg); err == nil && ok {
+		intercept = cltCfg.ToInterceptV1Config()
+		intercept.Service = s
+		return intercept, true
+	}
+	return nil, false
 }
 
 func (context *ContextImpl) processSingleServiceUpdate(name string, s *rest_model.ServiceDetail) {
@@ -785,21 +885,8 @@ func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDeta
 		}
 	}
 
-	intercept := &edge.InterceptV1Config{}
-	ok, err := edge.ParseServiceConfig(s, InterceptV1, intercept)
-	if err != nil {
-		pfxlog.Logger().Warnf("failed to parse config[%s] for service[%s]", InterceptV1, *s.Name)
-	} else if ok {
-		intercept.Service = s
+	if intercept, ok := parseInterceptConfig(s); ok {
 		context.intercepts.Set(*s.Name, intercept)
-	} else {
-		cltCfg := &edge.ClientConfig{}
-		ok, err := edge.ParseServiceConfig(s, ClientConfigV1, cltCfg)
-		if err == nil && ok {
-			intercept = cltCfg.ToInterceptV1Config()
-			intercept.Service = s
-			context.intercepts.Set(*s.Name, intercept)
-		}
 	}
 }
 
@@ -1603,6 +1690,10 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 		return nil, fmt.Errorf("failed to dial: %v", err)
 	}
 
+	if err := context.waitForServicesLoaded(ctx); err != nil {
+		return nil, fmt.Errorf("failed to dial: %v", err)
+	}
+
 	svc, ok := context.GetService(serviceName)
 	if !ok {
 		return nil, fmt.Errorf("service '%s' not found", serviceName)
@@ -1743,12 +1834,55 @@ func (context *ContextImpl) ensureApiSession() error {
 	return nil
 }
 
+// waitForServicesLoaded blocks until the service list has been loaded at least
+// once. On each iteration it actively attempts a service refresh rather than
+// passively waiting for the background goroutine. The provided context controls
+// the overall timeout.
+func (context *ContextImpl) waitForServicesLoaded(ctx gocontext.Context) error {
+	select {
+	case <-context.servicesLoaded:
+		return nil
+	default:
+	}
+
+	delay := 5 * time.Second
+	for {
+		pfxlog.Logger().Infof("service list not yet loaded, attempting refresh (next retry in %v)", delay)
+		if err := context.refreshServices(true, false); err != nil {
+			pfxlog.Logger().WithError(err).Warn("service refresh failed while waiting for initial load")
+		}
+
+		select {
+		case <-context.servicesLoaded:
+			return nil
+		case <-context.closeNotify:
+			return errors.New("context closed while waiting for service list")
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for service list to load: %w", ctx.Err())
+		case <-time.After(delay):
+		}
+
+		delay = min(delay*2, 30*time.Second)
+	}
+}
+
 func (context *ContextImpl) Listen(serviceName string) (edge.Listener, error) {
 	return context.ListenWithOptions(serviceName, DefaultListenOptions())
 }
 
 func (context *ContextImpl) ListenWithOptions(serviceName string, options *ListenOptions) (edge.Listener, error) {
 	if err := context.ensureApiSession(); err != nil {
+		return nil, fmt.Errorf("failed to listen: %v", err)
+	}
+
+	listenCtx := gocontext.Background()
+	if options.ConnectTimeout > 0 {
+		var cancel gocontext.CancelFunc
+		listenCtx, cancel = gocontext.WithTimeout(listenCtx, options.ConnectTimeout)
+		defer cancel()
+	}
+
+	if err := context.waitForServicesLoaded(listenCtx); err != nil {
 		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
 

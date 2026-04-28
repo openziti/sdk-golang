@@ -32,10 +32,11 @@ func Test_contextImpl_processServiceUpdates(t *testing.T) {
 		options: &Options{
 			OnServiceUpdate: servUpdate,
 		},
-		services:     cmap.New[*rest_model.ServiceDetail](),
-		sessions:     cmap.New[*rest_model.SessionDetail](),
-		intercepts:   cmap.New[*edge.InterceptV1Config](),
-		EventEmmiter: events.New(),
+		services:       cmap.New[*rest_model.ServiceDetail](),
+		sessions:       cmap.New[*rest_model.SessionDetail](),
+		intercepts:     cmap.New[*edge.InterceptV1Config](),
+		EventEmmiter:   events.New(),
+		servicesLoaded: make(chan struct{}),
 	}
 
 	ctx.CtrlClt = &CtrlClient{
@@ -219,11 +220,12 @@ func Test_AddressMatch(t *testing.T) {
 	}
 
 	ctx := &ContextImpl{
-		options:      &Options{},
-		services:     cmap.New[*rest_model.ServiceDetail](),
-		sessions:     cmap.New[*rest_model.SessionDetail](),
-		intercepts:   cmap.New[*edge.InterceptV1Config](),
-		EventEmmiter: events.New(),
+		options:        &Options{},
+		services:       cmap.New[*rest_model.ServiceDetail](),
+		sessions:       cmap.New[*rest_model.SessionDetail](),
+		intercepts:     cmap.New[*edge.InterceptV1Config](),
+		EventEmmiter:   events.New(),
+		servicesLoaded: make(chan struct{}),
 	}
 
 	ctx.CtrlClt = &CtrlClient{

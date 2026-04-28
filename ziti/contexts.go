@@ -88,6 +88,7 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 		routerConnections:     cmap.New[edge.RouterConn](),
 		options:               options,
 		closeNotify:           make(chan struct{}),
+		servicesLoaded:        make(chan struct{}),
 		EventEmmiter:          events.New(),
 		routerProxy:           cfg.RouterProxy,
 		maxDefaultConnections: int(cfg.MaxDefaultConnections),
