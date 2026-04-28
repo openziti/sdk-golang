@@ -36,6 +36,10 @@ type Options struct {
 	// of the configured interval, helping avoid thundering-herd load spikes on the controller.
 	RefreshJitter float64
 
+	// HttpTimeout sets the overall timeout for individual HTTP requests to the
+	// controller (OIDC auth, service list fetches, etc.). Defaults to 30 seconds.
+	HttpTimeout time.Duration
+
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
 	// EventAuthenticationStateFull, EventAuthenticationStatePartial, EventAuthenticationStateUnAuthenticated instead.
