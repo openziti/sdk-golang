@@ -1466,7 +1466,6 @@ func (context *ContextImpl) ConnectAllAvailableErs() error {
 					addr: strings.Replace(addr, "//", "", 1),
 				})
 			}
-
 		}
 	}
 

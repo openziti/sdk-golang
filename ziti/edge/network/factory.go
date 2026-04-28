@@ -214,6 +214,15 @@ func (conn *routerConn) Connect(ctx context.Context, service *rest_model.Service
 	ec := conn.NewDialConn(service)
 	dialConn, err := ec.Connect(ctx, session, options, envF)
 	if err != nil {
+		pfxlog.Logger().
+			WithField("routerName", conn.routerName).
+			WithField("routerAddr", conn.routerAddr).
+			WithField("serviceName", *service.Name).
+			WithField("sessionId", *session.ID).
+			WithField("connId", ec.Id()).
+			WithField("marker", ec.marker).
+			WithError(err).
+			Warn("dial failed")
 		if !conn.ch.GetChannel().IsClosed() {
 			if err2 := ec.Close(); err2 != nil {
 				pfxlog.Logger().Errorf("failed to cleanup connection for service '%v' (%v)", service.Name, err2)
