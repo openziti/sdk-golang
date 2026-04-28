@@ -428,7 +428,7 @@ func (self *CtrlClient) GetService(name string) (*rest_model.ServiceDetail, erro
 	filter := fmt.Sprintf(`name="%s"`, name)
 	params.Filter = &filter
 
-	resp, err := self.API.Service.ListServices(params, nil)
+	resp, err := self.API.Service.ListServices(params, self.GetCurrentApiSession())
 
 	if err != nil {
 		return nil, rest_util.WrapErr(err)
