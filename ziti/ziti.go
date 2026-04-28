@@ -1351,35 +1351,42 @@ func (context *ContextImpl) ConnectAllAvailableErs() error {
 		return fmt.Errorf("failed to get available edge routers: %w", err)
 	}
 
-	resultCh := make(chan *edgeRouterConnResult, len(ers))
-
+	type erTarget struct {
+		name string
+		addr string
+	}
+	var targets []erTarget
 	for _, er := range ers {
 		for _, addr := range er.SupportedProtocols {
-			isSupported := context.options.isEdgeRouterUrlAccepted(addr)
-
-			if isSupported {
-				addr = strings.Replace(addr, "//", "", 1)
-				go context.handleConnectEdgeRouter(*er.Name, addr, resultCh)
+			if context.options.isEdgeRouterUrlAccepted(addr) {
+				targets = append(targets, erTarget{
+					name: *er.Name,
+					addr: strings.Replace(addr, "//", "", 1),
+				})
 			}
 
 		}
 	}
 
-	expectedResults := len(ers)
-
-	var results []*edgeRouterConnResult
-	select {
-	case result := <-resultCh:
-		results = append(results, result)
-
-		if len(results) == expectedResults {
-			break
-		}
-	case <-time.After(10 * time.Second):
-		return fmt.Errorf("timed out waiting for edge router connections got %d expected %d", len(results), expectedResults)
+	resultCh := make(chan *edgeRouterConnResult, len(targets))
+	for _, t := range targets {
+		go context.handleConnectEdgeRouter(t.name, t.addr, resultCh)
 	}
 
+	deadline := time.After(10 * time.Second)
+	var results []*edgeRouterConnResult
 	var resultErrs []error
+collect:
+	for len(results) < len(targets) {
+		select {
+		case result := <-resultCh:
+			results = append(results, result)
+		case <-deadline:
+			resultErrs = append(resultErrs, fmt.Errorf("timed out waiting for edge router connections got %d expected %d", len(results), len(targets)))
+			break collect
+		}
+	}
+
 	for _, result := range results {
 		if result.err != nil {
 			resultErrs = append(resultErrs, result.err)
@@ -1469,6 +1476,18 @@ func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
 	// get services
 	if err := context.refreshServices(true, true); err != nil {
 		doOnceErr = err
+	}
+
+	// Proactively connect to all available edge routers so that subsequent
+	// Dial/Listen calls don't have to wait for ER connections. Non-blocking:
+	// if a Dial comes in before this completes, the lazy connect path in
+	// getEdgeRouterConn still works as a fallback.
+	if doOnceErr == nil {
+		go func() {
+			if err := context.ConnectAllAvailableErs(); err != nil {
+				pfxlog.Logger().WithError(err).Warn("failed to pre-connect to all edge routers")
+			}
+		}()
 	}
 
 	return doOnceErr
