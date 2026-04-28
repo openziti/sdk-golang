@@ -17,7 +17,9 @@
 package edge_apis
 
 import (
+	"context"
 	"errors"
+	"io"
 	"math/rand/v2"
 	"net"
 	"net/url"
@@ -256,19 +258,62 @@ func (c *ClientTransportPoolRandom) AnyTransport() *ApiClientTransport {
 var _ runtime.ClientTransport = (*ClientTransportPoolRandom)(nil)
 var _ ClientTransportPool = (*ClientTransportPoolRandom)(nil)
 
-var opError = &net.OpError{}
-
 // errorIndicatesControllerSwap determines whether an error suggests the need to
-// switch to a different controller endpoint.
+// switch to a different controller endpoint. It matches transient, transport-level
+// failures — not application-level errors like 401/403 where swapping would not
+// help.
 func errorIndicatesControllerSwap(err error) bool {
-	pfxlog.Logger().WithError(err).Debugf("checking for network errror on type (%T) and its wrapped errors", err)
+	log := pfxlog.Logger().WithError(err)
+	log.Debugf("checking for network errror on type (%T) and its wrapped errors", err)
 
-	if errors.As(err, &opError) {
-		pfxlog.Logger().Debug("detected net.OpError")
+	// Raw network error (connection refused, reset, etc.)
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		log.Debug("detected net.OpError, swapping controller")
 		return true
 	}
 
-	//others? rate limiting? http timeout?
+	// HTTP client timeout, context cancellation
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		log.Debug("detected context deadline/canceled, swapping controller")
+		return true
+	}
+
+	// Unexpected EOF during response read (controller died mid-response)
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+		log.Debug("detected EOF, swapping controller")
+		return true
+	}
+
+	// 5xx server errors from the controller. These come back as swagger-generated
+	// response types (e.g. CreateSessionServiceUnavailable for 503) that are also
+	// errors and implement runtime.ClientResponseStatus. A generic APIError
+	// returned for unexpected 5xx codes also implements this interface. A 5xx
+	// indicates the specific controller is unhealthy/overloaded, so we try
+	// another one rather than hammering the same endpoint.
+	var status runtime.ClientResponseStatus
+	if errors.As(err, &status) && status.IsServerError() {
+		log.Debug("detected 5xx response, swapping controller")
+		return true
+	}
+
+	// net/http URL errors wrap timeouts, connection failures, and
+	// "Client.Timeout exceeded" cases that aren't net.OpError.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		// Only swap if the URL error is itself transport-related. A url.Error
+		// wrapping a 4xx response body parse error would fall through and
+		// return false.
+		if urlErr.Timeout() || urlErr.Temporary() {
+			log.Debug("detected url.Error (timeout/temporary), swapping controller")
+			return true
+		}
+		// A url.Error with no inner cause is typically a transport failure.
+		if urlErr.Err == nil {
+			log.Debug("detected bare url.Error, swapping controller")
+			return true
+		}
+	}
 
 	return false
 }
