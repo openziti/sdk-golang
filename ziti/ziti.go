@@ -999,6 +999,22 @@ func jitteredDuration(base time.Duration, jitter float64) time.Duration {
 
 var ErrControllerUnavailable = errors.New("controller unavailable")
 
+// tokenRefreshTime calculates when to refresh an access token that expires at
+// the given time. It uses the same strategy as the C-SDK: refresh between 1/2
+// and 5/6 of the remaining lifetime, providing both an early refresh window
+// and random jitter to prevent thundering-herd token exchanges.
+func tokenRefreshTime(expiresAt time.Time) time.Time {
+	remaining := time.Until(expiresAt)
+	// Refresh between 1/2 and 5/6 of remaining time.
+	minDelay := remaining / 2
+	jitterRange := remaining / 3
+	if jitterRange <= 0 {
+		return time.Now()
+	}
+	delay := minDelay + time.Duration(rand.Int63n(int64(jitterRange)))
+	return time.Now().Add(delay)
+}
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -1026,7 +1042,7 @@ func (context *ContextImpl) runRefreshes() {
 	refreshAt := time.Now().Add(30 * time.Second)
 
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
-		refreshAt = (*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
+		refreshAt = tokenRefreshTime(*currentApiSession.GetExpiresAt())
 	}
 
 	for {
@@ -1054,8 +1070,13 @@ func (context *ContextImpl) runRefreshes() {
 				refreshAt = time.Now().Add(5 * time.Second)
 			} else {
 				exp := newApiSession.GetExpiresAt()
-				refreshAt = exp.Add(-10 * time.Second)
-				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
+				if exp != nil {
+					refreshAt = tokenRefreshTime(*exp)
+					log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
+				} else {
+					refreshAt = time.Now().Add(5 * time.Minute)
+					log.Debug("apiSession refreshed, no expiration, refreshing in 5 minutes")
+				}
 
 				updateErr := context.updateTokenOnAllErs(newApiSession)
 
@@ -1065,6 +1086,16 @@ func (context *ContextImpl) runRefreshes() {
 			}
 
 		case <-svcRefreshTimer:
+			// If the token is about to expire, skip this service refresh cycle.
+			// The token refresh case will fire next, and the following service
+			// refresh will use the new token. This avoids a race where the
+			// service refresh gets a 401 with the expiring token and triggers
+			// an unnecessary full re-auth.
+			if time.Until(refreshAt) < 15*time.Second {
+				log.Debug("skipping service refresh, token refresh imminent")
+				svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
+				continue
+			}
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
 				if errors.Is(err, ErrControllerUnavailable) {
