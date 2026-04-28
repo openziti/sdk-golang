@@ -30,7 +30,7 @@ func (c Components) assertComponents(config *ApiClientConfig) {
 			pfxlog.Logger().Warn("components were provided but the client and transport are nil, they are being initialized with a default")
 		}
 
-		config.Components.HttpClient = NewHttpClient(config.Components.TlsAwareTransport)
+		config.Components.HttpClient = NewHttpClient(config.Components.TlsAwareTransport, config.HttpTimeout)
 	}
 
 	if config.Components.TlsAwareTransport == nil {
@@ -50,15 +50,23 @@ func (c Components) assertComponents(config *ApiClientConfig) {
 	}
 }
 
+// DefaultHttpTimeout is the default timeout for HTTP requests to the controller.
+const DefaultHttpTimeout = 30 * time.Second
+
 // ComponentsConfig contains configuration options for creating Components.
 type ComponentsConfig struct {
-	Proxy func(*http.Request) (*url.URL, error)
+	Proxy       func(*http.Request) (*url.URL, error)
+	HttpTimeout time.Duration
 }
 
 // NewComponentsWithConfig assembles a new set of components using the provided configuration.
 func NewComponentsWithConfig(cfg *ComponentsConfig) *Components {
 	tlsAwareHttpTransport := NewTlsAwareHttpTransport(cfg)
-	httpClient := NewHttpClient(tlsAwareHttpTransport)
+	var httpTimeout time.Duration
+	if cfg != nil {
+		httpTimeout = cfg.HttpTimeout
+	}
+	httpClient := NewHttpClient(tlsAwareHttpTransport, httpTimeout)
 
 	return &Components{
 		HttpClient:        httpClient,
@@ -66,14 +74,18 @@ func NewComponentsWithConfig(cfg *ComponentsConfig) *Components {
 	}
 }
 
-// NewHttpClient creates an HTTP client with the given transport.
-func NewHttpClient(tlsAwareHttpTransport TlsAwareTransport) *http.Client {
+// NewHttpClient creates an HTTP client with the given transport and timeout.
+// If timeout is zero, DefaultHttpTimeout is used.
+func NewHttpClient(tlsAwareHttpTransport TlsAwareTransport, timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		timeout = DefaultHttpTimeout
+	}
 	jar, _ := cookiejar.New(nil)
 	return &http.Client{
 		Transport:     tlsAwareHttpTransport,
 		CheckRedirect: nil,
 		Jar:           jar,
-		Timeout:       10 * time.Second,
+		Timeout:       timeout,
 	}
 }
 

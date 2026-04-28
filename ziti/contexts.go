@@ -129,8 +129,9 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	}
 
 	apiClientConfig := &edgeApis.ApiClientConfig{
-		ApiUrls: apiUrls,
-		CaPool:  cfg.Credentials.GetCaPool(),
+		ApiUrls:     apiUrls,
+		CaPool:      cfg.Credentials.GetCaPool(),
+		HttpTimeout: options.HttpTimeout,
 		TotpCodeProvider: edgeApis.NewTotpCodeProviderFromChStringFunc(func(codeCh chan string) {
 			provider := rest_model.MfaProvidersZiti
 
