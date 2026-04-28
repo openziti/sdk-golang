@@ -233,7 +233,12 @@ type ContextImpl struct {
 	events.EventEmmiter
 	authAttemptLock                 sync.Mutex
 	lastSuccessfulApiSessionRefresh time.Time
-	routerProxy                     func(addr string) *transport.ProxyConfiguration
+	lastAuthAttempt                 time.Time
+	authBackoff                     time.Duration
+	currentWait                     time.Duration
+	lastAuthErr                     error
+
+	routerProxy func(addr string) *transport.ProxyConfiguration
 
 	maxControlConnections int
 	maxDefaultConnections int
@@ -1229,21 +1234,75 @@ func (context *ContextImpl) Authenticate() error {
 	context.authAttemptLock.Lock()
 	defer context.authAttemptLock.Unlock()
 
+	// Check existing session validity before consulting the backoff cache.
+	// runRefreshes can succeed in the background and update
+	// lastSuccessfulApiSessionRefresh while a stale lastAuthErr is still
+	// within its backoff window; without this short-circuit we'd return
+	// the stale error to callers despite a now-valid session.
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		if time.Since(context.lastSuccessfulApiSessionRefresh) < 5*time.Second {
+			context.resetAuthBackoff()
 			return nil
 		}
+	}
+
+	if !context.lastAuthAttempt.IsZero() && context.currentWait > 0 {
+		if remaining := context.currentWait - time.Since(context.lastAuthAttempt); remaining > 0 {
+			logrus.Debugf("auth backoff: %v remaining, returning cached error", remaining)
+			return context.lastAuthErr
+		}
+	}
+
+	if context.CtrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
 		if err := context.RefreshApiSessionWithBackoff(); err == nil {
 			logrus.Info("previous apiSession refreshed")
 			context.lastSuccessfulApiSessionRefresh = time.Now()
+			context.resetAuthBackoff()
 			return nil
 		} else {
 			logrus.WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
 		}
 	}
 
-	return context.authenticate()
+	err := context.authenticate()
+	if err != nil {
+		initialBackoff := context.options.AuthBackoffInitial
+		if initialBackoff < 1 {
+			initialBackoff = DefaultAuthBackoffInitial
+		}
+		maxBackoff := context.options.AuthBackoffMax
+		if maxBackoff < 1 {
+			maxBackoff = DefaultAuthBackoffMax
+		}
+		if context.authBackoff == 0 {
+			context.authBackoff = initialBackoff
+		} else {
+			context.authBackoff *= 2
+		}
+		if context.authBackoff > maxBackoff {
+			context.authBackoff = maxBackoff
+		}
+		// authBackoff is the un-jittered base (clean doubling sequence). Roll
+		// currentWait fresh per failure so the wait decision is stable within
+		// one failure window but uncorrelated across clients.
+		context.currentWait = time.Duration(float64(context.authBackoff) * (0.75 + 0.5*rand.Float64()))
+		context.lastAuthAttempt = time.Now()
+		context.lastAuthErr = err
+		return err
+	}
+
+	context.resetAuthBackoff()
+	return nil
+}
+
+// resetAuthBackoff clears all auth-failure backoff state. Called on any
+// successful (re)authentication so the next failure starts from initial.
+func (context *ContextImpl) resetAuthBackoff() {
+	context.lastAuthAttempt = time.Time{}
+	context.authBackoff = 0
+	context.currentWait = 0
+	context.lastAuthErr = nil
 }
 
 // ConnectAllAvailableErs discovers and establishes connections to all edge routers
