@@ -238,8 +238,9 @@ type ContextImpl struct {
 	currentWait                     time.Duration
 	lastAuthErr                     error
 
-	servicesLoaded     chan struct{}
-	servicesLoadedFlag atomic.Bool
+	servicesLoaded           chan struct{}
+	servicesLoadedFlag       atomic.Bool
+	serviceRefreshInProgress atomic.Bool
 
 	routerProxy func(addr string) *transport.ProxyConfiguration
 
@@ -975,6 +976,20 @@ func recentlyAuthenticated(context *ContextImpl) bool {
 }
 
 func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool) error {
+	// Coalesce concurrent refreshes. Burst callers (e.g. many goroutines hitting
+	// waitForServicesLoaded at startup) would otherwise each drive an independent
+	// GetServices round-trip against the controller. The losers return nil and
+	// rely on their own retry path: waitForServicesLoaded re-loops on its delay,
+	// the periodic runRefreshes ticker fires again, and explicit RefreshServices
+	// callers get fresh data on the next call. We accept best-effort semantics
+	// for the rare collision where a forceRefresh=true call is shadowed by an
+	// in-flight forceRefresh=false call that decides no update is needed.
+	if !context.serviceRefreshInProgress.CompareAndSwap(false, true) {
+		pfxlog.Logger().Debug("refreshServices already in progress, skipping")
+		return nil
+	}
+	defer context.serviceRefreshInProgress.Store(false)
+
 	if !refreshAfterAuth { // if in authenticate mutex, can't re-auth
 		if err := context.ensureApiSession(); err != nil {
 			return fmt.Errorf("failed to refresh services: %v", err)
