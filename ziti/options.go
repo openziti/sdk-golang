@@ -19,7 +19,8 @@ const (
 	DefaultRefreshJitter          = 0.1
 
 	DefaultAuthBackoffInitial = 5 * time.Second
-	DefaultAuthBackoffMax     = 2 * time.Minute
+	DefaultAuthBackoffMax     = 1 * time.Minute
+	DefaultAuthMaxElapsed     = 5 * time.Minute
 )
 
 type serviceCB func(eventType ServiceEventType, service *rest_model.ServiceDetail)
@@ -49,8 +50,14 @@ type Options struct {
 	AuthBackoffInitial time.Duration
 
 	// AuthBackoffMax is the maximum backoff interval between authentication attempts
-	// after repeated failures. Defaults to 2 minutes.
+	// after repeated failures. Defaults to 1 minute.
 	AuthBackoffMax time.Duration
+
+	// AuthMaxElapsed is the total time budget for RefreshApiSessionWithBackoff,
+	// which retries the api-session refresh under the auth lock. Once exceeded,
+	// the refresh gives up and the caller falls back to a full re-authentication.
+	// Defaults to 5 minutes.
+	AuthMaxElapsed time.Duration
 
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
@@ -73,6 +80,7 @@ var DefaultOptions = &Options{
 	RefreshJitter:          DefaultRefreshJitter,
 	AuthBackoffInitial:     DefaultAuthBackoffInitial,
 	AuthBackoffMax:         DefaultAuthBackoffMax,
+	AuthMaxElapsed:         DefaultAuthMaxElapsed,
 	OnServiceUpdate:        nil,
 }
 

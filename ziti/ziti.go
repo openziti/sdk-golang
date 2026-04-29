@@ -65,7 +65,6 @@ import (
 	"github.com/openziti/transport/v2"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	metrics2 "github.com/rcrowley/go-metrics"
-	"github.com/sirupsen/logrus"
 )
 
 type SessionType rest_model.DialBind
@@ -686,7 +685,7 @@ func (context *ContextImpl) Sessions() ([]*rest_model.SessionDetail, error) {
 }
 
 func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
-	logrus.Debugf("connection to router [%s] was closed", routerConn.GetRouterAddr())
+	pfxlog.Logger().Debugf("connection to router [%s] was closed", routerConn.GetRouterAddr())
 	removed := context.routerConnections.RemoveCb(routerConn.GetRouterAddr(), func(key string, v edge.RouterConn, exists bool) bool {
 		return exists && v == routerConn
 	})
@@ -918,15 +917,13 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 				if !recentlyAuthenticated(context) {
 					if err = context.Authenticate(); err != nil {
 						log.WithError(err).Error("unable to re-authenticate during service list refresh")
+						return err
 					}
 				} else {
 					log.Debug("service list 401 within refresh window; retrying without re-auth")
-					err = nil
 				}
-				if err == nil {
-					if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
-						checkService = true
-					}
+				if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
+					checkService = true
 				}
 			} else {
 				log.WithError(err).Error("failed to check if service list update is available")
@@ -949,7 +946,8 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 				return err
 			}
 
-			if recentlyAuthenticated(context) {
+			raceWindowRetry := recentlyAuthenticated(context)
+			if raceWindowRetry {
 				log.Debug("GetServices 401 within refresh window; retrying without re-auth")
 			} else {
 				log.Info("attempting to re-authenticate")
@@ -959,6 +957,15 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 				}
 			}
 			if services, err = context.CtrlClt.GetServices(); err != nil {
+				// If the race-window retry path also failed with 401, the
+				// session is genuinely invalid (not a propagation race).
+				// Drop it so EventAuthenticationStateUnauthenticated listeners
+				// fire and the next API call goes through ensureApiSession
+				// to obtain a fresh session.
+				if raceWindowRetry && errors.As(err, &target) {
+					log.Info("persistent 401 after race-window retry, marking unauthenticated")
+					context.setUnauthenticated()
+				}
 				return err
 			}
 		}
@@ -1075,9 +1082,15 @@ func (context *ContextImpl) runRefreshes() {
 	sessionRefreshTimer := time.After(jitteredDuration(sessionRefreshInterval, jitter))
 
 	refreshAt := time.Now().Add(30 * time.Second)
+	// tokenExpiryKnown tracks whether refreshAt is derived from a real token
+	// expiry. The svc-refresh skip below only applies when we actually know
+	// the token is about to expire; otherwise refreshAt is just a polling
+	// cadence and shouldn't suppress service refreshes.
+	tokenExpiryKnown := false
 
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
 		refreshAt = tokenRefreshTime(*currentApiSession.GetExpiresAt())
+		tokenExpiryKnown = true
 	}
 
 	for {
@@ -1094,6 +1107,7 @@ func (context *ContextImpl) runRefreshes() {
 					pfxlog.Logger().WithError(err).Error("failed to authenticate")
 				}
 				refreshAt = time.Now().Add(5 * time.Second)
+				tokenExpiryKnown = false
 				continue
 			}
 
@@ -1103,13 +1117,16 @@ func (context *ContextImpl) runRefreshes() {
 				log.Errorf("could not refresh apiSession: %v", err)
 
 				refreshAt = time.Now().Add(5 * time.Second)
+				tokenExpiryKnown = false
 			} else {
 				exp := newApiSession.GetExpiresAt()
 				if exp != nil {
 					refreshAt = tokenRefreshTime(*exp)
+					tokenExpiryKnown = true
 					log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
 				} else {
 					refreshAt = time.Now().Add(5 * time.Minute)
+					tokenExpiryKnown = false
 					log.Debug("apiSession refreshed, no expiration, refreshing in 5 minutes")
 				}
 				context.lastSuccessfulApiSessionRefresh.Store(time.Now())
@@ -1127,9 +1144,9 @@ func (context *ContextImpl) runRefreshes() {
 			// refresh will use the new token. This avoids a race where the
 			// service refresh gets a 401 with the expiring token and triggers
 			// an unnecessary full re-auth.
-			if time.Until(refreshAt) < 15*time.Second {
+			if tokenExpiryKnown && time.Until(refreshAt) < 15*time.Second {
 				log.Debug("skipping service refresh, token refresh imminent")
-				svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
+				svcRefreshTimer = time.After(time.Until(refreshAt) + 2*time.Second)
 				continue
 			}
 			log.Debug("refreshing services")
@@ -1228,7 +1245,7 @@ func (context *ContextImpl) setUnauthenticated() {
 }
 
 func (context *ContextImpl) authenticate() error {
-	logrus.Debug("attempting to authenticate")
+	pfxlog.Logger().Debug("attempting to authenticate")
 	context.sessions.Clear()
 
 	context.setUnauthenticated()
@@ -1255,44 +1272,53 @@ func (context *ContextImpl) authenticate() error {
 }
 
 func (context *ContextImpl) Reauthenticate() error {
+	context.authAttemptLock.Lock()
+	defer context.authAttemptLock.Unlock()
+
 	context.CtrlClt.ApiSession.Store(nil)
 	context.CtrlClt.ApiSessionCertificate = nil
 
-	return context.authenticate()
+	if err := context.authenticate(); err != nil {
+		return err
+	}
+	context.resetAuthBackoff()
+	return nil
 }
 
 func (context *ContextImpl) Authenticate() error {
 	context.authAttemptLock.Lock()
 	defer context.authAttemptLock.Unlock()
 
-	// Check existing session validity before consulting the backoff cache.
-	// runRefreshes can succeed in the background and update
-	// lastSuccessfulApiSessionRefresh while a stale lastAuthErr is still
-	// within its backoff window; without this short-circuit we'd return
-	// the stale error to callers despite a now-valid session.
+	// If a session exists, try to refresh it without consulting the failure
+	// cache. The cache exists to throttle hammering the auth endpoint after
+	// repeated full-auth failures; refreshing a still-valid session is a
+	// distinct operation and shouldn't be gated by it. This also avoids
+	// returning a stale lastAuthErr when runRefreshes (or another caller)
+	// has succeeded in the background and the cached failure is no longer
+	// representative.
 	if context.CtrlClt.GetCurrentApiSession() != nil {
 		if time.Since(context.lastSuccessfulApiSessionRefresh.Load()) < 5*time.Second {
 			context.resetAuthBackoff()
 			return nil
 		}
-	}
 
-	if !context.lastAuthAttempt.IsZero() && context.currentWait > 0 {
-		if remaining := context.currentWait - time.Since(context.lastAuthAttempt); remaining > 0 {
-			logrus.Debugf("auth backoff: %v remaining, returning cached error", remaining)
-			return context.lastAuthErr
-		}
-	}
-
-	if context.CtrlClt.GetCurrentApiSession() != nil {
-		logrus.Debug("previous apiSession detected, checking if valid")
+		pfxlog.Logger().Debug("previous apiSession detected, checking if valid")
 		if err := context.RefreshApiSessionWithBackoff(); err == nil {
-			logrus.Info("previous apiSession refreshed")
+			pfxlog.Logger().Info("previous apiSession refreshed")
 			context.lastSuccessfulApiSessionRefresh.Store(time.Now())
 			context.resetAuthBackoff()
 			return nil
 		} else {
-			logrus.WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
+			pfxlog.Logger().WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
+		}
+	}
+
+	// About to call authenticate() — consult the failure cache to avoid
+	// hammering the auth endpoint within the backoff window.
+	if !context.lastAuthAttempt.IsZero() && context.currentWait > 0 {
+		if remaining := context.currentWait - time.Since(context.lastAuthAttempt); remaining > 0 {
+			pfxlog.Logger().Debugf("auth backoff: %v remaining, returning cached error", remaining)
+			return context.lastAuthErr
 		}
 	}
 
@@ -1403,26 +1429,36 @@ func (context *ContextImpl) RefreshApiSession() (error, error) {
 
 	unauthorizedErr := &current_api_session.GetCurrentAPISessionUnauthorized{}
 	if errors.As(err, &unauthorizedErr) {
-		logrus.Info("previous apiSession expired")
+		pfxlog.Logger().Info("previous apiSession expired")
 		return backoff.Permanent(err), nil
 	}
 
 	oidcErr := &oidc.Error{}
 	if errors.As(err, &oidcErr) {
-		logrus.Info("oidc error, re-authenticating")
+		pfxlog.Logger().Info("oidc error, re-authenticating")
 		return backoff.Permanent(err), nil
 	}
 
-	logrus.WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
+	pfxlog.Logger().WithError(err).Infof("unable to refresh apiSession, error type %T, will retry", err)
 	return err, nil
 }
 
 func (context *ContextImpl) RefreshApiSessionWithBackoff() error {
 	expBackoff := backoff.NewExponentialBackOff()
-
 	expBackoff.InitialInterval = 5 * time.Second
-	expBackoff.MaxInterval = 5 * time.Minute
-	expBackoff.MaxElapsedTime = 24 * time.Hour
+
+	maxInterval := context.options.AuthBackoffMax
+	if maxInterval < expBackoff.InitialInterval {
+		maxInterval = expBackoff.InitialInterval
+	}
+
+	maxElapsed := context.options.AuthMaxElapsed
+	if maxElapsed < expBackoff.InitialInterval {
+		maxElapsed = expBackoff.InitialInterval
+	}
+
+	expBackoff.MaxInterval = maxInterval
+	expBackoff.MaxElapsedTime = maxElapsed
 
 	operation := func() error {
 		functionalErr, erUpdateErrs := context.RefreshApiSession()
@@ -1450,6 +1486,8 @@ func (context *ContextImpl) CloseAllEdgeRouterConns() {
 }
 
 func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
+	context.lastSuccessfulApiSessionRefresh.Store(time.Now())
+
 	var doOnceErr error
 	context.firstAuthOnce.Do(func() {
 		if context.options.OnContextReady != nil {
@@ -2016,10 +2054,10 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 					h.Update(resultNanos)
 				},
 				TimeoutHandler: func() {
-					logrus.Errorf("latency timeout after [%s]", LatencyCheckTimeout)
+					pfxlog.Logger().Errorf("latency timeout after [%s]", LatencyCheckTimeout)
 					if ch.GetTimeSinceLastRead() > LatencyCheckInterval {
 						// No traffic on channel, no response. Close the channel
-						logrus.Error("no read traffic on channel since before latency probe was sent, closing channel")
+						pfxlog.Logger().Error("no read traffic on channel since before latency probe was sent, closing channel")
 						_ = ch.Close()
 					} else {
 						h.Update(int64(LatencyCheckTimeout))

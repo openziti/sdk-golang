@@ -308,7 +308,9 @@ func errorIndicatesControllerSwap(err error) bool {
 			log.Debug("detected url.Error (timeout/temporary), swapping controller")
 			return true
 		}
-		// A url.Error with no inner cause is typically a transport failure.
+		// Defensive: net/http always sets url.Error.Err, but a custom
+		// RoundTripper could return a bare one. Treat it as a transport
+		// failure rather than letting it fall through.
 		if urlErr.Err == nil {
 			log.Debug("detected bare url.Error, swapping controller")
 			return true

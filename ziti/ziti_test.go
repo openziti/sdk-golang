@@ -139,6 +139,54 @@ func Test_jitteredDuration(t *testing.T) {
 	})
 }
 
+func Test_tokenRefreshTime(t *testing.T) {
+	t.Run("already-expired token returns approximately now", func(t *testing.T) {
+		before := time.Now()
+		result := tokenRefreshTime(before.Add(-1 * time.Minute))
+		after := time.Now()
+
+		assert.GreaterOrEqual(t, result, before)
+		assert.LessOrEqual(t, result, after)
+	})
+
+	t.Run("zero remaining returns approximately now", func(t *testing.T) {
+		before := time.Now()
+		result := tokenRefreshTime(before)
+		after := time.Now()
+
+		assert.GreaterOrEqual(t, result, before)
+		assert.LessOrEqual(t, result, after)
+	})
+
+	t.Run("positive remaining produces value in [now+remaining/2, now+5*remaining/6)", func(t *testing.T) {
+		remaining := 60 * time.Second
+
+		for i := 0; i < 1000; i++ {
+			before := time.Now()
+			result := tokenRefreshTime(before.Add(remaining))
+			after := time.Now()
+
+			// computed against the latest possible "now" used inside tokenRefreshTime
+			minExpected := before.Add(remaining / 2)
+			// computed against the earliest possible "now" used inside tokenRefreshTime
+			maxExpected := after.Add(5 * remaining / 6)
+
+			assert.GreaterOrEqual(t, result, minExpected, "iter %d: result %v before min %v", i, result, minExpected)
+			assert.Less(t, result, maxExpected, "iter %d: result %v not less than max %v", i, result, maxExpected)
+		}
+	})
+
+	t.Run("results vary across calls", func(t *testing.T) {
+		expiresAt := time.Now().Add(60 * time.Second)
+
+		seen := map[time.Time]bool{}
+		for i := 0; i < 100; i++ {
+			seen[tokenRefreshTime(expiresAt)] = true
+		}
+		assert.Greater(t, len(seen), 1, "expected multiple distinct values")
+	})
+}
+
 func Test_AddressMatch(t *testing.T) {
 
 	http := edge.PortRange{Low: 80, High: 80}

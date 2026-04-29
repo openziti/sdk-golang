@@ -1,11 +1,55 @@
-# Release notes 1.7.1
+# Release notes 1.8.0
 
 ## Issues Fixed and Dependency Updates
 
-* github.com/openziti/sdk-golang: [v1.7.0 -> v1.7.1](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.7.1)
-  * [Issue #932](https://github.com/openziti/sdk-golang/issues/932) - API Session Certificate chain is not preserved
+* github.com/openziti/sdk-golang: [v1.7.0 -> v1.8.0](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.8.0)
+    * [Issue #927](https://github.com/openziti/sdk-golang/issues/927) - Apply exponential backoff to auth retry attempts
+    * [Issue #926](https://github.com/openziti/sdk-golang/issues/926) - Refresh OIDC token using a window to avoid race conditions and herding
+    * [Issue #925](https://github.com/openziti/sdk-golang/issues/925) - Switch controllers on a broader set of errors
+    * [Issue #924](https://github.com/openziti/sdk-golang/issues/924) - Make controller http timeout configurable, with a default of 30s
+    * [Issue #932](https://github.com/openziti/sdk-golang/issues/932) - API Session Certificate chain is not preserved
 
-* github.com/shirou/gopsutil: v3.24.5 -> v4.26.4
+* github.com/go-openapi/runtime: v0.29.3 -> v0.32.2
+* github.com/go-openapi/strfmt: v0.26.1 -> v0.26.2
+* github.com/openziti/channel/v4: [v4.3.9 -> v4.3.11](https://github.com/openziti/channel/compare/v4.3.9...v4.3.11)
+    * [Issue #242](https://github.com/openziti/channel/issues/242) - Reconnecting channel shouldn't allow changing ids
+
+* github.com/openziti/edge-api: [v0.27.5 -> v0.31.0](https://github.com/openziti/edge-api/compare/v0.27.5...v0.31.0)
+    * [Issue #191](https://github.com/openziti/edge-api/issues/191) - Add `other` as a valid config type target for config types not intented to be used with services or routers
+    * [Issue #187](https://github.com/openziti/edge-api/issues/187) - Add support for new attribute query endpoints
+    * [Issue #183](https://github.com/openziti/edge-api/issues/183) - Add configs field to edge routers and transit routers
+    * [Issue #181](https://github.com/openziti/edge-api/issues/181) - Add support for config type targets
+
+* github.com/openziti/foundation/v2: [v2.0.90 -> v2.0.91](https://github.com/openziti/foundation/compare/v2.0.90...v2.0.91)
+* github.com/openziti/identity: [v1.0.128 -> v1.0.129](https://github.com/openziti/identity/compare/v1.0.128...v1.0.129)
+* github.com/shirou/gopsutil/v4: v3.24.5 -> v4.26.4
+* github.com/zitadel/oidc/v3: v3.45.6 -> v3.47.5
+* golang.org/x/sys: v0.42.0 -> v0.45.0
+* github.com/ebitengine/purego: v0.10.0 (new)
+* github.com/fsnotify/fsnotify: v1.9.0 -> v1.10.1
+* github.com/go-openapi/analysis: v0.24.3 -> v0.25.0
+* github.com/go-openapi/jsonpointer: v0.22.5 -> v0.23.1
+* github.com/go-openapi/runtime/server-middleware: v0.30.0 (new)
+* github.com/go-openapi/swag/conv: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/fileutils: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/jsonname: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/jsonutils: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/loading: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/mangling: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/stringutils: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/typeutils: v0.25.5 -> v0.26.0
+* github.com/go-openapi/swag/yamlutils: v0.25.5 -> v0.26.0
+* github.com/mattn/go-isatty: v0.0.20 -> v0.0.22
+* github.com/power-devops/perfstat: v0.0.0-20210106213030-5aafc221ea8c -> v0.0.0-20240221224432-82ca36839d55
+* github.com/tklauser/go-sysconf: v0.3.12 -> v0.3.16
+* github.com/tklauser/numcpus: v0.6.1 -> v0.11.0
+* go.opentelemetry.io/otel: v1.42.0 -> v1.43.0
+* go.opentelemetry.io/otel/metric: v1.42.0 -> v1.43.0
+* go.opentelemetry.io/otel/trace: v1.42.0 -> v1.43.0
+* golang.org/x/crypto: v0.49.0 -> v0.52.0
+* golang.org/x/net: v0.52.0 -> v0.55.0
+* golang.org/x/term: v0.41.0 -> v0.43.0
+* golang.org/x/text: v0.35.0 -> v0.37.0
 
 # Release notes 1.7.0
 
