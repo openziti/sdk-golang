@@ -103,8 +103,8 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/openziti/channel/v4 v4.3.9 // indirect
-	github.com/openziti/edge-api v0.27.5 // indirect
+	github.com/openziti/channel/v4 v4.3.11 // indirect
+	github.com/openziti/edge-api v0.28.1 // indirect
 	github.com/openziti/foundation/v2 v2.0.90 // indirect
 	github.com/openziti/identity v1.0.128 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect

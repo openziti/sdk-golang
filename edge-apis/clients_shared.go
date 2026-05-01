@@ -128,6 +128,10 @@ type ApiClientConfig struct {
 	TotpEnrollmentProvider TotpEnrollmentProvider
 	Components             *Components
 	Proxy                  func(r *http.Request) (*url.URL, error)
+
+	// HttpTimeout sets the overall timeout for HTTP requests to the controller.
+	// If zero, DefaultHttpTimeout is used.
+	HttpTimeout time.Duration
 }
 
 // exchangeTokens exchanges OIDC tokens for refreshed tokens. It uses refresh tokens preferentially,

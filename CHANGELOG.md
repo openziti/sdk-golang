@@ -1,3 +1,18 @@
+# Release notes 1.8.0
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.7.0 -> v1.8.0](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.8.0)
+    * [Issue #927](https://github.com/openziti/sdk-golang/issues/927) - Apply exponential backoff to auth retry attempts
+    * [Issue #926](https://github.com/openziti/sdk-golang/issues/926) - Refresh OIDC token using a window to avoid race conditions and herding
+    * [Issue #925](https://github.com/openziti/sdk-golang/issues/925) - Switch controllers on a broader set of errors
+    * [Issue #924](https://github.com/openziti/sdk-golang/issues/924) - Make controller http timeout configurable, with a default of 30s
+
+* github.com/openziti/channel/v4: [v4.3.9 -> v4.3.11](https://github.com/openziti/channel/compare/v4.3.9...v4.3.11)
+    * [Issue #242](https://github.com/openziti/channel/issues/242) - Reconnecting channel shouldn't allow changing ids
+
+* github.com/openziti/edge-api: [v0.27.5 -> v0.28.1](https://github.com/openziti/edge-api/compare/v0.27.5...v0.28.1)
+
 # Release notes 1.7.0
 
 ## Issues Fixed and Dependency Updates

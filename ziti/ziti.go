@@ -232,8 +232,13 @@ type ContextImpl struct {
 
 	events.EventEmmiter
 	authAttemptLock                 sync.Mutex
-	lastSuccessfulApiSessionRefresh time.Time
-	routerProxy                     func(addr string) *transport.ProxyConfiguration
+	lastSuccessfulApiSessionRefresh concurrenz.AtomicValue[time.Time]
+	lastAuthAttempt                 time.Time
+	authBackoff                     time.Duration
+	currentWait                     time.Duration
+	lastAuthErr                     error
+
+	routerProxy func(addr string) *transport.ProxyConfiguration
 
 	maxControlConnections int
 	maxDefaultConnections int
@@ -868,6 +873,20 @@ func (context *ContextImpl) RefreshServices() error {
 	return context.refreshServices(true, false)
 }
 
+// refreshRaceWindow is how long after a successful api-session refresh the
+// SDK treats a 401 on a service-related call as a propagation/in-flight
+// race rather than a real auth failure. Within this window the 401 handler
+// simply retries with the current (already-refreshed) session instead of
+// invoking Authenticate, which would needlessly drive the refresh machinery
+// and may churn sessions/ER connections if the refresh path decides a full
+// re-auth is required.
+const refreshRaceWindow = 15 * time.Second
+
+func recentlyAuthenticated(context *ContextImpl) bool {
+	last := context.lastSuccessfulApiSessionRefresh.Load()
+	return !last.IsZero() && time.Since(last) < refreshRaceWindow
+}
+
 func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool) error {
 	if !refreshAfterAuth { // if in authenticate mutex, can't re-auth
 		if err := context.ensureApiSession(); err != nil {
@@ -890,9 +909,21 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 				log.WithError(err).Warn("controller unavailable checking for service updates, will retry")
 				return ErrControllerUnavailable
 			} else if errors.As(err, &unauthorized) {
-				if err = context.Authenticate(); err != nil {
-					log.WithError(err).Error("unable to re-authenticate during service list refresh")
+				// If a token refresh completed very recently, this 401 is
+				// almost certainly an in-flight/propagation race — the server
+				// saw our request before it finished processing the refreshed
+				// token. Retry directly with the current session instead of
+				// going through Authenticate(), which would needlessly churn
+				// the refresh machinery.
+				if !recentlyAuthenticated(context) {
+					if err = context.Authenticate(); err != nil {
+						log.WithError(err).Error("unable to re-authenticate during service list refresh")
+					}
 				} else {
+					log.Debug("service list 401 within refresh window; retrying without re-auth")
+					err = nil
+				}
+				if err == nil {
 					if checkService, lastServiceUpdate, err = context.CtrlClt.IsServiceListUpdateAvailable(); err != nil {
 						checkService = true
 					}
@@ -918,10 +949,14 @@ func (context *ContextImpl) refreshServices(forceRefresh, refreshAfterAuth bool)
 				return err
 			}
 
-			log.Info("attempting to re-authenticate")
-			if authErr := context.Authenticate(); authErr != nil {
-				log.WithError(authErr).Error("unable to re-authenticate during services refresh")
-				return err
+			if recentlyAuthenticated(context) {
+				log.Debug("GetServices 401 within refresh window; retrying without re-auth")
+			} else {
+				log.Info("attempting to re-authenticate")
+				if authErr := context.Authenticate(); authErr != nil {
+					log.WithError(authErr).Error("unable to re-authenticate during services refresh")
+					return err
+				}
 			}
 			if services, err = context.CtrlClt.GetServices(); err != nil {
 				return err
@@ -999,6 +1034,22 @@ func jitteredDuration(base time.Duration, jitter float64) time.Duration {
 
 var ErrControllerUnavailable = errors.New("controller unavailable")
 
+// tokenRefreshTime calculates when to refresh an access token that expires at
+// the given time. It uses the same strategy as the C-SDK: refresh between 1/2
+// and 5/6 of the remaining lifetime, providing both an early refresh window
+// and random jitter to prevent thundering-herd token exchanges.
+func tokenRefreshTime(expiresAt time.Time) time.Time {
+	remaining := time.Until(expiresAt)
+	// Refresh between 1/2 and 5/6 of remaining time.
+	minDelay := remaining / 2
+	jitterRange := remaining / 3
+	if jitterRange <= 0 {
+		return time.Now()
+	}
+	delay := minDelay + time.Duration(rand.Int63n(int64(jitterRange)))
+	return time.Now().Add(delay)
+}
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -1026,7 +1077,7 @@ func (context *ContextImpl) runRefreshes() {
 	refreshAt := time.Now().Add(30 * time.Second)
 
 	if currentApiSession := context.CtrlClt.GetCurrentApiSession(); currentApiSession != nil && currentApiSession.GetExpiresAt() != nil {
-		refreshAt = (*currentApiSession.GetExpiresAt()).Add(-10 * time.Second)
+		refreshAt = tokenRefreshTime(*currentApiSession.GetExpiresAt())
 	}
 
 	for {
@@ -1054,8 +1105,14 @@ func (context *ContextImpl) runRefreshes() {
 				refreshAt = time.Now().Add(5 * time.Second)
 			} else {
 				exp := newApiSession.GetExpiresAt()
-				refreshAt = exp.Add(-10 * time.Second)
-				log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
+				if exp != nil {
+					refreshAt = tokenRefreshTime(*exp)
+					log.Debugf("apiSession refreshed, new expiration[%s]", *exp)
+				} else {
+					refreshAt = time.Now().Add(5 * time.Minute)
+					log.Debug("apiSession refreshed, no expiration, refreshing in 5 minutes")
+				}
+				context.lastSuccessfulApiSessionRefresh.Store(time.Now())
 
 				updateErr := context.updateTokenOnAllErs(newApiSession)
 
@@ -1065,6 +1122,16 @@ func (context *ContextImpl) runRefreshes() {
 			}
 
 		case <-svcRefreshTimer:
+			// If the token is about to expire, skip this service refresh cycle.
+			// The token refresh case will fire next, and the following service
+			// refresh will use the new token. This avoids a race where the
+			// service refresh gets a 401 with the expiring token and triggers
+			// an unnecessary full re-auth.
+			if time.Until(refreshAt) < 15*time.Second {
+				log.Debug("skipping service refresh, token refresh imminent")
+				svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
+				continue
+			}
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
 				if errors.Is(err, ErrControllerUnavailable) {
@@ -1198,21 +1265,75 @@ func (context *ContextImpl) Authenticate() error {
 	context.authAttemptLock.Lock()
 	defer context.authAttemptLock.Unlock()
 
+	// Check existing session validity before consulting the backoff cache.
+	// runRefreshes can succeed in the background and update
+	// lastSuccessfulApiSessionRefresh while a stale lastAuthErr is still
+	// within its backoff window; without this short-circuit we'd return
+	// the stale error to callers despite a now-valid session.
 	if context.CtrlClt.GetCurrentApiSession() != nil {
-		if time.Since(context.lastSuccessfulApiSessionRefresh) < 5*time.Second {
+		if time.Since(context.lastSuccessfulApiSessionRefresh.Load()) < 5*time.Second {
+			context.resetAuthBackoff()
 			return nil
 		}
+	}
+
+	if !context.lastAuthAttempt.IsZero() && context.currentWait > 0 {
+		if remaining := context.currentWait - time.Since(context.lastAuthAttempt); remaining > 0 {
+			logrus.Debugf("auth backoff: %v remaining, returning cached error", remaining)
+			return context.lastAuthErr
+		}
+	}
+
+	if context.CtrlClt.GetCurrentApiSession() != nil {
 		logrus.Debug("previous apiSession detected, checking if valid")
 		if err := context.RefreshApiSessionWithBackoff(); err == nil {
 			logrus.Info("previous apiSession refreshed")
-			context.lastSuccessfulApiSessionRefresh = time.Now()
+			context.lastSuccessfulApiSessionRefresh.Store(time.Now())
+			context.resetAuthBackoff()
 			return nil
 		} else {
 			logrus.WithError(err).Info("previous apiSession failed to refresh, attempting to authenticate")
 		}
 	}
 
-	return context.authenticate()
+	err := context.authenticate()
+	if err != nil {
+		initialBackoff := context.options.AuthBackoffInitial
+		if initialBackoff < 1 {
+			initialBackoff = DefaultAuthBackoffInitial
+		}
+		maxBackoff := context.options.AuthBackoffMax
+		if maxBackoff < 1 {
+			maxBackoff = DefaultAuthBackoffMax
+		}
+		if context.authBackoff == 0 {
+			context.authBackoff = initialBackoff
+		} else {
+			context.authBackoff *= 2
+		}
+		if context.authBackoff > maxBackoff {
+			context.authBackoff = maxBackoff
+		}
+		// authBackoff is the un-jittered base (clean doubling sequence). Roll
+		// currentWait fresh per failure so the wait decision is stable within
+		// one failure window but uncorrelated across clients.
+		context.currentWait = time.Duration(float64(context.authBackoff) * (0.75 + 0.5*rand.Float64()))
+		context.lastAuthAttempt = time.Now()
+		context.lastAuthErr = err
+		return err
+	}
+
+	context.resetAuthBackoff()
+	return nil
+}
+
+// resetAuthBackoff clears all auth-failure backoff state. Called on any
+// successful (re)authentication so the next failure starts from initial.
+func (context *ContextImpl) resetAuthBackoff() {
+	context.lastAuthAttempt = time.Time{}
+	context.authBackoff = 0
+	context.currentWait = 0
+	context.lastAuthErr = nil
 }
 
 // ConnectAllAvailableErs discovers and establishes connections to all edge routers
