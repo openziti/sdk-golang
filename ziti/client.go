@@ -61,7 +61,7 @@ type CtrlClient struct {
 
 	ApiSessionCertificateDetail rest_model.CurrentAPISessionCertificateDetail
 	ApiSessionCsr               x509.CertificateRequest
-	ApiSessionCertificate       *x509.Certificate
+	ApiSessionCertificate       []*x509.Certificate
 	ApiSessionPrivateKey        *ecdsa.PrivateKey
 	ApiSessionCertInstance      string
 
@@ -309,7 +309,7 @@ func (self *CtrlClient) GetIdentity() (identity.Identity, error) {
 	}
 
 	rootCaPool := self.TlsAwareTransport.GetTlsClientConfig().RootCAs
-	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{self.ApiSessionCertificate}, self.ApiSessionPrivateKey, rootCaPool), nil
+	return identity.NewClientTokenIdentityWithPool(self.ApiSessionCertificate, self.ApiSessionPrivateKey, rootCaPool), nil
 }
 
 // EnsureApiSessionCertificate will create an ApiSessionCertificate if one does not already exist.
@@ -376,7 +376,7 @@ func (self *CtrlClient) NewApiSessionCertificate() error {
 
 	pfxlog.Logger().Infof("new API Session Certificate: %x", sha1.Sum(certs[0].Raw))
 
-	self.ApiSessionCertificate = certs[0]
+	self.ApiSessionCertificate = certs
 
 	return nil
 }

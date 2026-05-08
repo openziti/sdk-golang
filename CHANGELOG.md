@@ -1,3 +1,10 @@
+# Release notes 1.7.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.7.0 -> v1.7.1](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.7.1)
+  * [Issue #932](https://github.com/openziti/sdk-golang/issues/932) - API Session Certificate chain is not preserved
+
 # Release notes 1.7.0
 
 ## Issues Fixed and Dependency Updates
