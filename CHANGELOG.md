@@ -5,7 +5,15 @@
 * github.com/openziti/sdk-golang: [v1.7.0 -> v1.7.1](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.7.1)
   * [Issue #932](https://github.com/openziti/sdk-golang/issues/932) - API Session Certificate chain is not preserved
 
-* github.com/shirou/gopsutil: v3.24.5 -> v4.26.4
+* github.com/shirou/gopsutil/v4: v3.24.5 -> v4.26.4
+* github.com/ebitengine/purego: v0.10.0 (new)
+* github.com/power-devops/perfstat: v0.0.0-20210106213030-5aafc221ea8c -> v0.0.0-20240221224432-82ca36839d55
+* github.com/tklauser/go-sysconf: v0.3.12 -> v0.3.16
+* github.com/tklauser/numcpus: v0.6.1 -> v0.11.0
+
+## Thanks to our contributors!
+
+- [Juneezee](https://github.com/Juneezee) - [Simplify posture process check](https://github.com/openziti/sdk-golang/pull/931)
 
 # Release notes 1.7.0
 
