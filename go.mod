@@ -17,8 +17,8 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v4 v4.3.11
 	github.com/openziti/edge-api v0.31.0
-	github.com/openziti/foundation/v2 v2.0.91
-	github.com/openziti/identity v1.0.129
+	github.com/openziti/foundation/v2 v2.0.92
+	github.com/openziti/identity v1.0.130
 	github.com/openziti/metrics v1.4.5
 	github.com/openziti/secretstream v0.1.49
 	github.com/openziti/transport/v2 v2.0.215
