@@ -163,7 +163,8 @@ func (self *BaseClient[A]) initializeComponents(config *ApiClientConfig) {
 	}
 
 	components := NewComponentsWithConfig(&ComponentsConfig{
-		Proxy: config.Proxy,
+		Proxy:       config.Proxy,
+		HttpTimeout: config.HttpTimeout,
 	})
 
 	tlsClientConfig := components.TlsAwareTransport.GetTlsClientConfig()
