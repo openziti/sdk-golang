@@ -10,7 +10,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Git Checkout
         uses: actions/checkout@v6
@@ -30,5 +36,9 @@ jobs:
           go test ./...
           go test -C example ./...
           go install ./...
+
+      - name: Check license
+        if: matrix.os == 'ubuntu-latest'
+        run: |
           ./license-check.sh
           $(go env GOPATH)/bin/ziti-ci verify-version $($(go env GOPATH)/bin/sdk-version)

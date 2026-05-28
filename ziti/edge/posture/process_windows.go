@@ -23,14 +23,9 @@ import (
 	"debug/pe"
 	"fmt"
 	"os"
-	"strings"
 
 	"go.mozilla.org/pkcs7"
 )
-
-func isProcessPath(expectedPath, processPath string) bool {
-	return strings.Contains(strings.ToLower(expectedPath), strings.ToLower(processPath))
-}
 
 func getSignerFingerprints(filePath string) ([]string, error) {
 	peFile, err := pe.Open(filePath)

@@ -23,29 +23,37 @@ import (
 )
 
 func TestRunningProcess(t *testing.T) {
-	p := Process("C:\\Windows\\System32\\svchost.exe")
-	if !p.IsRunning {
-		t.Fail()
-	}
-}
+	provider := NewProcessProvider()
 
-func TestRunningProcessCaseInsensitive(t *testing.T) {
-	p := Process("C:\\windows\\system32\\SVCHOST.EXE")
-	if !p.IsRunning {
-		t.Fail()
-	}
+	t.Run("standard", func(t *testing.T) {
+		p := provider.GetProcessInfo("C:\\Windows\\System32\\svchost.exe")
+		if !p.IsRunning {
+			t.Fail()
+		}
+	})
+
+	t.Run("case insensitive", func(t *testing.T) {
+		p := provider.GetProcessInfo("C:\\windows\\system32\\SVCHOST.EXE")
+		if !p.IsRunning {
+			t.Fail()
+		}
+	})
 }
 
 func TestSlashNormalizationForwardSlash(t *testing.T) {
-	p := Process("C:/windows/system32/SVCHOST.EXE")
-	if !p.IsRunning {
-		t.Fail()
-	}
-}
+	provider := NewProcessProvider()
 
-func TestSlashNormalizationExtraSlashes(t *testing.T) {
-	p := Process("C:/windows///system32////SVCHOST.EXE")
-	if !p.IsRunning {
-		t.Fail()
-	}
+	t.Run("forward slash", func(t *testing.T) {
+		p := provider.GetProcessInfo("C:/windows/system32/SVCHOST.EXE")
+		if !p.IsRunning {
+			t.Fail()
+		}
+	})
+
+	t.Run("extra slashes", func(t *testing.T) {
+		p := provider.GetProcessInfo("C:/windows///system32////SVCHOST.EXE")
+		if !p.IsRunning {
+			t.Fail()
+		}
+	})
 }

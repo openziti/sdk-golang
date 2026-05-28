@@ -26,8 +26,7 @@ import (
 	"strings"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/mitchellh/go-ps"
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 func NewProcessProvider() ProcessProvider {
@@ -39,7 +38,7 @@ type DefaultProcessProvider struct{}
 func (p *DefaultProcessProvider) GetProcessInfo(providedPath string) ProcessInfo {
 	expectedPath := filepath.Clean(providedPath)
 
-	processes, err := ps.Processes()
+	processes, err := process.Processes()
 
 	if err != nil {
 		pfxlog.Logger().Debugf("error getting Processes: %v", err)
@@ -50,24 +49,13 @@ func (p *DefaultProcessProvider) GetProcessInfo(providedPath string) ProcessInfo
 	}
 
 	for _, proc := range processes {
-		if !isProcessPath(expectedPath, proc.Executable()) {
-			continue
-		}
-
-		procDetails, err := process.NewProcess(int32(proc.Pid()))
-
+		executablePath, err := proc.Exe()
 		if err != nil {
 			continue
 		}
 
-		executablePath, err := procDetails.Exe()
-
-		if err != nil {
-			continue
-		}
-
-		if strings.EqualFold(executablePath, expectedPath) {
-			isRunning, _ := procDetails.IsRunning()
+		if strings.EqualFold(expectedPath, executablePath) {
+			isRunning, _ := proc.IsRunning()
 			file, err := os.ReadFile(executablePath)
 
 			if err != nil {

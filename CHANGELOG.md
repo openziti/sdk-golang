@@ -5,6 +5,8 @@
 * github.com/openziti/sdk-golang: [v1.7.0 -> v1.7.1](https://github.com/openziti/sdk-golang/compare/v1.7.0...v1.7.1)
   * [Issue #932](https://github.com/openziti/sdk-golang/issues/932) - API Session Certificate chain is not preserved
 
+* github.com/shirou/gopsutil: v3.24.5 -> v4.26.4
+
 # Release notes 1.7.0
 
 ## Issues Fixed and Dependency Updates

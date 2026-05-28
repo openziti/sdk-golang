@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v4/host"
 )
 
 // OsProvider supplies operating system type and version information for OS posture checks.
