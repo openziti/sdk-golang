@@ -196,6 +196,10 @@ the control underlay when one is available.
 * golang.org/x/term: v0.41.0 -> v0.43.0
 * golang.org/x/text: v0.35.0 -> v0.37.0
 
+## Thanks to our contributors!
+
+- [Juneezee](https://github.com/Juneezee) - [Simplify posture process check](https://github.com/openziti/sdk-golang/pull/931)
+
 # Release notes 1.7.0
 
 ## Issues Fixed and Dependency Updates
