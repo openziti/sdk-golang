@@ -1,3 +1,11 @@
+# Release notes 1.8.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.0 -> v1.8.1](https://github.com/openziti/sdk-golang/compare/v1.8.0...v1.8.1)
+    * [Issue #941](https://github.com/openziti/sdk-golang/issues/941) - Prep for channel v5: explicit receive handler registration, drop send priorities
+
+
 # Release notes 1.8.0
 
 ## Issues Fixed and Dependency Updates

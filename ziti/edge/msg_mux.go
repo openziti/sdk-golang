@@ -264,19 +264,21 @@ type ConnMux[T any] interface {
 	//   mux.Add(conn)
 	GetNextId() uint32
 
-	// TypedReceiveHandler is an embedded interface
+	// ContentType returns the message content type this handler processes. Together
+	// with the embedded ReceiveHandler, it allows the ConnMux to be registered as a
+	// message handler with the underlying channel infrastructure, via
+	// binding.AddReceiveHandler(mux.ContentType(), mux).
+	ContentType() int32
+
+	// ReceiveHandler is an embedded interface
 	//
-	// TypedReceiveHandler provides typed message handling capabilities for the multiplexer.
-	// This allows the ConnMux to be registered as a message handler with the underlying
-	// channel infrastructure, enabling automatic message routing based on message types.
-	//
-	// The embedded interface typically includes methods like:
-	//   - ContentType() int32 - returns the message content type this handler processes
-	//   - HandleReceive(msg *channel.Message, ch channel.Channel) - processes typed messages
+	// ReceiveHandler provides message handling capabilities for the multiplexer,
+	// enabling automatic message routing based on message types:
+	//   - HandleReceive(msg *channel.Message, ch channel.Channel) - processes messages
 	//
 	// This integration allows the ConnMux to participate in the channel's message
 	// dispatch system while maintaining its connection multiplexing functionality.
-	channel.TypedReceiveHandler
+	channel.ReceiveHandler
 
 	// CloseHandler is an embedded interface
 	//
