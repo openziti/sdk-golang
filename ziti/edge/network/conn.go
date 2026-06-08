@@ -901,7 +901,7 @@ func (conn *edgeConn) CompleteAcceptSuccess() error {
 
 			reply := edge.NewDialFailedMsg(conn.Id(), err.Error())
 			reply.ReplyTo(conn.acceptCompleteHandler.message)
-			if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
+			if sendErr := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
 				logger.WithError(sendErr).Error("failed to send reply to dial request")
 			}
 		}
@@ -970,7 +970,7 @@ func (self *newConnHandler) dialFailed(err error) {
 	newConnLogger.WithError(err).Error("Failed to establish connection")
 	reply := edge.NewDialFailedMsg(self.conn.Id(), err.Error())
 	reply.ReplyTo(self.message)
-	if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
+	if err := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
 		logger.WithError(err).Error("Failed to send reply to dial request")
 	}
 }
@@ -990,7 +990,7 @@ func (self *newConnHandler) dialSucceeded() (error, bool) {
 	reply.ReplyTo(self.message)
 
 	if !self.routerProvidedConnId {
-		startMsg, err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendForReply(self.conn.GetControlSender())
+		startMsg, err := reply.WithTimeout(5 * time.Second).SendForReply(self.conn.GetControlSender())
 		if err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 			return err, false
@@ -1001,7 +1001,7 @@ func (self *newConnHandler) dialSucceeded() (error, bool) {
 			self.edgeCh.close(true)
 			return errors.Errorf("failed to receive start after dial. got %v", startMsg), true
 		}
-	} else if err := reply.WithPriority(channel.Highest).WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
+	} else if err := reply.WithTimeout(time.Second * 5).SendAndWaitForWire(self.conn.GetControlSender()); err != nil {
 		logger.WithError(err).Error("failed to send reply to dial request")
 		return err, false
 	}

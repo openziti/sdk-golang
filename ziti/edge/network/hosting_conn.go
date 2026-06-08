@@ -279,7 +279,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		logger.Warn("invalid token")
 		reply := edge.NewDialFailedMsg(conn.Id(), "invalid token")
 		reply.ReplyTo(message)
-		if err := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
+		if err := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); err != nil {
 			logger.WithError(err).Error("failed to send reply to dial request")
 		}
 		return
@@ -331,7 +331,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("%s (%s)", description, err.Error()))
 		reply.ReplyTo(message)
-		if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
+		if sendErr := reply.WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
 			logger.WithError(sendErr).Error("failed to send reply to dial request")
 		}
 	}

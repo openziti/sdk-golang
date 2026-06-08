@@ -107,7 +107,7 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.mux.HandleReceive)
 
 	// Since data is the common message type, it gets to be dispatched directly
-	binding.AddTypedReceiveHandler(conn.mux)
+	binding.AddReceiveHandler(conn.mux.ContentType(), conn.mux)
 	binding.AddCloseHandler(conn.mux)
 	binding.AddCloseHandler(conn)
 
