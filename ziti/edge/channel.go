@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 )
 
 const (
@@ -32,9 +32,23 @@ func NewBaseSdkChannel() *BaseSdkChannel {
 	return result
 }
 
+// SdkChannel provides access to an edge channel and its priority senders. The grouped
+// (multi-underlay) implementation is BaseSdkChannel; the single-underlay fallback is
+// SingleSdkChannel.
+type SdkChannel interface {
+	InitChannel(ch channel.Channel)
+	GetChannel() channel.Channel
+	GetDefaultSender() channel.Sender
+	GetControlSender() channel.Sender
+}
+
+// BaseSdkChannel implements the channel/v5 Senders, MessageSourceProvider and
+// UnderlayEventListener interfaces for a grouped edge channel, routing control
+// messages onto the control underlay when one is present and onto the default
+// underlay otherwise.
 type BaseSdkChannel struct {
-	ch channel.MultiChannel
 	channel.SenderContext
+	ch            channel.Channel
 	controlSender channel.Sender
 	defaultSender channel.Sender
 
@@ -44,7 +58,9 @@ type BaseSdkChannel struct {
 	retryMsgChan            chan channel.Sendable
 }
 
-func (self *BaseSdkChannel) ChannelCreated(ch channel.MultiChannel) {
+// InitChannel records the channel for later access. It is called from the bind handler,
+// which runs before any underlay event, so the reference is safe to read afterward.
+func (self *BaseSdkChannel) InitChannel(ch channel.Channel) {
 	self.ch = ch
 }
 
@@ -101,14 +117,18 @@ func (self *BaseSdkChannel) GetNextControlMsg(notifier *channel.CloseNotifier) (
 	}
 }
 
-func (self *BaseSdkChannel) GetMessageSource(underlay channel.Underlay) channel.MessageSourceF {
-	if channel.GetUnderlayType(underlay) == ChannelTypeControl {
+// GetMessageSource implements channel.MessageSourceProvider, draining the control queue
+// for the control underlay and the default queue for everything else.
+func (self *BaseSdkChannel) GetMessageSource(underlayType string) channel.MessageSourceF {
+	if underlayType == ChannelTypeControl {
 		return self.GetNextControlMsg
 	}
 	return self.GetNextMsgDefault
 }
 
-func (self *BaseSdkChannel) HandleTxFailed(_ channel.Underlay, sendable channel.Sendable) bool {
+// HandleTxFailed requeues a send that failed on an underlay, completing the channel/v5
+// Senders interface.
+func (self *BaseSdkChannel) HandleTxFailed(_ string, sendable channel.Sendable) bool {
 	select {
 	case self.retryMsgChan <- sendable:
 		return true
@@ -119,7 +139,8 @@ func (self *BaseSdkChannel) HandleTxFailed(_ channel.Underlay, sendable channel.
 	}
 }
 
-func (self *BaseSdkChannel) HandleUnderlayAccepted(ch channel.MultiChannel, underlay channel.Underlay) {
+// UnderlayAdded implements channel.UnderlayEventListener.
+func (self *BaseSdkChannel) UnderlayAdded(ch channel.Channel, underlay channel.Underlay) {
 	self.UpdateCtrlChannelAvailable(ch)
 	pfxlog.Logger().
 		WithField("id", ch.Label()).
@@ -129,89 +150,53 @@ func (self *BaseSdkChannel) HandleUnderlayAccepted(ch channel.MultiChannel, unde
 		Info("underlay added")
 }
 
-func (self *BaseSdkChannel) UpdateCtrlChannelAvailable(ch channel.MultiChannel) {
-	self.controlChannelAvailable.Store(ch.GetUnderlayCountsByType()[ChannelTypeControl] > 0)
-}
-
-func NewDialSdkChannel(dialer channel.DialUnderlayFactory, maxDefaultChannels, maxControlChannel int) UnderlayHandlerSdkChannel {
-	result := &DialSdkChannel{
-		BaseSdkChannel: *NewBaseSdkChannel(),
-		dialer:         dialer,
-	}
-
-	result.constraints.AddConstraint(ChannelTypeDefault, maxDefaultChannels, 1)
-	result.constraints.AddConstraint(ChannelTypeControl, maxControlChannel, 0)
-
-	return result
-}
-
-type UnderlayHandlerSdkChannel interface {
-	SdkChannel
-	channel.UnderlayHandler
-}
-
-type SdkChannel interface {
-	GetChannel() channel.Channel
-	GetDefaultSender() channel.Sender
-	GetControlSender() channel.Sender
-}
-
-type DialSdkChannel struct {
-	BaseSdkChannel
-	dialer           channel.DialUnderlayFactory
-	constraints      channel.UnderlayConstraints
-	rateLimitedDials atomic.Uint32
-}
-
-func (self *DialSdkChannel) Start(channel channel.MultiChannel) {
-	self.constraints.Apply(channel, self)
-}
-
-func (self *DialSdkChannel) HandleUnderlayClose(ch channel.MultiChannel, underlay channel.Underlay) {
+// UnderlayRemoved implements channel.UnderlayEventListener.
+func (self *BaseSdkChannel) UnderlayRemoved(ch channel.Channel, underlay channel.Underlay) {
+	self.UpdateCtrlChannelAvailable(ch)
 	pfxlog.Logger().
 		WithField("id", ch.Label()).
 		WithField("underlays", ch.GetUnderlayCountsByType()).
 		WithField("underlayType", channel.GetUnderlayType(underlay)).
 		Info("underlay closed")
-	self.UpdateCtrlChannelAvailable(ch)
-	self.constraints.Apply(ch, self)
 }
 
-func (self *DialSdkChannel) DialFailed(_ channel.MultiChannel, _ string, attempt int) {
-	delay := 2 * time.Duration(attempt) * time.Second
-	if delay > time.Minute {
-		delay = time.Minute
-	}
-	time.Sleep(delay)
+func (self *BaseSdkChannel) UpdateCtrlChannelAvailable(ch channel.Channel) {
+	self.controlChannelAvailable.Store(ch.GetUnderlayCountsByType()[ChannelTypeControl] > 0)
 }
 
-func (self *DialSdkChannel) CreateGroupedUnderlay(groupId string, groupSecret []byte, underlayType string, timeout time.Duration) (channel.Underlay, error) {
-	log := pfxlog.Logger().WithField("conn", self.ch.Label()).WithField("underlayType", underlayType)
-
-	dialElapsed := time.Since(self.constraints.LastDialTime())
-
-	limit := time.Duration(max(1, min(self.rateLimitedDials.Load(), 20))) * (250 * time.Millisecond)
-	if dialElapsed < limit {
-		delay := limit - dialElapsed
-		log.Infof("slowing dials, waiting %s", delay.String())
-		time.Sleep(delay)
-
-		// ensure we're valid before we dial, since we just slept
-		if !self.constraints.CheckStateValid(self.ch, true) {
-			return nil, channel.ClosedError{}
-		}
-
-		self.rateLimitedDials.Add(1)
-	} else {
-		self.rateLimitedDials.Store(0)
+// NewDialSdkChannel creates the dial-side grouped edge channel. The hand-rolled dial,
+// grouping and backoff machinery from v4 is replaced by a channel.BackoffDialPolicy plus
+// declarative constraints; the default underlay keeps Min: 1 so losing it closes the
+// channel rather than recovering from zero.
+func NewDialSdkChannel(dialer channel.DialUnderlayFactory, maxDefaultChannels, maxControlChannel int) *DialSdkChannel {
+	result := &DialSdkChannel{
+		BaseSdkChannel: NewBaseSdkChannel(),
 	}
 
-	return self.dialer.CreateWithHeaders(timeout, map[int32][]byte{
-		channel.TypeHeader:         []byte(underlayType),
-		channel.ConnectionIdHeader: []byte(groupId),
-		channel.GroupSecretHeader:  groupSecret,
-		channel.IsGroupedHeader:    {1},
-	})
+	backoffConfig := channel.DefaultBackoffConfig
+	backoffConfig.MinDialInterval = 250 * time.Millisecond
+	result.dialPolicy = channel.NewBackoffDialPolicyWithConfig(dialer, backoffConfig)
+
+	result.constraints = map[string]channel.UnderlayConstraint{
+		ChannelTypeDefault: {Desired: maxDefaultChannels, Min: 1},
+		ChannelTypeControl: {Desired: maxControlChannel, Min: 0},
+	}
+
+	return result
+}
+
+type DialSdkChannel struct {
+	*BaseSdkChannel
+	dialPolicy  channel.DialPolicy
+	constraints map[string]channel.UnderlayConstraint
+}
+
+func (self *DialSdkChannel) GetDialPolicy() channel.DialPolicy {
+	return self.dialPolicy
+}
+
+func (self *DialSdkChannel) GetConstraints() map[string]channel.UnderlayConstraint {
+	return self.constraints
 }
 
 func NewSingleSdkChannel(ch channel.Channel) SdkChannel {
@@ -224,7 +209,8 @@ type SingleSdkChannel struct {
 	ch channel.Channel
 }
 
-func (self *SingleSdkChannel) InitChannel(channel.MultiChannel) {
+func (self *SingleSdkChannel) InitChannel(ch channel.Channel) {
+	self.ch = ch
 }
 
 func (self *SingleSdkChannel) GetChannel() channel.Channel {

@@ -22,7 +22,7 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/foundation/v2/uuidz"
 	"github.com/pkg/errors"

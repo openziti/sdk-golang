@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
@@ -90,10 +90,12 @@ func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspect
 }
 
 func (conn *routerConn) BindChannel(binding channel.Binding) error {
-	if multiChannel, ok := binding.GetChannel().(channel.MultiChannel); ok {
-		conn.ch = multiChannel.GetUnderlayHandler().(edge.SdkChannel)
+	ch := binding.GetChannel()
+	if sdkChan, ok := ch.GetSenders().(edge.SdkChannel); ok {
+		sdkChan.InitChannel(ch)
+		conn.ch = sdkChan
 	} else {
-		conn.ch = edge.NewSingleSdkChannel(binding.GetChannel())
+		conn.ch = edge.NewSingleSdkChannel(ch)
 	}
 
 	binding.AddReceiveHandlerF(edge.ContentTypeDial, conn.mux.HandleReceive)

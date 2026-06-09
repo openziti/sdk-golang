@@ -21,15 +21,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"testing"
+	"time"
+
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/metrics"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"io"
-	"testing"
-	"time"
 )
 
 func newTestXgConn(bufferSize int, targetSends uint32, targetReceives uint32) *testXgConn {

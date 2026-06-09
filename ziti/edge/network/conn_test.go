@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
@@ -255,4 +255,12 @@ func (ch *NoopTestChannel) IsClosed() bool {
 
 func (ch *NoopTestChannel) GetTimeSinceLastRead() time.Duration {
 	return 0
+}
+
+func (ch *NoopTestChannel) AcceptUnderlay(channel.Underlay) error {
+	return nil
+}
+
+func (ch *NoopTestChannel) GetSenders() channel.Senders {
+	return nil
 }

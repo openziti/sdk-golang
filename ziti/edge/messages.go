@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/stringz"
 	"github.com/openziti/foundation/v2/uuidz"
