@@ -43,6 +43,7 @@ const (
 // controller is the running controller-only quickstart child process.
 type controller struct {
 	cmd      *exec.Cmd
+	port     int
 	hostPort string
 	logPath  string
 }
@@ -84,6 +85,7 @@ func startController(cli *ziticli.Cli, home string) (*controller, error) {
 
 	return &controller{
 		cmd:      cmd,
+		port:     port,
 		hostPort: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
 		logPath:  logPath,
 	}, nil
@@ -164,23 +166,28 @@ func (c *controller) retryCliUntil(ctx context.Context, deadline time.Time, op f
 	return lastErr
 }
 
-// stop terminates the controller process: SIGTERM, then SIGKILL after a grace
-// period.
+// stop terminates the controller process.
 func (c *controller) stop() {
-	if c.cmd.Process == nil {
+	stopProcess(c.cmd)
+}
+
+// stopProcess terminates a harness-owned child process: SIGTERM, then SIGKILL
+// after a grace period.
+func stopProcess(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	_ = c.cmd.Process.Signal(os.Interrupt)
+	_ = cmd.Process.Signal(os.Interrupt)
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = c.cmd.Process.Wait()
+		_, _ = cmd.Process.Wait()
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(processStopGrace):
-		_ = c.cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		<-done
 	}
 }
