@@ -1,0 +1,25 @@
+# Version matrix for the SDK acceptance suite.
+#
+# ZITI_ACCEPTANCE_VERSION selects what the suite runs against. It is a bare
+# commit-ish or label (no commit:/branch: prefixes):
+#   - a label below (active-lts, maint-lts) or the built-in "latest" -> download a
+#     release binary;
+#   - a release version (e.g. v1.6.17)                               -> download;
+#   - any other ref (a branch like connect-v2 or main, a tag, a SHA) -> build from
+#     source.
+#
+# "latest" resolves dynamically to the highest published semver release
+# (drafts/prereleases excluded). Each label value below is either a concrete tag
+# (e.g. v1.6.17) or a vM.m.x minor wildcard (e.g. v2.0.x = highest released patch of
+# that minor). Wildcards resolve via the GitHub releases API; the resolved concrete
+# tag is what gets cached and logged.
+#
+# Supported floor is 1.6: pre-1.0 is unsupported, pre-1.6 is not tested here.
+# maint-lts = the 1.6.x line, active-lts = the 2.0.x line, latest = 2.1+ (non-LTS).
+labels:
+  active-lts: v2.0.x   # highest 2.0 patch (minor wildcard)
+  maint-lts: v1.6.17   # pinned concrete tag
+
+source:
+  org: openziti
+  repo: ziti
