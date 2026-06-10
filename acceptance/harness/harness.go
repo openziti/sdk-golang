@@ -53,7 +53,7 @@ func StartShared() (*Harness, func(), error) {
 		selector = "latest"
 	}
 
-	cfgPath, err := findVersionsYAML()
+	cfgPath, err := acquire.FindVersionsFile()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -145,22 +145,3 @@ func (h *Harness) ControllerHostPort() string {
 	return h.ctrl.hostPort
 }
 
-// findVersionsYAML walks up from the working directory to locate the acceptance
-// module's versions.yaml, so tests in any package of the module find it.
-func findVersionsYAML() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		candidate := filepath.Join(dir, "versions.yaml")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("versions.yaml not found walking up from working directory")
-		}
-		dir = parent
-	}
-}

@@ -24,6 +24,7 @@ package acquire
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,6 +40,26 @@ type Source struct {
 type Versions struct {
 	Labels map[string]string `yaml:"labels"`
 	Source Source            `yaml:"source"`
+}
+
+// FindVersionsFile walks up from the working directory to locate the acceptance
+// module's versions.yaml, so any package or command in the module finds it.
+func FindVersionsFile() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(dir, "versions.yaml")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("versions.yaml not found walking up from working directory")
+		}
+		dir = parent
+	}
 }
 
 // LoadVersions reads and validates versions.yaml from path. It rejects unknown
