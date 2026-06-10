@@ -722,3 +722,10 @@ access error.
   `Context.Inspect()`; if it does not distinguish V1 from V2, add it there and/or on a
   circuit event (task #2). Mechanism decided at implementation; #2's fail-on-mismatch
   requirement is fixed regardless.
+- Promote `internal/acquire` to a sibling nested module (`sdk-golang/acquire`, its own
+  `acquire/vX.Y.Z` tag line, independent of the SDK's tags) once its API has been
+  proven by the harness and source-build phases, so ziti/zititest can consume it:
+  it would replace stageziti's GH-release fetch core for the ziti binary (adding the
+  caching and source-build getziti lacks) while stageziti keeps fablab-specific
+  staging and the other apps (zrok, caddy, ziti-edge-tunnel). Hard rule until then:
+  `acquire` imports no SDK packages, so the extraction stays mechanical.
