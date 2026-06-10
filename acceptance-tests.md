@@ -722,6 +722,14 @@ access error.
   `Context.Inspect()`; if it does not distinguish V1 from V2, add it there and/or on a
   circuit event (task #2). Mechanism decided at implementation; #2's fail-on-mismatch
   requirement is fixed regardless.
+- Once ziti PR #3962 merges (adds `lts-versions.json` at the ziti repo root, e.g.
+  `{"active": "2.0", "maintenance": "1.6"}`, with selector names matching ours),
+  switch our label *source* to that manifest: fetch it from openziti/ziti, map
+  `active`/`maintenance` to `vM.m.x` wildcards, and resolve through our existing
+  resolver. `versions.yaml` keeps `source` org/repo and optional label overrides. We
+  consume their manifest, not the setup-cli action's resolution logic; ours stays
+  semver-sorted, filtered, and paginated. Label mutability is fine -- resolution still
+  pins to an immutable tag before caching.
 - Promote `internal/acquire` to a sibling nested module (`sdk-golang/acquire`, its own
   `acquire/vX.Y.Z` tag line, independent of the SDK's tags) once its API has been
   proven by the harness and source-build phases, so ziti/zititest can consume it:
