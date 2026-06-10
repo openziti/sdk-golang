@@ -40,3 +40,22 @@ func Test_ControllerBringUp(t *testing.T) {
 	require.Contains(t, strings.ToLower(out), "admin")
 	require.Contains(t, out, "results: 1-")
 }
+
+// Test_SdkAuthenticate is the first exercise of the SDK under test against the
+// versioned controller: CLI-created and CLI-enrolled identity -> ziti.NewContext ->
+// authenticate -> service list and current-identity round trip.
+func Test_SdkAuthenticate(t *testing.T) {
+	h := Start(t)
+
+	id := h.CreateIdentity(t, "client")
+	ctx := h.NewSdkContext(t, id)
+
+	services, err := ctx.GetServices()
+	require.NoError(t, err)
+	require.Empty(t, services, "no policies grant this identity any services")
+
+	current, err := ctx.GetCurrentIdentity()
+	require.NoError(t, err)
+	require.NotNil(t, current.Name)
+	require.Equal(t, id.Name(), *current.Name)
+}
