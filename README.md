@@ -39,6 +39,8 @@ to be aware of.
 - [`ziti`](ziti) - the main SDK package that will be included in your project
 - [`edge-apis`](edge-apis) - provides low-level abstractions for authenticating and accessing
   the [Ziti Edge Client and Management APIs]((https://openziti.io/docs/reference/developer/api))
+- [`acceptance`](acceptance) - acceptance tests that run this SDK against real OpenZiti controllers
+  and routers across multiple versions; see its [README](acceptance/README.md) for how to run them
 - [`example`](example) - various example applications that illustrate different uses of the SDK. Each example contains its own
   README.md.
     - [`chat`](example/chat) - a bare-bones example of a client and server for a chat program over an OpenZiti Service
