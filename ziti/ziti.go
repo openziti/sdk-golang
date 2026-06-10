@@ -638,7 +638,7 @@ func (context *ContextImpl) AddControllerUrlsUpdateListener(handler func(Context
 	context.AddListener(EventControllerUrlsUpdated, listener)
 
 	return func() {
-		context.RemoveListener(EventAuthenticationStateUnauthenticated, listener)
+		context.RemoveListener(EventControllerUrlsUpdated, listener)
 	}
 }
 
