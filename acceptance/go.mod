@@ -3,6 +3,8 @@ module github.com/openziti/sdk-golang/acceptance
 go 1.25.0
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/openziti/edge-api v0.31.0
 	github.com/openziti/sdk-golang v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/mod v0.37.0
@@ -10,6 +12,7 @@ require (
 )
 
 require (
+	github.com/Jeffail/gabs v1.4.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -45,7 +48,6 @@ require (
 	github.com/go-openapi/validate v0.25.2 // indirect
 	github.com/go-resty/resty/v2 v2.17.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
@@ -61,7 +63,6 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/openziti/channel/v4 v4.3.11 // indirect
-	github.com/openziti/edge-api v0.31.0 // indirect
 	github.com/openziti/foundation/v2 v2.0.91 // indirect
 	github.com/openziti/identity v1.0.129 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect

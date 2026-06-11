@@ -50,34 +50,48 @@ func (r *Router) Name() string {
 }
 
 // AddRouter creates, enrolls, and runs an additional edge router as its own child
-// process, per the separate-process contract. It follows the version-stable CLI
-// sequence (create edge-router -> create config router edge -> router enroll ->
-// router run), with each step executed by the version under test so the config
-// stays version-correct. The router is uniquely named, carries a role attribute
-// equal to its name for targeted policies, and is gated on both TCP-listening and
-// controller-reported online before returning.
+// process, uniquely named per the isolation contract, registering stop and
+// best-effort entity deletion with t.
 func (h *Harness) AddRouter(t testing.TB, base string) *Router {
 	t.Helper()
 	name := uniqueName(t, base)
+	r, err := h.addRouter(name)
+	if err != nil {
+		t.Fatalf("adding router %s: %v", name, err)
+	}
+	t.Cleanup(func() {
+		r.stopProcess()
+		_, _ = h.cli.Run(context.Background(), "edge", "delete", "edge-router", name)
+	})
+	return r
+}
 
+// addRouter creates, enrolls, and runs an edge router as its own child process,
+// per the separate-process contract. It follows the version-stable CLI sequence
+// (create edge-router -> create config router edge -> router enroll -> router
+// run), with each step executed by the version under test so the config stays
+// version-correct. The router carries a role attribute equal to its name for
+// targeted policies, and is gated on both TCP-listening and controller-reported
+// online before returning. The caller owns the router's lifecycle.
+func (h *Harness) addRouter(name string) (*Router, error) {
 	routerDir := filepath.Join(h.home, "routers", name)
 	if err := os.MkdirAll(routerDir, 0o700); err != nil {
-		t.Fatalf("creating router dir: %v", err)
+		return nil, fmt.Errorf("creating router dir: %w", err)
 	}
 	jwtPath := filepath.Join(routerDir, name+".jwt")
 	configPath := filepath.Join(routerDir, name+".yaml")
 
-	h.Cli(t, "edge", "create", "edge-router", name,
+	ctx := context.Background()
+	if _, err := h.cli.Run(ctx, "edge", "create", "edge-router", name,
 		"--jwt-output-file", jwtPath,
 		"--tunneler-enabled",
-		"--role-attributes", name)
-	t.Cleanup(func() {
-		_, _ = h.cli.Run(context.Background(), "edge", "delete", "edge-router", name)
-	})
+		"--role-attributes", name); err != nil {
+		return nil, err
+	}
 
 	port, err := freePort()
 	if err != nil {
-		t.Fatalf("%v", err)
+		return nil, err
 	}
 
 	// the config generators read these; ZITI_HOME keeps the router's identity
@@ -91,13 +105,12 @@ func (h *Harness) AddRouter(t testing.TB, base string) *Router {
 		"ZITI_ROUTER_LISTENER_BIND_PORT="+strconv.Itoa(port),
 	)
 
-	ctx := context.Background()
 	if _, err := rcli.Run(ctx, "create", "config", "router", "edge",
 		"--routerName", name, "--output", configPath); err != nil {
-		t.Fatalf("generating router config: %v", err)
+		return nil, fmt.Errorf("generating router config: %w", err)
 	}
 	if _, err := rcli.Run(ctx, "router", "enroll", configPath, "--jwt", jwtPath); err != nil {
-		t.Fatalf("enrolling router: %v", err)
+		return nil, fmt.Errorf("enrolling router: %w", err)
 	}
 
 	r := &Router{
@@ -107,35 +120,41 @@ func (h *Harness) AddRouter(t testing.TB, base string) *Router {
 		logPath:    filepath.Join(routerDir, name+".log"),
 		cli:        rcli,
 	}
-	t.Cleanup(r.stopProcess)
-
-	r.Start(t)
-	return r
+	if err := r.start(); err != nil {
+		r.stopProcess()
+		return nil, err
+	}
+	return r, nil
 }
 
-// Start launches (or relaunches) the router process and waits for it to be both
-// TCP-listening and reported online by the controller. Config and enrollment
-// persist across restarts, so Stop/Start cycles need no re-enrollment.
+// Start relaunches the router process and waits for it to be ready again, e.g.
+// after a Stop in a failover test.
 func (r *Router) Start(t testing.TB) {
 	t.Helper()
+	if err := r.start(); err != nil {
+		t.Fatalf("router %s: %v", r.name, err)
+	}
+}
 
+// start launches the router process and waits for it to be both TCP-listening and
+// reported online by the controller. Config and enrollment persist across
+// restarts, so Stop/start cycles need no re-enrollment.
+func (r *Router) start() error {
 	logFile, err := os.OpenFile(r.logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		t.Fatalf("opening router log: %v", err)
+		return fmt.Errorf("opening router log: %w", err)
 	}
 	cmd := r.cli.Command(context.Background(), "router", "run", r.configPath)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
-		t.Fatalf("starting router %s: %v", r.name, err)
+		return fmt.Errorf("starting router process: %w", err)
 	}
 	_ = logFile.Close()
 	r.cmd = cmd
 
-	if err := r.awaitReady(); err != nil {
-		t.Fatalf("router %s: %v", r.name, err)
-	}
+	return r.awaitReady()
 }
 
 // Stop kills the router process, e.g. to exercise SDK reconnect/failover.

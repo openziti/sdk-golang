@@ -16,24 +16,44 @@
 
 //go:build acceptance
 
-package harness
+package tests
 
 import (
 	"io"
 	"testing"
-	"time"
 
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti"
 	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 
-// Test_DialHostEcho is the data-plane smoke: a separate-process router, targeted
-// policies, the SDK under test hosting a service and dialing it, with the echo
-// exercising half-close (CloseWrite) and EOF propagation in both directions.
+// Test_SdkAuthenticate exercises the SDK against the shared versioned controller:
+// CLI-created and CLI-enrolled identity -> ziti.NewContext -> authenticate ->
+// service list and current-identity round trip.
+func Test_SdkAuthenticate(t *testing.T) {
+	h := shared
+
+	id := h.CreateIdentity(t, "client")
+	ctx := h.NewSdkContext(t, id)
+
+	services, err := ctx.GetServices()
+	require.NoError(t, err)
+	require.Empty(t, services, "no policies grant this identity any services")
+
+	current, err := ctx.GetCurrentIdentity()
+	require.NoError(t, err)
+	require.NotNil(t, current.Name)
+	require.Equal(t, id.Name(), *current.Name)
+}
+
+// Test_DialHostEcho is the data-plane smoke (P0 #1): targeted policies, the SDK
+// under test hosting a service and dialing it through the shared router, with the
+// echo exercising half-close (CloseWrite) and EOF propagation in both directions,
+// and the dial event asserting the negotiated protocol.
 func Test_DialHostEcho(t *testing.T) {
-	h := Start(t)
-	r := h.AddRouter(t, "r1")
+	h := shared
+	r := h.DefaultRouter()
 
 	hostID := h.CreateIdentity(t, "host")
 	clientID := h.CreateIdentity(t, "client")
@@ -48,28 +68,12 @@ func Test_DialHostEcho(t *testing.T) {
 	hostCtx := h.NewSdkContext(t, hostID)
 	clientCtx := h.NewSdkContext(t, clientID)
 
-	listener, err := hostCtx.ListenWithOptions(svc.Name(), &ziti.ListenOptions{
-		WaitForNEstablishedListeners: 1,
-		ConnectTimeout:               30 * time.Second,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
+	// discovery content (P0 #1): each identity sees the service with exactly
+	// the permissions its policy grants, and lookup by name works
+	requireServicePermissions(t, hostCtx, svc.Name(), rest_model.DialBindBind)
+	requireServicePermissions(t, clientCtx, svc.Name(), rest_model.DialBindDial)
 
-	// echo server: read until the client's half-close EOF, write everything
-	// back, then close, so the client sees its bytes and then EOF
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			go func() {
-				data, _ := io.ReadAll(conn)
-				_, _ = conn.Write(data)
-				_ = conn.Close()
-			}()
-		}
-	}()
+	startEchoServer(t, hostCtx, svc.Name())
 
 	// dial events are emitted synchronously on the dialing goroutine, so the
 	// captured slice is safe to read once the dial returns
@@ -95,7 +99,7 @@ func Test_DialHostEcho(t *testing.T) {
 	require.NotEmpty(t, last.CircuitId)
 
 	msg := []byte("hello acceptance")
-	_, err = conn.Write(msg)
+	_, err := conn.Write(msg)
 	require.NoError(t, err)
 	require.NoError(t, conn.CloseWrite(), "half-close the send side")
 
@@ -104,21 +108,27 @@ func Test_DialHostEcho(t *testing.T) {
 	require.Equal(t, msg, echoed)
 }
 
-// dialWithRetry performs the first dial after bring-up with a bounded retry, per
-// the design: TCP/online readiness can precede full dial readiness (terminator and
-// policy propagation), so the first dial must not assert on a single attempt.
-func dialWithRetry(t testing.TB, ctx ziti.Context, service string) edge.Conn {
+// requireServicePermissions asserts the context's service list contains the named
+// service with exactly the given permissions, and that lookup by name agrees.
+func requireServicePermissions(t testing.TB, ctx ziti.Context, serviceName string, perms ...rest_model.DialBind) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	var lastErr error
-	for time.Now().Before(deadline) {
-		conn, err := ctx.Dial(service)
-		if err == nil {
-			return conn
+
+	services, err := ctx.GetServices()
+	require.NoError(t, err)
+
+	var found *rest_model.ServiceDetail
+	for i := range services {
+		if services[i].Name != nil && *services[i].Name == serviceName {
+			found = &services[i]
+			break
 		}
-		lastErr = err
-		time.Sleep(time.Second)
 	}
-	t.Fatalf("dialing %s never succeeded: %v", service, lastErr)
-	return nil
+	require.NotNil(t, found, "service %s must appear in GetServices", serviceName)
+	require.ElementsMatch(t, perms, []rest_model.DialBind(found.Permissions),
+		"service %s permissions", serviceName)
+
+	byName, ok := ctx.GetService(serviceName)
+	require.True(t, ok, "GetService(%s) must find the service", serviceName)
+	require.Equal(t, *found.ID, *byName.ID)
 }
+

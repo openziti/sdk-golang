@@ -34,19 +34,20 @@ import (
 // VersionEnv selects the ziti version under test. Empty means "latest".
 const VersionEnv = "ZITI_ACCEPTANCE_VERSION"
 
-// Harness is a running acceptance environment: a controller (and, in later phases,
-// the routers a test asks for), all separate child processes, with admin access for
-// setup.
+// Harness is a running acceptance environment: a controller, the default edge
+// router, and any routers a test adds, all separate child processes, with admin
+// access for setup.
 type Harness struct {
-	home    string
-	version Version
-	cli     *ziticli.Cli
-	ctrl    *controller
+	home          string
+	version       Version
+	cli           *ziticli.Cli
+	ctrl          *controller
+	defaultRouter *Router
 }
 
-// StartShared brings up the environment for the whole test package, for use from
-// TestMain. It is not bound to a *testing.T; the caller runs the returned teardown
-// after m.Run().
+// StartShared brings up the default topology (one controller, one edge router) for
+// the whole test package, for use from TestMain. It is not bound to a *testing.T;
+// the caller runs the returned teardown after m.Run().
 func StartShared() (*Harness, func(), error) {
 	selector := os.Getenv(VersionEnv)
 	if selector == "" {
@@ -93,6 +94,9 @@ func StartShared() (*Harness, func(), error) {
 
 	h := &Harness{home: home, version: version, cli: cli, ctrl: ctrl}
 	teardown := func() {
+		if h.defaultRouter != nil {
+			h.defaultRouter.stopProcess()
+		}
 		ctrl.stop()
 		_ = os.RemoveAll(home)
 	}
@@ -101,7 +105,23 @@ func StartShared() (*Harness, func(), error) {
 		teardown()
 		return nil, nil, err
 	}
+
+	// the default topology includes one edge router; tests that need more add
+	// their own, and lifecycle tests bring up their own environment
+	r, err := h.addRouter("edge1")
+	if err != nil {
+		teardown()
+		return nil, nil, fmt.Errorf("starting default router: %w", err)
+	}
+	h.defaultRouter = r
+
 	return h, teardown, nil
+}
+
+// DefaultRouter returns the environment's shared edge router. Tests must not
+// stop or restart it; lifecycle tests use their own environment and routers.
+func (h *Harness) DefaultRouter() *Router {
+	return h.defaultRouter
 }
 
 // Start brings up an environment scoped to a single test, registering teardown

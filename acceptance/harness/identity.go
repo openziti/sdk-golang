@@ -51,6 +51,23 @@ func (i *Identity) ConfigPath() string {
 // identity for use in targeted policies.
 func (h *Harness) CreateIdentity(t testing.TB, name string, roleAttributes ...string) *Identity {
 	t.Helper()
+	unique, jwtPath := h.createUnenrolledIdentity(t, name, roleAttributes)
+
+	jsonPath := strings.TrimSuffix(jwtPath, ".jwt") + ".json"
+	h.Cli(t, "edge", "enroll", jwtPath, "--out", jsonPath)
+	return &Identity{name: unique, jsonPath: jsonPath}
+}
+
+// CreateUnenrolledIdentity creates an identity via the versioned CLI and returns
+// its unique name and enrollment JWT path without enrolling it, for the test that
+// exercises the SDK's own enrollment.
+func (h *Harness) CreateUnenrolledIdentity(t testing.TB, name string, roleAttributes ...string) (string, string) {
+	t.Helper()
+	return h.createUnenrolledIdentity(t, name, roleAttributes)
+}
+
+func (h *Harness) createUnenrolledIdentity(t testing.TB, name string, roleAttributes []string) (string, string) {
+	t.Helper()
 	unique := uniqueName(t, name)
 
 	idDir := filepath.Join(h.home, "identities")
@@ -58,7 +75,6 @@ func (h *Harness) CreateIdentity(t testing.TB, name string, roleAttributes ...st
 		t.Fatalf("creating identities dir: %v", err)
 	}
 	jwtPath := filepath.Join(idDir, unique+".jwt")
-	jsonPath := filepath.Join(idDir, unique+".json")
 
 	args := []string{"edge", "create", "identity", unique, "--jwt-output-file", jwtPath}
 	if len(roleAttributes) > 0 {
@@ -69,9 +85,7 @@ func (h *Harness) CreateIdentity(t testing.TB, name string, roleAttributes ...st
 		// best-effort; the whole environment is discarded at teardown regardless
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "identity", unique)
 	})
-
-	h.Cli(t, "edge", "enroll", jwtPath, "--out", jsonPath)
-	return &Identity{name: unique, jsonPath: jsonPath}
+	return unique, jwtPath
 }
 
 var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)

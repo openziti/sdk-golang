@@ -19,6 +19,7 @@ package harness
 import (
 	"testing"
 
+	edgeApis "github.com/openziti/sdk-golang/edge-apis"
 	"github.com/openziti/sdk-golang/ziti"
 )
 
@@ -27,6 +28,18 @@ import (
 // The identity was enrolled by the versioned CLI, so test setup never depends on
 // the SDK's own enrollment; that flow has its own dedicated test.
 func (h *Harness) NewSdkContext(t testing.TB, id *Identity) ziti.Context {
+	t.Helper()
+	return h.newSdkContext(t, id, false)
+}
+
+// NewLegacySdkContext is NewSdkContext with OIDC disabled, forcing the legacy
+// authentication path, for tests exercising the legacy/OIDC split.
+func (h *Harness) NewLegacySdkContext(t testing.TB, id *Identity) ziti.Context {
+	t.Helper()
+	return h.newSdkContext(t, id, true)
+}
+
+func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) ziti.Context {
 	t.Helper()
 
 	cfg, err := ziti.NewConfigFromFile(id.ConfigPath())
@@ -40,8 +53,25 @@ func (h *Harness) NewSdkContext(t testing.TB, id *Identity) ziti.Context {
 	}
 	t.Cleanup(ctx.Close)
 
+	if forceLegacy {
+		impl := ctx.(*ziti.ContextImpl)
+		impl.CtrlClt.SetAllowOidcDynamicallyEnabled(false)
+		impl.CtrlClt.SetUseOidc(false)
+	}
+
 	if err := ctx.Authenticate(); err != nil {
 		t.Fatalf("authenticating %s: %v", id.Name(), err)
 	}
 	return ctx
+}
+
+// ApiSessionType reports the type (legacy vs oidc) of the context's current API
+// session.
+func ApiSessionType(t testing.TB, ctx ziti.Context) edgeApis.ApiSessionType {
+	t.Helper()
+	apiSession := ctx.(*ziti.ContextImpl).CtrlClt.GetCurrentApiSession()
+	if apiSession == nil {
+		t.Fatal("context has no current api session")
+	}
+	return apiSession.GetType()
 }

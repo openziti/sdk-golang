@@ -27,7 +27,8 @@ import (
 
 // Test_ControllerBringUp is the per-version bootstrap contract check: the selected
 // ziti binary's `quickstart --no-router` must yield an admin-usable, controller-only
-// process. Run with -tags acceptance; ZITI_ACCEPTANCE_VERSION selects the version.
+// process, and the default topology's router must enroll and come online. Run with
+// -tags acceptance; ZITI_ACCEPTANCE_VERSION selects the version.
 func Test_ControllerBringUp(t *testing.T) {
 	h := Start(t)
 
@@ -39,23 +40,7 @@ func Test_ControllerBringUp(t *testing.T) {
 	out := h.Cli(t, "edge", "list", "identities")
 	require.Contains(t, strings.ToLower(out), "admin")
 	require.Contains(t, out, "results: 1-")
-}
 
-// Test_SdkAuthenticate is the first exercise of the SDK under test against the
-// versioned controller: CLI-created and CLI-enrolled identity -> ziti.NewContext ->
-// authenticate -> service list and current-identity round trip.
-func Test_SdkAuthenticate(t *testing.T) {
-	h := Start(t)
-
-	id := h.CreateIdentity(t, "client")
-	ctx := h.NewSdkContext(t, id)
-
-	services, err := ctx.GetServices()
-	require.NoError(t, err)
-	require.Empty(t, services, "no policies grant this identity any services")
-
-	current, err := ctx.GetCurrentIdentity()
-	require.NoError(t, err)
-	require.NotNil(t, current.Name)
-	require.Equal(t, id.Name(), *current.Name)
+	// the default topology's edge router must come up and report online
+	require.NotNil(t, h.DefaultRouter())
 }
