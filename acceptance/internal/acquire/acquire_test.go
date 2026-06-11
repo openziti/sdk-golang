@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -130,6 +132,97 @@ func TestAcquireGitRefNotYetSupported(t *testing.T) {
 	rs := newReleaseServer(t)
 	_, _, err := acquireFor(context.Background(), "connect-v2", testCfg(), rs.source(), t.TempDir(), "linux", "amd64")
 	require.ErrorIs(t, err, ErrBuildFromSource)
+}
+
+// erroringSource fails every API operation, proving a code path makes no API
+// calls at all.
+type erroringSource struct{}
+
+func (erroringSource) List(context.Context) ([]Release, error) {
+	return nil, errors.New("unexpected API call: List")
+}
+func (erroringSource) FindRelease(context.Context, string) (*ReleaseDetail, error) {
+	return nil, errors.New("unexpected API call: FindRelease")
+}
+func (erroringSource) Download(context.Context, string, io.Writer) error {
+	return errors.New("unexpected API call: Download")
+}
+
+// TestAcquirePinnedCachedSkipsAPI pins the rate-limit shortcut: a selector that
+// pins a concrete tag (an explicit version, or a label with a non-wildcard value)
+// must make zero API calls when the binary is already cached. Moving selectors
+// must still resolve.
+func TestAcquirePinnedCachedSkipsAPI(t *testing.T) {
+	req := require.New(t)
+	cfg := testCfg()
+	cacheDir := t.TempDir()
+	ctx := context.Background()
+
+	// pre-place cached binaries for the pinned tags
+	for _, tag := range []string{"v1.6.17", "v2.0.7"} {
+		req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, tag), []byte(fakeBinaryContent), 0o755))
+	}
+
+	// explicit version: cache hit, no API
+	path, id, err := acquireFor(ctx, "v2.0.7", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	req.NoError(err)
+	req.Equal("v2.0.7", id.Tag)
+	req.Equal(cachedBinaryPath(cacheDir, "v2.0.7"), path)
+
+	// pinned label (maint-lts -> v1.6.17): cache hit, no API
+	path, id, err = acquireFor(ctx, "maint-lts", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	req.NoError(err)
+	req.Equal("v1.6.17", id.Tag)
+	req.Equal(cachedBinaryPath(cacheDir, "v1.6.17"), path)
+
+	// moving selectors must still resolve, even with a full cache
+	_, _, err = acquireFor(ctx, "latest", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	req.ErrorContains(err, "unexpected API call")
+	_, _, err = acquireFor(ctx, "active-lts", cfg, erroringSource{}, cacheDir, "linux", "amd64") // v2.0.x wildcard
+	req.ErrorContains(err, "unexpected API call")
+
+	// a pinned tag with a cold cache must verify via the API
+	_, _, err = acquireFor(ctx, "v9.9.9", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	req.ErrorContains(err, "unexpected API call")
+}
+
+// TestZitiMemoized pins the process-wide memo: the second acquisition for a
+// selector must not touch the API, and failures must not be cached.
+func TestZitiMemoized(t *testing.T) {
+	req := require.New(t)
+	t.Cleanup(resetAcquireMemo)
+	resetAcquireMemo()
+
+	rs := newReleaseServer(t)
+	cacheDir := t.TempDir()
+	ctx := context.Background()
+	cfg := testCfg()
+
+	// a failure is not cached: a later call retries
+	_, _, err := ZitiMemoized(ctx, "latest", cfg, erroringSource{}, cacheDir)
+	req.Error(err)
+
+	path, id, err := ZitiMemoized(ctx, "latest", cfg, rs.source(), cacheDir)
+	req.NoError(err)
+	req.Equal("v2.0.8", id.Tag)
+
+	// second call: memo hit, zero API calls even with an erroring source
+	path2, id2, err := ZitiMemoized(ctx, "latest", cfg, erroringSource{}, cacheDir)
+	req.NoError(err)
+	req.Equal(path, path2)
+	req.Equal(id, id2)
+}
+
+// TestRateLimitErrorIsDirected pins the 403 hint: a rate-limited response must
+// produce an error that names GITHUB_TOKEN as the fix.
+func TestRateLimitErrorIsDirected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"API rate limit exceeded for 1.2.3.4."}`))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := githubListerFor(srv).List(context.Background())
+	require.ErrorContains(t, err, "set GITHUB_TOKEN")
 }
 
 func TestSelectAsset(t *testing.T) {

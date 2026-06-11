@@ -42,7 +42,7 @@ func TestAcquireLive(t *testing.T) {
 	defer cancel()
 
 	src := NewGitHubReleaseSource(cfg.Source.Org, cfg.Source.Repo, os.Getenv("GITHUB_TOKEN"))
-	binPath, id, err := Acquire(ctx, "maint-lts", cfg, src, t.TempDir())
+	binPath, id, err := Ziti(ctx, "maint-lts", cfg, src, t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, cfg.Labels["maint-lts"], id.Tag)
 

@@ -69,7 +69,10 @@ func StartShared() (*Harness, func(), error) {
 
 	ctx := context.Background()
 	src := acquire.NewGitHubReleaseSource(cfg.Source.Org, cfg.Source.Repo, os.Getenv("GITHUB_TOKEN"))
-	binPath, id, err := acquire.Acquire(ctx, selector, cfg, src, cacheDir)
+	// memoized: a suite whose tests each start a harness resolves the selector
+	// once per process, keeping every test on the same version and off the
+	// GitHub API rate limit
+	binPath, id, err := acquire.ZitiMemoized(ctx, selector, cfg, src, cacheDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("acquiring ziti for selector %q: %w", selector, err)
 	}

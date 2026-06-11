@@ -22,22 +22,74 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 )
 
-// Acquire resolves selector to an immutable id and returns the path to a ziti
+// Ziti resolves selector to an immutable id and returns the path to a ziti
 // binary for it, downloading the release artifact on a cache miss. The cache is
 // keyed on the immutable id, so a moved mutable selector (a label or wildcard)
 // misses the cache rather than serving a stale binary. Git-ref selectors (built
 // from source) are not yet implemented and return ErrBuildFromSource.
-func Acquire(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
+func Ziti(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
 	return acquireFor(ctx, selector, cfg, src, cacheDir, runtime.GOOS, runtime.GOARCH)
 }
 
-// acquireFor is Acquire with the platform injected, so tests can pin it.
+// acquireMemo caches successful Ziti results per selector for the life of the
+// process, so a test suite whose tests each start a harness resolves each
+// selector once instead of re-querying the GitHub API per test. Failures are not
+// cached, so a transient error doesn't poison the process.
+var acquireMemo = struct {
+	sync.Mutex
+	bySelector map[string]memoEntry
+}{bySelector: map[string]memoEntry{}}
+
+type memoEntry struct {
+	binPath string
+	id      ResolvedID
+}
+
+// resetAcquireMemo clears the process-wide memo; for tests.
+func resetAcquireMemo() {
+	acquireMemo.Lock()
+	defer acquireMemo.Unlock()
+	acquireMemo.bySelector = map[string]memoEntry{}
+}
+
+// ZitiMemoized is Ziti with a process-wide, per-selector memo of successful
+// results. Within one process a moving selector (latest, a wildcard label) thus
+// resolves once, which also keeps every test in a suite on the same version. The
+// lock is held across a cache-miss download, so concurrent callers can't
+// duplicate work.
+func ZitiMemoized(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
+	acquireMemo.Lock()
+	defer acquireMemo.Unlock()
+
+	if entry, ok := acquireMemo.bySelector[selector]; ok {
+		return entry.binPath, entry.id, nil
+	}
+	binPath, id, err := Ziti(ctx, selector, cfg, src, cacheDir)
+	if err != nil {
+		return "", ResolvedID{}, err
+	}
+	acquireMemo.bySelector[selector] = memoEntry{binPath: binPath, id: id}
+	return binPath, id, nil
+}
+
+// acquireFor is Ziti with the platform injected, so tests can pin it.
 func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir, goos, goarch string) (string, ResolvedID, error) {
 	spec, err := ParseSpec(selector, cfg)
 	if err != nil {
 		return "", ResolvedID{}, err
+	}
+
+	// A selector that pins a concrete tag needs no API round trip when the
+	// binary is already cached: the cache entry is proof the release exists.
+	// Moving selectors (latest, wildcards) must still resolve.
+	if tag, pinned := pinnedTag(spec, cfg); pinned {
+		binPath := cachedBinaryPath(cacheDir, tag)
+		if _, statErr := os.Stat(binPath); statErr == nil {
+			return binPath, ResolvedID{Tag: tag}, nil
+		}
 	}
 
 	id, err := ResolveTag(ctx, spec, cfg, src)
@@ -64,6 +116,27 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 		return "", ResolvedID{}, err
 	}
 	return path, id, nil
+}
+
+// pinnedTag returns the concrete release tag a spec pins, if any: an explicit
+// release version, or a label whose versions.yaml value is a concrete tag rather
+// than a vM.m.x wildcard. The built-in latest label never pins.
+func pinnedTag(spec Spec, cfg Versions) (string, bool) {
+	switch spec.Kind {
+	case SpecReleaseVersion:
+		return spec.Raw, true
+	case SpecLabel:
+		if spec.Label == LabelLatest {
+			return "", false
+		}
+		val := cfg.Labels[spec.Label]
+		if val == "" || strings.HasSuffix(val, ".x") {
+			return "", false
+		}
+		return val, true
+	default:
+		return "", false
+	}
 }
 
 // downloadAndInstall downloads asset, extracts the ziti binary, and installs it

@@ -75,7 +75,11 @@ Downloaded (and, later, source-built) ziti binaries land in
 resolved version. Override the location with `ZITI_ACCEPTANCE_CACHE`. Deleting the
 directory is always safe; the next run re-downloads.
 
-`GITHUB_TOKEN`, if set, is used for GitHub API calls to avoid rate limits.
+`GITHUB_TOKEN`, if set, is used for GitHub API calls. Without it, GitHub's
+unauthenticated limit (60 requests/hour per IP) can bite after a few matrix runs;
+failures say so explicitly and name the fix. Version resolution is memoized per
+test process, and pinned versions already present in the binary cache skip the
+API entirely, so token-less use works for normal development.
 
 ## Opt-in live tests
 

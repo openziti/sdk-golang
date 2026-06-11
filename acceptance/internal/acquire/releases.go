@@ -22,8 +22,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
+
+// unexpectedStatus builds the error for a non-200 GitHub response, with a
+// directed hint when the unauthenticated rate limit (60 requests/hour) is the
+// cause, since that's the common local failure.
+func unexpectedStatus(op string, resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	err := fmt.Errorf("%s: unexpected status %s: %s", op, resp.Status, body)
+	if resp.StatusCode == http.StatusForbidden && strings.Contains(string(body), "rate limit") {
+		err = fmt.Errorf("%w (set GITHUB_TOKEN to raise the GitHub API rate limit)", err)
+	}
+	return err
+}
 
 // Release is a GitHub release reduced to what version resolution needs.
 type Release struct {
@@ -125,8 +138,7 @@ func (g *githubReleaseLister) FindRelease(ctx context.Context, tag string) (*Rel
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("fetching release %s: unexpected status %s: %s", tag, resp.Status, body)
+		return nil, unexpectedStatus(fmt.Sprintf("fetching release %s", tag), resp)
 	}
 
 	var rel ghRelease
@@ -149,7 +161,7 @@ func (g *githubReleaseLister) Download(ctx context.Context, url string, dst io.W
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading %s: unexpected status %s", url, resp.Status)
+		return unexpectedStatus(fmt.Sprintf("downloading %s", url), resp)
 	}
 	if _, err := io.Copy(dst, resp.Body); err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
@@ -179,8 +191,7 @@ func (g *githubReleaseLister) listPage(ctx context.Context, page int) ([]ghRelea
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("listing releases (page %d): unexpected status %s: %s", page, resp.Status, body)
+		return nil, unexpectedStatus(fmt.Sprintf("listing releases (page %d)", page), resp)
 	}
 
 	var batch []ghRelease
