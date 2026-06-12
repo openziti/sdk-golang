@@ -128,10 +128,20 @@ func TestAcquireDownloadsExtractsAndCaches(t *testing.T) {
 	require.Equal(t, int32(1), rs.downloads.Load(), "cache hit must not re-download")
 }
 
-func TestAcquireGitRefNotYetSupported(t *testing.T) {
-	rs := newReleaseServer(t)
-	_, _, err := acquireFor(context.Background(), "connect-v2", testCfg(), rs.source(), t.TempDir(), "linux", "amd64")
-	require.ErrorIs(t, err, ErrBuildFromSource)
+// TestAcquireGitRefShaCached pins the source-build cache path without touching
+// the network: a full SHA passes through resolution unchanged, so a cached
+// binary for it is returned with zero git or API calls.
+func TestAcquireGitRefShaCached(t *testing.T) {
+	req := require.New(t)
+	cacheDir := t.TempDir()
+	sha := "a1b2c3d4e5f60718293a4b5c6d7e8f9001122334"
+	req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, sha), []byte(fakeBinaryContent), 0o755))
+
+	path, id, err := acquireFor(context.Background(), sha, testCfg(), erroringSource{}, cacheDir, "linux", "amd64")
+	req.NoError(err)
+	req.True(id.SourceBuilt)
+	req.Equal(sha, id.Tag)
+	req.Equal(cachedBinaryPath(cacheDir, sha), path)
 }
 
 // erroringSource fails every API operation, proving a code path makes no API

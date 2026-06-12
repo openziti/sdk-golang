@@ -26,16 +26,17 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// ResolvedID is the immutable identity a download-kind spec resolves to: a concrete
-// release tag. (A git ref resolves to a commit SHA and builds from source; that path
-// arrives in a later phase.)
+// ResolvedID is the immutable identity a spec resolves to: a concrete release tag
+// for downloads, or a full commit SHA for source builds.
 type ResolvedID struct {
-	Tag string
+	Tag         string
+	SourceBuilt bool
 }
 
 // ErrBuildFromSource indicates the spec is a git ref that must be resolved to a
-// commit and built from source, which ResolveTag does not handle.
-var ErrBuildFromSource = errors.New("git ref selector builds from source (not yet implemented)")
+// commit and built from source, which ResolveTag does not handle; the acquisition
+// layer routes such specs to the source-build path instead.
+var ErrBuildFromSource = errors.New("git ref selector builds from source, not via release resolution")
 
 // ResolveTag resolves a download-kind spec (a label or release version) to a
 // concrete release tag, using lister for the dynamic cases. Drafts are always

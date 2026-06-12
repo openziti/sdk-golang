@@ -26,10 +26,11 @@ import (
 )
 
 // Ziti resolves selector to an immutable id and returns the path to a ziti
-// binary for it, downloading the release artifact on a cache miss. The cache is
-// keyed on the immutable id, so a moved mutable selector (a label or wildcard)
-// misses the cache rather than serving a stale binary. Git-ref selectors (built
-// from source) are not yet implemented and return ErrBuildFromSource.
+// binary for it: release selectors download the release artifact on a cache
+// miss, and git-ref selectors (a branch, non-release tag, or SHA) resolve to a
+// commit and build from source. The cache is keyed on the immutable id (tag or
+// SHA), so a moved mutable selector misses the cache rather than serving a
+// stale binary.
 func Ziti(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
 	return acquireFor(ctx, selector, cfg, src, cacheDir, runtime.GOOS, runtime.GOARCH)
 }
@@ -80,6 +81,47 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 	spec, err := ParseSpec(selector, cfg)
 	if err != nil {
 		return "", ResolvedID{}, err
+	}
+
+	// Git refs resolve to a commit and build from source.
+	if spec.Kind == SpecGitRef {
+		sha, err := resolveRefToSha(ctx, cfg.Source, spec.Raw)
+		if err != nil {
+			return "", ResolvedID{}, err
+		}
+		id := ResolvedID{Tag: sha, SourceBuilt: true}
+
+		// In co-development mode the binary embeds the local SDK tree, so the
+		// cache key must identify both sides; a dirty SDK tree has no immutable
+		// id, so it always rebuilds.
+		cacheKey := sha
+		sdkReplace := ""
+		useCache := true
+		if buildWithLocalSdk() {
+			sdkRoot, err := localSdkRoot()
+			if err != nil {
+				return "", ResolvedID{}, err
+			}
+			sdkReplace = sdkRoot
+			head, dirty, err := localSdkFingerprint(ctx, sdkRoot)
+			if err != nil {
+				return "", ResolvedID{}, err
+			}
+			cacheKey = sha + "-sdk-" + head[:12]
+			useCache = !dirty
+		}
+
+		if useCache {
+			binPath := cachedBinaryPath(cacheDir, cacheKey)
+			if _, statErr := os.Stat(binPath); statErr == nil {
+				return binPath, id, nil
+			}
+		}
+		path, err := buildZitiFromSource(ctx, cfg.Source, sha, cacheDir, cacheKey, sdkReplace)
+		if err != nil {
+			return "", ResolvedID{}, err
+		}
+		return path, id, nil
 	}
 
 	// A selector that pins a concrete tag needs no API round trip when the

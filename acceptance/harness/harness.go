@@ -77,7 +77,7 @@ func StartShared() (*Harness, func(), error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("acquiring ziti for selector %q: %w", selector, err)
 	}
-	version := Version{tag: id.Tag}
+	version := Version{tag: id.Tag, sourceBuilt: id.SourceBuilt}
 
 	home, err := os.MkdirTemp("", "ziti-acceptance-*")
 	if err != nil {

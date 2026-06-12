@@ -47,7 +47,10 @@ func (v Version) SourceBuilt() bool {
 	return v.sourceBuilt
 }
 
-// String returns the resolved tag or ref.
+// String returns the resolved tag, or a short commit SHA for source builds.
 func (v Version) String() string {
+	if v.sourceBuilt && len(v.tag) == 40 {
+		return v.tag[:12]
+	}
 	return v.tag
 }
