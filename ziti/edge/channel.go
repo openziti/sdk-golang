@@ -127,11 +127,16 @@ func (self *BaseSdkChannel) GetMessageSource(underlayType string) channel.Messag
 }
 
 // HandleTxFailed requeues a send that failed on an underlay, completing the channel/v5
-// Senders interface.
+// Senders interface. Failed sends go on the retry queue, overflowing to the default
+// queue if the retry queue is full.
 func (self *BaseSdkChannel) HandleTxFailed(_ string, sendable channel.Sendable) bool {
 	select {
 	case self.retryMsgChan <- sendable:
 		return true
+	default:
+	}
+
+	select {
 	case self.defaultMsgChan <- sendable:
 		return true
 	default:
