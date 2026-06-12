@@ -1,10 +1,89 @@
-# Release notes 1.8.1
+# Release notes 1.9.0
+
+## What's New
+
+### Migration to channel/v5
+
+The SDK has moved from channel/v4 to channel/v5. The channel library handles the framed
+messaging between the SDK and edge routers. Most of the migration is internal, but if your
+code works with channel types directly (custom receive handlers, inspect integrations,
+xgress), there are a few things to be aware of:
+
+* Import paths change from `github.com/openziti/channel/v4` to `github.com/openziti/channel/v5`.
+* Receive handlers are now registered explicitly by content type. The `ConnMux` interface
+  exposes `ContentType()` alongside an embedded `channel.ReceiveHandler`, replacing the
+  self-describing `channel.TypedReceiveHandler`.
+* Send priorities are gone. Priority was already a no-op on grouped channels and channel v5
+  removes the priority API, so `WithPriority` calls should simply be dropped.
+* Channel v5 unifies single and multi-underlay channels under one `channel.Channel`
+  interface. Code that previously cast to `channel.MultiChannel` and called
+  `GetUnderlayHandler()` to recover the `SdkChannel` should now call `GetSenders()` on the
+  channel directly.
+
+Internally, the SDK's hand-rolled dial, grouping and backoff machinery for multi-underlay
+edge router connections has been replaced by channel v5's `BackoffDialPolicy` with
+declarative underlay constraints. Behavior is preserved: losing the default underlay still
+closes the channel, control underlays remain optional, and control messages still route to
+the control underlay when one is available.
 
 ## Issues Fixed and Dependency Updates
 
-* github.com/openziti/sdk-golang: [v1.8.0 -> v1.8.1](https://github.com/openziti/sdk-golang/compare/v1.8.0...v1.8.1)
+* github.com/openziti/sdk-golang: [v1.8.0 -> v1.9.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v1.9.0)
+    * [Issue #945](https://github.com/openziti/sdk-golang/issues/945) - Migrate to channel/v5
     * [Issue #941](https://github.com/openziti/sdk-golang/issues/941) - Prep for channel v5: explicit receive handler registration, drop send priorities
 
+* github.com/go-openapi/runtime: v0.32.2 -> v0.32.3
+* github.com/go-openapi/strfmt: v0.26.2 -> v0.26.3
+* github.com/openziti/channel/v5: [v4.3.11 -> v5.0.10](https://github.com/openziti/channel/compare/v4.3.11...v5.0.10)
+    * [Issue #261](https://github.com/openziti/channel/issues/261) - Add ContentTypeReceiver, a self-describing receive handler
+    * [Issue #247](https://github.com/openziti/channel/issues/247) - Config.Binder exposes unexported `*channelImpl` in its public signature
+    * [Issue #252](https://github.com/openziti/channel/issues/252) - BackoffDialPolicy misclassifies multi-underlay constraint fill as short-lived/flapping
+    * [Issue #246](https://github.com/openziti/channel/issues/246) - classic_dialer leaks underlay FD when hello handshake fails
+    * [Issue #255](https://github.com/openziti/channel/issues/255) - Flaky Test_MultiUnderlayChannels: CloseRandom can close the last required underlay
+    * [Issue #253](https://github.com/openziti/channel/issues/253) - Multi-underlay channel delays below-Min closure when a dial/backoff is in progress
+    * [Issue #250](https://github.com/openziti/channel/issues/250) - BackoffDialPolicy cannot (re)establish a grouped channel: never sets IsFirstGroupConnection
+    * [Issue #241](https://github.com/openziti/channel/issues/241) - Allow calling LoadOptions on an Options instance
+
+* github.com/openziti/edge-api: [v0.31.0 -> v0.32.0](https://github.com/openziti/edge-api/compare/v0.31.0...v0.32.0)
+* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.95](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.95)
+* github.com/openziti/identity: [v1.0.129 -> v1.0.133](https://github.com/openziti/identity/compare/v1.0.129...v1.0.133)
+* github.com/openziti/secretstream: [v0.1.49 -> v0.1.51](https://github.com/openziti/secretstream/compare/v0.1.49...v0.1.51)
+* github.com/openziti/transport/v2: [v2.0.215 -> v2.0.216](https://github.com/openziti/transport/compare/v2.0.215...v2.0.216)
+* github.com/shirou/gopsutil/v4: v4.26.4 -> v4.26.5
+* golang.org/x/sys: v0.45.0 -> v0.46.0
+* github.com/ebitengine/purego: v0.10.0 -> v0.10.1
+* github.com/go-ole/go-ole: v1.2.6 -> v1.3.0
+* github.com/go-openapi/analysis: v0.25.0 -> v0.25.2
+* github.com/go-openapi/errors: v0.22.7 -> v0.22.8
+* github.com/go-openapi/jsonreference: v0.21.5 -> v0.21.6
+* github.com/go-openapi/loads: v0.23.3 -> v0.24.0
+* github.com/go-openapi/runtime/server-middleware: v0.30.0 -> v0.32.3
+* github.com/go-openapi/spec: v0.22.4 -> v0.22.5
+* github.com/go-openapi/swag: v0.25.5 -> v0.26.1
+* github.com/go-openapi/swag/cmdutils: v0.25.5 -> v0.26.1
+* github.com/go-openapi/swag/conv: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/fileutils: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/jsonname: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/jsonutils: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/loading: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/mangling: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/netutils: v0.25.5 -> v0.26.1
+* github.com/go-openapi/swag/stringutils: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/typeutils: v0.26.0 -> v0.26.1
+* github.com/go-openapi/swag/yamlutils: v0.26.0 -> v0.26.1
+* github.com/go-openapi/validate: v0.25.2 -> v0.26.0
+* github.com/lufia/plan9stats: v0.0.0-20211012122336-39d0f177ccd0 -> v0.0.0-20260330125221-c963978e514e
+* github.com/mattn/go-colorable: v0.1.14 -> v0.1.15
+* github.com/tklauser/go-sysconf: v0.3.16 -> v0.4.0
+* github.com/tklauser/numcpus: v0.11.0 -> v0.12.0
+* go.opentelemetry.io/otel: v1.43.0 -> v1.44.0
+* go.opentelemetry.io/otel/metric: v1.43.0 -> v1.44.0
+* go.opentelemetry.io/otel/trace: v1.43.0 -> v1.44.0
+* golang.org/x/crypto: v0.52.0 -> v0.53.0
+* golang.org/x/net: v0.55.0 -> v0.56.0
+* golang.org/x/sync: v0.20.0 -> v0.21.0
+* golang.org/x/term: v0.43.0 -> v0.44.0
+* golang.org/x/text: v0.37.0 -> v0.38.0
 
 # Release notes 1.8.0
 
