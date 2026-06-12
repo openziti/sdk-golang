@@ -11,10 +11,10 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/openziti/edge-api v0.31.0
-	github.com/openziti/foundation/v2 v2.0.91
+	github.com/openziti/foundation/v2 v2.0.94
 	github.com/openziti/runzmd v1.0.83
 	github.com/openziti/sdk-golang v1.2.6
-	github.com/openziti/transport/v2 v2.0.215
+	github.com/openziti/transport/v2 v2.0.216
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
@@ -87,9 +87,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/openziti/channel/v4 v4.3.11 // indirect
+	github.com/openziti/channel/v5 v5.0.10 // indirect
 	github.com/openziti/go-term-markdown v1.0.1 // indirect
-	github.com/openziti/identity v1.0.129 // indirect
+	github.com/openziti/identity v1.0.132 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect
 	github.com/openziti/secretstream v0.1.49 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect

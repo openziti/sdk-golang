@@ -19,12 +19,13 @@ package xgress
 import (
 	"context"
 	"encoding/binary"
-	"github.com/openziti/channel/v4"
-	"github.com/stretchr/testify/require"
 	"io"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/openziti/channel/v5"
+	"github.com/stretchr/testify/require"
 )
 
 type testConn struct {

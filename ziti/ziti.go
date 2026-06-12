@@ -52,8 +52,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
-	"github.com/openziti/channel/v4/latency"
+	"github.com/openziti/channel/v5"
+	"github.com/openziti/channel/v5/latency"
 	"github.com/openziti/edge-api/rest_client_api_client/current_api_session"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/versions"
@@ -1989,16 +1989,20 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 
 	if isGrouped, _ := channel.Headers(underlay.Headers()).GetBoolHeader(channel.IsGroupedHeader); isGrouped {
 		var dialSdkChannel = edge.NewDialSdkChannel(dialer, context.maxDefaultConnections, context.maxControlConnections)
-		multiChannelConfig := &channel.MultiChannelConfig{
-			LogicalName:     fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl),
-			Options:         options,
-			UnderlayHandler: dialSdkChannel,
-			BindHandler:     edgeConn,
-			Underlay:        underlay,
+		multiChannelConfig := &channel.Config{
+			LogicalName:            fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl),
+			Options:                options,
+			Underlay:               underlay,
+			Binder:                 channel.MakeBinder(edgeConn),
+			Senders:                dialSdkChannel,
+			MessageSourceProvider:  dialSdkChannel,
+			DialPolicy:             dialSdkChannel.GetDialPolicy(),
+			Constraints:            dialSdkChannel.GetConstraints(),
+			UnderlayEventListeners: []channel.UnderlayEventListener{dialSdkChannel},
 		}
-		ch, err = channel.NewMultiChannel(multiChannelConfig)
+		ch, err = channel.NewChannel(multiChannelConfig)
 	} else {
-		ch, err = channel.NewChannelWithUnderlay(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), underlay, edgeConn, options)
+		ch, err = channel.NewSingleChannelWithUnderlay(fmt.Sprintf("ziti-sdk[router=%v]", ingressUrl), underlay, edgeConn, options)
 	}
 
 	if err != nil {

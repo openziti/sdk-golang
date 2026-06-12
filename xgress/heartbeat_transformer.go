@@ -18,8 +18,9 @@ package xgress
 
 import (
 	"encoding/binary"
-	"github.com/openziti/channel/v4"
 	"time"
+
+	"github.com/openziti/channel/v5"
 )
 
 type PayloadTransformer struct {

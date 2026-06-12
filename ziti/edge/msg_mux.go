@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/channel/v4"
+	"github.com/openziti/channel/v5"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -451,10 +451,8 @@ func (mux *ConnMuxImpl[T]) HandleInspect(msg *channel.Message, ch channel.Channe
 
 func (mux *ConnMuxImpl[T]) returnInspectResponse(msg *channel.Message, ch channel.Channel, resp *inspect.SdkInspectResponse) {
 	var sender channel.Sender = ch
-	if mc, ok := ch.(channel.MultiChannel); ok {
-		if sdkChan, ok := mc.GetUnderlayHandler().(SdkChannel); ok {
-			sender = sdkChan.GetControlSender()
-		}
+	if sdkChan, ok := ch.GetSenders().(SdkChannel); ok {
+		sender = sdkChan.GetControlSender()
 	}
 
 	reply, err := NewInspectResponse(0, resp)

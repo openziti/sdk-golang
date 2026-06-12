@@ -2,12 +2,13 @@ package network
 
 import (
 	"fmt"
-	"github.com/openziti/channel/v4"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/openziti/channel/v5"
+	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_SeqNormalReadDeadline(t *testing.T) {

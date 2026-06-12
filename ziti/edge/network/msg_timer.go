@@ -2,12 +2,13 @@ package network
 
 import (
 	"fmt"
-	"github.com/openziti/channel/v4"
-	"github.com/openziti/metrics"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/openziti/channel/v5"
+	"github.com/openziti/metrics"
 )
 
 type timingReceiveHandler struct {
@@ -78,10 +79,6 @@ func (self *messageTimingBinding) AcceptPercentileMetric(name string, value metr
 	self.Printf("%s.95p -> %s", name, time.Duration(value.Percentile(.95)).String())
 }
 
-func (self *messageTimingBinding) Bind(h channel.BindHandler) error {
-	return h.BindChannel(self)
-}
-
 func (self *messageTimingBinding) AddPeekHandler(h channel.PeekHandler) {
 	self.binding.AddPeekHandler(h)
 }
@@ -102,8 +99,12 @@ func (self *messageTimingBinding) AddReceiveHandlerF(contentType int32, h channe
 	self.AddReceiveHandler(contentType, h)
 }
 
-func (self *messageTimingBinding) AddTypedReceiveHandler(h channel.TypedReceiveHandler) {
-	self.AddReceiveHandler(h.ContentType(), h)
+func (self *messageTimingBinding) AddMsgReceiveHandler(contentType int32, h channel.MsgReceiveHandler) {
+	self.binding.AddMsgReceiveHandler(contentType, h)
+}
+
+func (self *messageTimingBinding) AddMsgReceiveHandlerF(contentType int32, h channel.MsgReceiveHandlerF) {
+	self.binding.AddMsgReceiveHandlerF(contentType, h)
 }
 
 func (self *messageTimingBinding) AddErrorHandler(h channel.ErrorHandler) {
