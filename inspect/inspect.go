@@ -7,10 +7,11 @@ type SdkInspectResponse struct {
 }
 
 type RouterConnInspectDetail struct {
-	RouterName   string               `json:"routerName"`
-	RouterAddr   string               `json:"routerAddr"`
-	Closed       bool                 `json:"closed"`
-	VirtualConns []*VirtualConnDetail `json:"virtualConns"`
+	RouterName        string               `json:"routerName"`
+	RouterAddr        string               `json:"routerAddr"`
+	Closed            bool                 `json:"closed"`
+	SupportsConnectV2 bool                 `json:"supportsConnectV2"`
+	VirtualConns      []*VirtualConnDetail `json:"virtualConns"`
 }
 
 type VirtualConnDetail struct {
