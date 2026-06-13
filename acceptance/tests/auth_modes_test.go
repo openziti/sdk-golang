@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_AuthModes_OidcAndLegacy is half of P0 #3: the SDK dials successfully under
-// both auth modes — OIDC (the default where the controller supports it) and
+// Test_AuthModes_OidcAndLegacy verifies the SDK dials successfully under both
+// authentication modes — OIDC (the default where the controller supports it) and
 // legacy (forced via SetUseOidc(false)) — with the session type asserted, not
 // assumed.
 func Test_AuthModes_OidcAndLegacy(t *testing.T) {
@@ -59,11 +59,11 @@ func Test_AuthModes_OidcAndLegacy(t *testing.T) {
 	requireEchoRoundTrip(t, legacyCtx, svc.Name(), "hello over legacy")
 }
 
-// Test_AuthModes_ExtJwtPrimary is the other half of P0 #3: ext-JWT as a primary
-// credential, fully headless — a locally generated signer registered via the CLI,
-// a locally minted JWT, and the SDK's JwtCredentials path. The helper asserts the
-// authenticated identity matches the one the test intended, so a signer or
-// auth-policy mapping mistake fails here, not as a confusing downstream error.
+// Test_AuthModes_ExtJwtPrimary verifies external JWTs work as a primary
+// credential, fully headless: a locally generated signer registered via the CLI,
+// a locally minted JWT, and the SDK's JwtCredentials path. The test asserts the
+// authenticated identity matches the one it intended, so a signer or auth-policy
+// mapping mistake fails here, not as a confusing downstream error.
 func Test_AuthModes_ExtJwtPrimary(t *testing.T) {
 	h := shared
 

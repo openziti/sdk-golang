@@ -28,10 +28,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_SdkEnrollment is P0 #1b: the SDK's own enroll.Enroll consumes an OTT token
-// and yields a usable identity. This is the only place SDK enrollment is the
-// system under test; every other test enrolls via the versioned CLI so an SDK
-// enrollment regression can't silently fail their setup.
+// Test_SdkEnrollment verifies the SDK's own enrollment: enroll.Enroll consumes a
+// controller-issued one-time enrollment token and yields an identity that can
+// authenticate. This is the only place SDK enrollment is the system under test;
+// every other test enrolls via the versioned CLI so an SDK enrollment regression
+// can't silently fail their setup.
 func Test_SdkEnrollment(t *testing.T) {
 	h := shared
 	name, jwtPath := h.CreateUnenrolledIdentity(t, "sdk-enroll")

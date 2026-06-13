@@ -18,10 +18,11 @@
 
 // Package tests holds the acceptance test suite. The whole package shares one
 // environment (a controller and the default edge router), brought up once in
-// TestMain, per the design's Layer 5 model. Tests follow the isolation contract:
-// uniquely named resources, policies targeting only their own entities, serial
-// execution. Tests that stop, kill, or restart components must use their own
-// environment via harness.Start, never the shared one.
+// TestMain, so per-test cost stays low. Sharing is safe because tests follow the
+// isolation contract: uniquely named resources, policies targeting only their
+// own entities (never #all or shared attributes), serial execution. Tests that
+// stop, kill, or restart components must use their own environment via
+// harness.Start, never the shared one.
 package tests
 
 import (
@@ -29,7 +30,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/sdk-golang/acceptance/harness"
+	"github.com/sirupsen/logrus"
 )
 
 // shared is the package-wide environment, valid between TestMain's setup and
@@ -37,6 +40,11 @@ import (
 var shared *harness.Harness
 
 func TestMain(m *testing.M) {
+	// SDK-side debug logging on demand, for diagnosing data-plane behavior
+	if os.Getenv("ZITI_ACCEPTANCE_DEBUG") == "true" {
+		pfxlog.GlobalInit(logrus.DebugLevel, pfxlog.DefaultOptions())
+	}
+
 	h, teardown, err := harness.StartShared()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "starting shared acceptance environment: %v\n", err)

@@ -4,8 +4,10 @@ go 1.25.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/openziti/edge-api v0.31.0
 	github.com/openziti/sdk-golang v0.0.0-00010101000000-000000000000
+	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/mod v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -57,7 +59,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
-	github.com/michaelquigley/pfxlog v0.6.10 // indirect
 	github.com/miekg/pkcs11 v1.1.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
@@ -75,7 +76,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.4 // indirect
-	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/speps/go-hashids v2.0.0+incompatible // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect

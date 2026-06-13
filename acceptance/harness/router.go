@@ -144,7 +144,12 @@ func (r *Router) start() error {
 	if err != nil {
 		return fmt.Errorf("opening router log: %w", err)
 	}
-	cmd := r.cli.Command(context.Background(), "router", "run", r.configPath)
+	args := []string{"router", "run", r.configPath}
+	// router-side debug logging on demand, for diagnosing data-plane behavior
+	if os.Getenv("ZITI_ACCEPTANCE_DEBUG") == "true" {
+		args = append(args, "--verbose")
+	}
+	cmd := r.cli.Command(context.Background(), args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {

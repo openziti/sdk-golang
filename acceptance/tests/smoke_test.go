@@ -24,7 +24,6 @@ import (
 
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,10 +46,12 @@ func Test_SdkAuthenticate(t *testing.T) {
 	require.Equal(t, id.Name(), *current.Name)
 }
 
-// Test_DialHostEcho is the data-plane smoke (P0 #1): targeted policies, the SDK
-// under test hosting a service and dialing it through the shared router, with the
-// echo exercising half-close (CloseWrite) and EOF propagation in both directions,
-// and the dial event asserting the negotiated protocol.
+// Test_DialHostEcho is the core data-plane smoke: the SDK under test hosts a
+// service and dials it through the shared router, with targeted policies granting
+// exactly the needed access. The echo exercises half-close (CloseWrite) and EOF
+// propagation in both directions, the service list is checked for content (not
+// just liveness), and the dial event must report the expected negotiated
+// protocol.
 func Test_DialHostEcho(t *testing.T) {
 	h := shared
 	r := h.DefaultRouter()
@@ -68,8 +69,8 @@ func Test_DialHostEcho(t *testing.T) {
 	hostCtx := h.NewSdkContext(t, hostID)
 	clientCtx := h.NewSdkContext(t, clientID)
 
-	// discovery content (P0 #1): each identity sees the service with exactly
-	// the permissions its policy grants, and lookup by name works
+	// discovery content: each identity sees the service with exactly the
+	// permissions its policy grants, and lookup by name works
 	requireServicePermissions(t, hostCtx, svc.Name(), rest_model.DialBindBind)
 	requireServicePermissions(t, clientCtx, svc.Name(), rest_model.DialBindDial)
 
@@ -86,15 +87,13 @@ func Test_DialHostEcho(t *testing.T) {
 	conn := dialWithRetry(t, clientCtx, svc.Name())
 	defer func() { _ = conn.Close() }()
 
-	// released routers don't advertise ConnectV2, so the SDK must negotiate V1;
-	// once a capable line ships, this expectation becomes capability-driven (see
-	// the V1/V2 negotiation test in the design doc)
+	// the negotiated path must match what capability + auth mode dictate; the
+	// dedicated negotiation test covers the full matrix of cases
 	require.NotEmpty(t, dialEvents, "the dial must emit an event")
 	last := dialEvents[len(dialEvents)-1] // earlier attempts may have failed and retried
 	require.NoError(t, last.Err)
-	require.Equal(t, edge.DialProtocolConnectV1, last.Protocol,
-		"expected the V1 dial path against a non-ConnectV2-capable router")
-	require.False(t, last.Forced, "V1 must be negotiated, not forced")
+	require.Equal(t, expectedDialProtocol(t, clientCtx, r.Name()), last.Protocol)
+	require.False(t, last.Forced, "the path must be negotiated, not forced")
 	require.Equal(t, r.Name(), last.RouterName)
 	require.NotEmpty(t, last.CircuitId)
 
