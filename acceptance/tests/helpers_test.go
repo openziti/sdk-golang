@@ -30,16 +30,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// startEchoServer hosts service on hostCtx with an echo handler: each accepted
-// conn is read to EOF (the dialer's half-close), echoed back, and closed.
-// Returns once the terminator is established; the listener closes with t.
+// startEchoServer hosts service on hostCtx with an echo handler, advertising
+// SDK-hosted xgress on the bind (see startEchoServerFC).
 func startEchoServer(t testing.TB, hostCtx ziti.Context, service string) {
 	t.Helper()
-	// Advertise SDK-hosted xgress on the bind. When the router supports it (any
-	// ConnectV2-capable line), dials to this terminator run SDK-hosted xgress on
-	// both ends, which is the data path the suite primarily exercises; older
-	// routers ignore the flag and the host falls back to a legacy terminator.
-	sdkXgress := true
+	startEchoServerFC(t, hostCtx, service, true)
+}
+
+// startEchoServerFC hosts service on hostCtx with an echo handler: each accepted
+// conn is read to EOF (the dialer's half-close), echoed back, and closed.
+// sdkXgress controls whether the bind advertises SDK-hosted xgress: when the
+// router supports it, dials to this terminator run SDK xgress on both ends (the
+// path the suite primarily exercises); otherwise the host is a legacy terminator
+// and the router bridges xgress to it. Returns once the terminator is
+// established; the listener closes with t.
+func startEchoServerFC(t testing.TB, hostCtx ziti.Context, service string, sdkXgress bool) {
+	t.Helper()
 	listener, err := hostCtx.ListenWithOptions(service, &ziti.ListenOptions{
 		WaitForNEstablishedListeners: 1,
 		ConnectTimeout:               30 * time.Second,
