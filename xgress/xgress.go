@@ -258,7 +258,11 @@ func (self *Xgress) setPeerCapabilities(caps []byte) {
 	}
 }
 
-func (self *Xgress) peerSupportsEOF() bool {
+// PeerSupportsEOF reports whether the peer negotiated support for the native
+// xgress EOF half-close flag. When false, half-close must be signaled another
+// way; an older peer (router bridging to a legacy edge host, or an older SDK)
+// instead expects the legacy edge FIN carried as a payload header.
+func (self *Xgress) PeerSupportsEOF() bool {
 	return self.flags.IsSet(CapabilityEOFIndex)
 }
 
@@ -350,6 +354,15 @@ func (self *Xgress) IsEndOfCircuitSent() bool {
 
 func (self *Xgress) CloseRxTimeout() {
 	self.sendEOF()
+	self.CloseSendBufferWhenEmpty()
+}
+
+// CloseSendBufferWhenEmpty closes this xgress's outbound send buffer once it
+// drains. Unlike CloseRxTimeout it does not emit a native EOF, so a caller that
+// signals half-close another way (an edge conn bridging to a peer that lacks
+// native EOF support sends a legacy edge FIN instead) can end the send half
+// without tearing down the whole circuit.
+func (self *Xgress) CloseSendBufferWhenEmpty() {
 	self.payloadBuffer.CloseWhenEmpty()
 }
 
@@ -700,7 +713,7 @@ func (self *Xgress) sendEOF() {
 	}
 
 	var flag Flag
-	if self.peerSupportsEOF() {
+	if self.PeerSupportsEOF() {
 		flag = PayloadFlagEOF
 		log.Debug("peer supports EOF, sending EOF flag")
 	} else {

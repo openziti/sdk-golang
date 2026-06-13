@@ -17,6 +17,7 @@
 package network
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/edgexg"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
 	"github.com/openziti/sdk-golang/ziti/edge"
@@ -117,10 +119,31 @@ func (conn *edgeConnXgress) close(_ bool) {
 
 func (conn *edgeConnXgress) CloseWrite() error {
 	if conn.sentFIN.CompareAndSwap(false, true) {
-		conn.xg.CloseRxTimeout()
-		return nil
+		if conn.xg.PeerSupportsEOF() {
+			conn.xg.CloseRxTimeout()
+		} else {
+			conn.closeWriteLegacy()
+		}
 	}
 	return nil
+}
+
+// closeWriteLegacy half-closes the send side for a peer that does not support
+// the native xgress EOF flag (an older router bridging to a legacy edge host,
+// or an older SDK). Half-close historically rode as an edge FIN, transported
+// transparently as a payload header that the terminating router maps back onto
+// edge.FlagsHeader, so the host sees an ordinary edge FIN and stops reading.
+// Moving half-close into xgress replaced that with the native EOF flag, which
+// such peers don't honor; this restores the legacy signal for them. The send
+// buffer is closed afterward so the FIN is the last payload transmitted.
+func (conn *edgeConnXgress) closeWriteLegacy() {
+	flags := make([]byte, 4)
+	binary.LittleEndian.PutUint32(flags, edge.FIN)
+	if _, err := conn.writeAdapter.WriteToXgress(nil, map[uint8][]byte{edgexg.PayloadFlagsHeader: flags}); err != nil {
+		pfxlog.Logger().WithField("connId", conn.Id()).WithField("circuitId", conn.circuitId).
+			WithError(err).Error("failed to send legacy FIN half-close")
+	}
+	conn.xg.CloseSendBufferWhenEmpty()
 }
 
 func (conn *edgeConnXgress) InspectSink() *inspect.VirtualConnDetail {
