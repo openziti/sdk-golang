@@ -336,7 +336,12 @@ The designated job selects the **`connect-v2` branch** (a bare ref, built from s
 which must be **pushed to openziti/ziti** so CI can build it -- an unpushed local commit
 won't work, and the four released/`main` jobs alone do not satisfy the invariant. Using
 the branch (not a pinned SHA) means it tracks the branch HEAD and can't go stale; it
-resolves to a concrete SHA before cache lookup like any built ref.
+resolves to a concrete SHA before cache lookup like any built ref. The job builds in
+**co-development mode** (`ZITI_ACCEPTANCE_BUILD_WITH_LOCAL_SDK=true`): the connect-v2 ziti
+branch pins the SDK via a local replace that doesn't exist in a fresh clone, so it can
+only build against a provided SDK tree, and using the SDK under test also means the router
+and the client speak the same xgress rather than testing two SDK versions against each
+other. This goes away with the TODO below once connect-v2 ships.
 <!-- TODO: once connect-v2 lands on main, point the V2-coverage job at `main` (and at
      the shipping release once it ships). -->
 
