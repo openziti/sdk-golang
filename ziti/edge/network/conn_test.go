@@ -10,7 +10,7 @@ import (
 
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/sequencer"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 

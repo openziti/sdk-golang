@@ -30,8 +30,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	edgeApis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/ziti"
+	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
+	"github.com/openziti/sdk-golang/v2/ziti"
 	"github.com/stretchr/testify/require"
 )
 

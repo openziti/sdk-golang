@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/openziti/identity"
-	edgeapis "github.com/openziti/sdk-golang/edge-apis"
+	edgeapis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/stretchr/testify/require"
 )
 

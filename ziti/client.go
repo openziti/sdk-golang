@@ -47,8 +47,8 @@ import (
 	nfPem "github.com/openziti/foundation/v2/pem"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/identity"
-	apis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	apis "github.com/openziti/sdk-golang/v2/edge-apis"
+	"github.com/openziti/sdk-golang/v2/ziti/edge/posture"
 	"github.com/openziti/transport/v2"
 )
 

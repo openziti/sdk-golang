@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/kataras/go-events"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 

@@ -36,9 +36,9 @@ import (
 	"github.com/kataras/go-events"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
-	edgeApis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 )
 

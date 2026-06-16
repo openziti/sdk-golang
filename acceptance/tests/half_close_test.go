@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/openziti/sdk-golang/acceptance/harness"
-	"github.com/openziti/sdk-golang/ziti"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 

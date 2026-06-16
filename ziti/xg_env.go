@@ -2,7 +2,7 @@ package ziti
 
 import (
 	"github.com/openziti/metrics"
-	"github.com/openziti/sdk-golang/xgress"
+	"github.com/openziti/sdk-golang/v2/xgress"
 )
 
 type xgEnv struct {

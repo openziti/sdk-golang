@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	"github.com/openziti/channel/v5"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 )
 
 // pendingMsgSink buffers messages for a conn id whose connection is still being

@@ -13,8 +13,8 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/identity"
-	"github.com/openziti/sdk-golang/ziti/edge/network"
-	"github.com/openziti/sdk-golang/ziti/sdkinfo"
+	"github.com/openziti/sdk-golang/v2/ziti/edge/network"
+	"github.com/openziti/sdk-golang/v2/ziti/sdkinfo"
 )
 
 type AuthMethod string

@@ -1903,8 +1903,8 @@ const file_edge_client_proto_rawDesc = "" +
 	"\tMULTIPART\x10\x04\x12\n" +
 	"\n" +
 	"\x06STREAM\x10\b\x12\x11\n" +
-	"\rMULTIPART_MSG\x10\x10BK\n" +
-	"\x17org.openziti.edge.protoZ0github.com/openziti/sdk-golang/pb/edge_client_pbb\x06proto3"
+	"\rMULTIPART_MSG\x10\x10BN\n" +
+	"\x17org.openziti.edge.protoZ3github.com/openziti/sdk-golang/v2/pb/edge_client_pbb\x06proto3"
 
 var (
 	file_edge_client_proto_rawDescOnce sync.Once

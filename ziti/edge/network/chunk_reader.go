@@ -21,9 +21,9 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/openziti/sdk-golang/edgexg"
-	"github.com/openziti/sdk-golang/xgress"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/edgexg"
+	"github.com/openziti/sdk-golang/v2/xgress"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/openziti/secretstream"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"

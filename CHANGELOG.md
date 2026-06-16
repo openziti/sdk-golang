@@ -2,6 +2,10 @@
 
 ## Breaking Changes
 
+* **The module path is now `github.com/openziti/sdk-golang/v2`.** Per Go semantic import
+  versioning, a v2 release must carry the major version in its path, so consumers update
+  their imports to the `/v2` form (e.g. `github.com/openziti/sdk-golang/v2/ziti`).
+
 * **Supported controller versions are the current LTS releases: 1.6.x and 2.0.0.** The dial path
   was reworked to fetch the per-service edge router list via the sessionless
   `GET /edge/client/v1/services/{id}/edge-routers` endpoint on the client API when the controller
@@ -39,7 +43,11 @@
 
 ## Issues Fixed and Dependency Updates
 
-* github.com/openziti/sdk-golang: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v2.0.0)
+* github.com/openziti/sdk-golang: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
+    * [Issue #936](https://github.com/openziti/sdk-golang/issues/936) - Implement Connect-V2
+    * [Issue #951](https://github.com/openziti/sdk-golang/issues/951) - Add an SDK acceptance-test framework
+    * [Issue #952](https://github.com/openziti/sdk-golang/issues/952) - xgress client half-close not delivered to legacy edge hosts
+
 
 # Release notes 1.9.0
 

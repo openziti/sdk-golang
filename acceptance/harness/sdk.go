@@ -20,8 +20,8 @@ import (
 	"os"
 	"testing"
 
-	edgeApis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/ziti"
+	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
+	"github.com/openziti/sdk-golang/v2/ziti"
 )
 
 // NewSdkContext builds an authenticated ziti.Context for id using the SDK under

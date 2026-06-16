@@ -129,7 +129,7 @@ func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKe
 
 	if sdkReplace != "" {
 		if _, err := runCmd(ctx, srcDir, "go", "mod", "edit",
-			"-replace", "github.com/openziti/sdk-golang="+sdkReplace); err != nil {
+			"-replace", "github.com/openziti/sdk-golang/v2="+sdkReplace); err != nil {
 			return "", fmt.Errorf("replacing sdk-golang with local tree: %w", err)
 		}
 		if _, err := runCmd(ctx, srcDir, "go", "mod", "tidy"); err != nil {

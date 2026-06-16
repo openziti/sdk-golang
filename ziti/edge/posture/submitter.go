@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/openziti/edge-api/rest_model"
-	edge_apis "github.com/openziti/sdk-golang/edge-apis"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	edge_apis "github.com/openziti/sdk-golang/v2/edge-apis"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 )
 
 // Submitter handles transmission of posture response data to authentication and policy

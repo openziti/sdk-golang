@@ -7,8 +7,8 @@ import (
 
 	"github.com/kataras/go-events"
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/sdk-golang/ziti/edge"
-	"github.com/openziti/sdk-golang/ziti/edge/posture"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge/posture"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/assert"
 )

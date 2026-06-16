@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/v2/ziti"
 	"io"
 	"os"
 )

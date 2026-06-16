@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	edgeApis "github.com/openziti/sdk-golang/edge-apis"
+	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/openziti/sdk-golang/acceptance/harness"
 	"github.com/stretchr/testify/require"
 )
