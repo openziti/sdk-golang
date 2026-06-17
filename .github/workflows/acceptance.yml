@@ -72,7 +72,15 @@ jobs:
   # go stale; it resolves to a concrete SHA before the cache lookup.
   # TODO: once connect-v2 lands on main, point this at `main` (and at the
   #       shipping release once it ships), and drop the co-development build.
+  #
+  # GATED: disabled until ziti adopts channel/v5. The SDK is on channel/v5 (the
+  # 2.0 line), and ziti shares the sdk-golang/xgress package, so ziti must be on
+  # channel/v5 for this co-development build to compile. ziti's channel/v5
+  # migration is in progress (the openziti/ziti `channel-v5` branch) but not yet
+  # on main or merged with connect-v2. Re-enable by removing the `if: false`
+  # below once ziti connect-v2 builds on channel/v5 + sdk-golang/v2.
   connect-v2:
+    if: false
     runs-on: ubuntu-latest
     env:
       ZITI_ACCEPTANCE_VERSION: connect-v2
