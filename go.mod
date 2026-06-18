@@ -15,7 +15,7 @@ require (
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v5 v5.0.10
+	github.com/openziti/channel/v5 v5.0.11
 	github.com/openziti/edge-api v0.32.0
 	github.com/openziti/foundation/v2 v2.0.95
 	github.com/openziti/identity v1.0.133
