@@ -195,17 +195,20 @@ type capturingAdapter struct {
 	payloadIngester *PayloadIngester
 }
 
-func (c *capturingAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) {
+func (c *capturingAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) Path {
 	if len(payload.Data) > 0 && !payload.IsCircuitStartFlagSet() && !payload.IsCircuitEndFlagSet() && !payload.IsFlagEOFSet() {
 		c.dataCh <- payload.Data
 	}
+	return testPath("test")
 }
 
-func (c *capturingAdapter) RetransmitPayload(Address, *Payload) error { return nil }
-func (c *capturingAdapter) ForwardControlMessage(*Control, *Xgress)   {}
-func (c *capturingAdapter) ForwardAcknowledgement(*Acknowledgement, Address) {}
-func (c *capturingAdapter) GetMetrics() Metrics                  { return noopMetrics{} }
-func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester { return c.payloadIngester }
+func (c *capturingAdapter) RetransmitPayload(Path, Address, *Payload) (Path, error) {
+	return testPath("test"), nil
+}
+func (c *capturingAdapter) ForwardControlMessage(*Control, *Xgress)                {}
+func (c *capturingAdapter) ForwardAcknowledgement(*Acknowledgement, Address, Path) {}
+func (c *capturingAdapter) GetMetrics() Metrics                                    { return noopMetrics{} }
+func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester                   { return c.payloadIngester }
 
 func TestWriteAdapterPushOrdering(t *testing.T) {
 	closeNotify := make(chan struct{})

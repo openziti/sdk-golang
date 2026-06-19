@@ -21,8 +21,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -359,11 +359,11 @@ func (base *edgeConnBase) establishClientCryptoTo(keypair *kx.KeyPair, peerKey [
 	return nil
 }
 
-// xgressAddr implements net.Addr for xgress mode connections.
+// xgressAddr is the remote address of an xgress mode connection: a snapshot
+// of the address fragments of the transport paths attached at the time
+// RemoteAddr was called. It implements net.Addr.
 type xgressAddr struct {
-	connId   uint32
-	routerId string
-	label    string
+	paths []string
 }
 
 func (a *xgressAddr) Network() string {
@@ -371,7 +371,11 @@ func (a *xgressAddr) Network() string {
 }
 
 func (a *xgressAddr) String() string {
-	return fmt.Sprintf("ziti-edge-router connId=%v, logical=%v", a.connId, a.label)
+	// a single path renders bare, preserving the historical single-path format
+	if len(a.paths) == 1 {
+		return a.paths[0]
+	}
+	return "ziti-edge paths=[" + strings.Join(a.paths, "; ") + "]"
 }
 
 // newMarker generates a random 8-character base64 string for connection tracing.

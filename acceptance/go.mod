@@ -61,9 +61,9 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/openziti/channel/v5 v5.0.10 // indirect
-	github.com/openziti/foundation/v2 v2.0.95 // indirect
-	github.com/openziti/identity v1.0.133 // indirect
+	github.com/openziti/channel/v5 v5.0.15 // indirect
+	github.com/openziti/foundation/v2 v2.0.98 // indirect
+	github.com/openziti/identity v1.0.136 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect
 	github.com/openziti/sdk-golang/acquire v0.0.0
 	github.com/openziti/sdk-golang/v2 v2.0.0
