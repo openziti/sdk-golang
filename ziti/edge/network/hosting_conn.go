@@ -287,9 +287,18 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 
 	logger.Debug("listener found. checking for router provided connection id")
 
+	useXg, _ := message.GetBoolHeader(edge.UseXgressToSdkHeader)
+
 	id, routerProvidedConnId := message.GetUint32Header(edge.RouterProvidedConnId)
 	if routerProvidedConnId {
 		logger.Debugf("using router provided connection id %v", id)
+	} else if useXg {
+		// xgress dials always carry a router-provided connId: router-side
+		// sdk-xgress dialing requires router-assigned ids. SDK-assigned child
+		// connIds exist only for legacy dials from older routers.
+		reportDialFailure(logger, ch, conn.Id(), message, "xgress dial request missing router provided conn id",
+			errors.New("protocol error"))
+		return
 	} else {
 		id = conn.msgMux.GetNextId()
 		logger.Debugf("listener found. generating id for new connection: %v", id)
@@ -319,7 +328,6 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		WithField("circuitId", circuitId)
 
 	// Build the right conn type for the requested flow-control mode.
-	useXg, _ := message.GetBoolHeader(edge.UseXgressToSdkHeader)
 	params := childConnParams{
 		id:             id,
 		sourceIdentity: sourceIdentity,
@@ -341,15 +349,8 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		reportDialFailure(logger, ch, conn.Id(), message, description, err)
 	}
 
-	// duplicate errors only happen on the server side, since client controls ids
-	if err := conn.msgMux.Add(edgeCh); err != nil {
-		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		cleanupAndReportError("invalid connection id, already in use", err)
-		return
-	}
-
-	// Start the xgress only after the sink is registered (see C1): inbound
-	// payloads from the dialer must have a mux sink the moment the xgress is live.
+	// The receive sink is registered during construction: inbound payloads from
+	// the dialer must have a mux sink the moment the xgress is live.
 	if xgConn, ok := edgeCh.(*edgeConnXgress); ok {
 		xgConn.start()
 	}
@@ -395,11 +396,10 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 }
 
 // hostedConn is the subset of edgeConnLegacy/edgeConnXgress that the hosting
-// accept path needs. It bundles the mux-sink, data-sink, and crypto-setup
-// interfaces into one.
+// accept path needs. It bundles the data-sink and crypto-setup interfaces
+// into one.
 type hostedConn interface {
 	edge.Conn
-	edge.MsgSink[any]
 	acceptableConn
 	establishServerCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) ([]byte, error)
 	setAcceptCompleteHandler(h *newConnHandler)
@@ -433,10 +433,17 @@ func (conn *edgeHostConn) buildChildConn(p childConnParams, useXg bool, message 
 				circuitId:      p.circuitId,
 				customState:    p.customState,
 			},
-			connId: p.id,
+			localId: nextLocalConnId(),
 		}
 		ec.initChunkReader()
-		if err := ec.setupXgressFlowControl(message, xgress.Terminator, conn.envF, conn.SdkChannel, conn.msgMux); err != nil {
+		if err := ec.setupXgressFlowControl(message, xgress.Terminator, conn.envF, conn.SdkChannel, conn.msgMux, p.id); err != nil {
+			return nil, err
+		}
+		// Register the conn's path as its own mux sink, so inbound payloads from
+		// the dialer have somewhere to land the moment the xgress goes live. A
+		// failure means a router-provided connId collision; the conn is unusable,
+		// so fail the dial.
+		if err := conn.msgMux.Add(ec.primaryPathSink()); err != nil {
 			return nil, err
 		}
 		return ec, nil
@@ -457,6 +464,11 @@ func (conn *edgeHostConn) buildChildConn(p childConnParams, useXg bool, message 
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
 	ec.initChunkReader()
+	// register the conn as its own mux sink. A failure means a router-provided
+	// connId collision; the conn is unusable, so fail the dial.
+	if err := conn.msgMux.Add(ec); err != nil {
+		return nil, err
+	}
 	return ec, nil
 }
 

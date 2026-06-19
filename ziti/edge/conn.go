@@ -48,6 +48,10 @@ type RouterClient interface {
 	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
 	// ConnectV2 performs a sessionless dial. The router authorizes locally via RDM.
 	ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
+	// HasCapability returns true if the connected router advertised the given
+	// capability bit in its hello headers. New router capabilities are checked
+	// through this method rather than a dedicated method per capability.
+	HasCapability(capability int) bool
 	// SupportsConnectV2 returns true if the router advertises ConnectV2 support.
 	SupportsConnectV2() bool
 	Listen(service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *ListenOptions, envF func() xgress.Env) (RouterHostConn, error)

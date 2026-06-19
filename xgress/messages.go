@@ -101,6 +101,20 @@ type Acknowledgement struct {
 	RecvBufferSize uint32
 	RTT            uint16
 	Sequence       []int32
+	arrivalPath    Path
+}
+
+// SetArrivalPath records the transport path this acknowledgement arrived on.
+// It is receive-side transient state and is not marshalled; it lets the send
+// buffer attribute RTT samples to the path that carried the ack.
+func (ack *Acknowledgement) SetArrivalPath(path Path) {
+	ack.arrivalPath = path
+}
+
+// ArrivalPath returns the transport path this acknowledgement arrived on,
+// or nil if it was not recorded.
+func (ack *Acknowledgement) ArrivalPath() Path {
+	return ack.arrivalPath
 }
 
 func (ack *Acknowledgement) GetCircuitId() string {
@@ -208,13 +222,27 @@ const (
 )
 
 type Payload struct {
-	CircuitId string
-	Flags     uint32
-	RTT       uint16
-	Sequence  int32
-	Headers   map[uint8][]byte
-	Data      []byte
-	raw       []byte
+	CircuitId   string
+	Flags       uint32
+	RTT         uint16
+	Sequence    int32
+	Headers     map[uint8][]byte
+	Data        []byte
+	raw         []byte
+	arrivalPath Path
+}
+
+// SetArrivalPath records the transport path this payload arrived on. The
+// tag is receive-side transient state and is not marshalled; it lets the
+// per-payload ack be sent back over the same path (arrival affinity).
+func (payload *Payload) SetArrivalPath(tag Path) {
+	payload.arrivalPath = tag
+}
+
+// ArrivalPath returns the transport path this payload arrived on, or nil
+// if it was not recorded.
+func (payload *Payload) ArrivalPath() Path {
+	return payload.arrivalPath
 }
 
 func (payload *Payload) GetSequence() int32 {

@@ -81,20 +81,56 @@ type Env interface {
 	GetMetrics() Metrics
 }
 
+// Path identifies the transport path a payload was sent over, from the
+// xgress layer's point of view: it carries the identity used to key in-flight
+// tracking, and receives the per-path RTT and loss samples the send buffer
+// attributes to it. Data plane adapters supply Path values from their send
+// methods. A path with nothing to record (e.g. a router-side single-fabric
+// path) implements the record methods as no-ops.
+//
+// The richer network-layer path type (which owns the transport itself) is a
+// superset of this; the xgress layer only needs identity plus metric sinks.
+// RecordRtt and RecordLoss are only ever called from the send buffer's run
+// goroutine.
+type Path interface {
+	// ID identifies this path; it keys the path's metric series.
+	ID() string
+	// RecordRtt contributes a raw round-trip-time sample, in milliseconds, to
+	// the path an acknowledged payload arrived on (arrival affinity makes this
+	// a clean single-path measurement).
+	RecordRtt(sampleMillis uint16)
+	// RecordLoss records that a payload last sent on this path was not
+	// acknowledged in time and is being retransmitted.
+	RecordLoss()
+}
+
 // DataPlaneAdapter is invoked by an xgress whenever messages need to be sent to the data plane. Generally a DataPlaneAdapter
 // is implemented to connect the xgress to a data plane data transmission system.
 type DataPlaneAdapter interface {
-	// ForwardPayload is used to forward data payloads onto the data-plane from an xgress
-	ForwardPayload(payload *Payload, x *Xgress, ctx context.Context)
+	// ForwardPayload is used to forward data payloads onto the data-plane from an xgress.
+	// It returns a tag identifying the path the payload was sent over, or nil if no
+	// live path was available to accept it. A nil return means the payload was not
+	// handed to any transport; the send buffer leaves it unsent rather than marking
+	// it sent. Transient send errors on a live path are NOT signaled with nil: the
+	// payload was handed to a transport and recovery happens via retransmission.
+	ForwardPayload(payload *Payload, x *Xgress, ctx context.Context) Path
 
-	// RetransmitPayload is used to retransmit data payloads onto the data-plane from an xgress
-	RetransmitPayload(srcAddr Address, payload *Payload) error
+	// RetransmitPayload is used to retransmit data payloads onto the data-plane from an
+	// xgress. previous is the tag of the path the payload was last sent over. It returns
+	// the tag of the path the retransmit was accepted on, so the send buffer can update
+	// the payload's stored tag, or nil if no live path accepted it (no-send contract,
+	// as with ForwardPayload).
+	RetransmitPayload(previous Path, srcAddr Address, payload *Payload) (Path, error)
 
 	// ForwardControlMessage is used to forward control messages onto the data-plane from an xgress
 	ForwardControlMessage(control *Control, x *Xgress)
 
-	// ForwardAcknowledgement is used to forward acks onto the data-plane from an xgress
-	ForwardAcknowledgement(ack *Acknowledgement, address Address)
+	// ForwardAcknowledgement is used to forward acks onto the data-plane from an xgress.
+	// arrival is the tag of the path the acknowledged payload arrived on, so per-payload
+	// acks can be sent back over the same path (arrival affinity). It is nil for acks
+	// with no originating payload (window updates) and when arrival path threading is
+	// not in place; the adapter then uses its default outbound path.
+	ForwardAcknowledgement(ack *Acknowledgement, address Address, arrival Path)
 
 	Env
 }
@@ -436,6 +472,12 @@ func (self *Xgress) closeIfRxAndTxDone() {
 
 func (self *Xgress) CloseSendBuffer() {
 	self.payloadBuffer.Close()
+}
+
+// FlushSendBuffer re-dispatches the buffered send window. It is used to resume
+// flow after a pathless gap, when a new transport path becomes available.
+func (self *Xgress) FlushSendBuffer() {
+	self.payloadBuffer.Flush()
 }
 
 func (self *Xgress) Closed() bool {
@@ -1014,7 +1056,7 @@ func (self *Xgress) forwardPayloadAsync(payload *Payload, ctx context.Context) e
 }
 
 func (self *Xgress) forwardPayloadImpl(payload *Payload, ctx context.Context, async bool) error {
-	var sendCallback func()
+	var sendCallback func(Path)
 	var err error
 
 	if ctx == nil {
@@ -1036,12 +1078,12 @@ func (self *Xgress) forwardPayloadImpl(payload *Payload, ctx context.Context, as
 
 	if async {
 		go func() {
-			self.dataPlane.ForwardPayload(payload, self, ctx)
-			sendCallback()
+			tag := self.dataPlane.ForwardPayload(payload, self, ctx)
+			sendCallback(tag)
 		}()
 	} else {
-		self.dataPlane.ForwardPayload(payload, self, ctx)
-		sendCallback()
+		tag := self.dataPlane.ForwardPayload(payload, self, ctx)
+		sendCallback(tag)
 	}
 	return nil
 }
@@ -1071,7 +1113,9 @@ func (self *Xgress) PayloadReceived(payload *Payload) {
 		ack.RTT = payload.RTT
 
 		atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
-		self.dataPlane.ForwardAcknowledgement(ack, self.address)
+		// per-payload acks follow arrival affinity: the ack returns over the
+		// path the payload arrived on, so the round trip measures one path
+		self.dataPlane.ForwardAcknowledgement(ack, self.address, payload.ArrivalPath())
 	} else {
 		log.Debug("dropped")
 	}
@@ -1082,7 +1126,7 @@ func (self *Xgress) SendEmptyAck() {
 	ack := NewAcknowledgement(self.circuitId, self.originator)
 	ack.RecvBufferSize = self.linkRxBuffer.Size()
 	atomic.StoreUint32(&self.lastBufferSizeSent, ack.RecvBufferSize)
-	self.dataPlane.ForwardAcknowledgement(ack, self.address)
+	self.dataPlane.ForwardAcknowledgement(ack, self.address, nil)
 }
 
 func (self *Xgress) GetSequence() uint64 {

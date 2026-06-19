@@ -37,17 +37,18 @@ type circuitAdapter struct {
 	payloadIngester *PayloadIngester
 }
 
-func (self *circuitAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) {
+func (self *circuitAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context.Context) Path {
 	_ = self.peer.SendPayload(payload, 0, PayloadTypeXg)
+	return testPath("test")
 }
 
-func (self *circuitAdapter) ForwardAcknowledgement(ack *Acknowledgement, _ Address) {
+func (self *circuitAdapter) ForwardAcknowledgement(ack *Acknowledgement, _ Address, _ Path) {
 	_ = self.peer.SendAcknowledgement(ack)
 }
 
 func (self *circuitAdapter) ForwardControlMessage(*Control, *Xgress) {}
-func (self *circuitAdapter) RetransmitPayload(Address, *Payload) error {
-	return nil
+func (self *circuitAdapter) RetransmitPayload(Path, Address, *Payload) (Path, error) {
+	return testPath("test"), nil
 }
 
 func (self *circuitAdapter) GetPayloadIngester() *PayloadIngester { return self.payloadIngester }

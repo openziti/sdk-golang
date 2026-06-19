@@ -385,6 +385,11 @@ func (self *newConnHandler) dialSucceeded() (error, bool) {
 
 	newConnLogger.Debug("new connection established")
 
+	// The new-conn id in the reply is only read by routers doing legacy
+	// (non-router-assigned-id) dials, which always produce legacy conns, whose
+	// Id() is the wire connId. For router-assigned ids (all xgress dials and
+	// modern legacy dials) the router already knows the id and ignores this
+	// value.
 	reply := edge.NewDialSuccessMsg(self.conn.Id(), self.edgeCh.Id())
 	reply.ReplyTo(self.message)
 
