@@ -4,3 +4,7 @@ github_deploy_key
 *.jwt
 go.work
 go.work.sum
+
+mercurius.yaml
+.mercurius
+.mcp.json

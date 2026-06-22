@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/v2/ziti"
 	"github.com/sirupsen/logrus"
 	"net"
 	"net/http"

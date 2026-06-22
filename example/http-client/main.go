@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/v2/ziti"
 	"io"
 	"net"
 	"net/http"

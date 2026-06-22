@@ -14,7 +14,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/edge-api/rest_util"
 	nfx509 "github.com/openziti/foundation/v2/x509"
-	"github.com/openziti/sdk-golang/ziti"
+	"github.com/openziti/sdk-golang/v2/ziti"
 	"gopkg.in/square/go-jose.v2/json"
 )
 

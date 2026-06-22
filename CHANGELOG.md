@@ -1,3 +1,54 @@
+# Release notes 2.0.0
+
+## Breaking Changes
+
+* **The module path is now `github.com/openziti/sdk-golang/v2`.** Per Go semantic import
+  versioning, a v2 release must carry the major version in its path, so consumers update
+  their imports to the `/v2` form (e.g. `github.com/openziti/sdk-golang/v2/ziti`).
+
+* **Supported controller versions are the current LTS releases: 1.6.x and 2.0.0.** The dial path
+  was reworked to fetch the per-service edge router list via the sessionless
+  `GET /edge/client/v1/services/{id}/edge-routers` endpoint on the client API when the controller
+  is 1.0.0 or newer (dev builds reporting `0.0.0` are treated as new). Older controllers don't
+  expose that endpoint on the client API; against those, the SDK falls back to creating a dial
+  session and using the edge routers attached to it, so pre-1.0 controllers continue to work on a
+  best-effort basis via the V1 path.
+
+* Dials use the sessionless ConnectV2 flow when the router advertises ConnectV2 support and the
+  API session is OIDC. Otherwise (older router, legacy API session, or
+  `DialOptions.ForceConnectV1`) the SDK falls back to the legacy session-based Connect, creating
+  the service session lazily only when that path is taken.
+
+* ConnectV2 dials always use SDK flow control; `DialOptions.SdkFlowControl` now only applies to
+  V1 dials and listens.
+
+* Bind/listen (hosting) still creates and refreshes service sessions — terminators require the
+  session token as the routing key for incoming dials, so that path is unchanged.
+
+* `edge.Conn` no longer exposes `GetRouterId()` (and `edge.MsgChannel` no longer implements it).
+
+## What's New
+
+* `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
+  endpoint. Used internally by the new dial path.
+* `ContextImpl.serviceEdgeRouters` — per-service ER cache, refreshed on the same cadence as the
+  legacy session cache (`sessionRefreshInterval`) and invalidated whenever a service is removed
+  or a dial fails.
+* `DialOptions.ForceConnectV1` — escape hatch that skips the ConnectV2 path for a dial even when
+  the router advertises V2 support.
+* `EventDial` / `Eventer.AddDialListener` — one event per dial attempt, successful or not,
+  carrying the negotiated protocol (`connect-v1` vs `connect-v2` as `edge.DialProtocol`), the
+  target router, whether V1 was forced, timing, the circuit id, and the error on failure. Router
+  connections additionally report ConnectV2 capability in `Context.Inspect()`.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
+    * [Issue #936](https://github.com/openziti/sdk-golang/issues/936) - Implement Connect-V2
+    * [Issue #951](https://github.com/openziti/sdk-golang/issues/951) - Add an SDK acceptance-test framework
+    * [Issue #952](https://github.com/openziti/sdk-golang/issues/952) - xgress client half-close not delivered to legacy edge hosts
+
+
 # Release notes 1.9.0
 
 ## What's New
@@ -219,7 +270,7 @@ the control underlay when one is available.
 
 ## What's New
 
-* Updates Go version to 1.24, in-line with Go's supported version policy
+* Updates Go version to 1.25, in-line with Go's supported version policy
 * Bug fixes
 
 ## Issues Fixed and Dependency Updates

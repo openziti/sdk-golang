@@ -25,7 +25,7 @@ import (
 
 	"github.com/openziti/edge-api/rest_util"
 	"github.com/openziti/identity"
-	apis "github.com/openziti/sdk-golang/edge-apis"
+	apis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/openziti/transport/v2"
 	"github.com/pkg/errors"
 )

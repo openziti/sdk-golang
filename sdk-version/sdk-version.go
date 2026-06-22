@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/openziti/sdk-golang/ziti/sdkinfo"
+	"github.com/openziti/sdk-golang/v2/ziti/sdkinfo"
 )
 
 func main() {

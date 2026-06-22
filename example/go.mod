@@ -2,7 +2,7 @@ module github.com/openziti/sdk-golang/example
 
 go 1.26.4
 
-replace github.com/openziti/sdk-golang => ../
+replace github.com/openziti/sdk-golang/v2 => ../
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -13,7 +13,7 @@ require (
 	github.com/openziti/edge-api v0.32.0
 	github.com/openziti/foundation/v2 v2.0.95
 	github.com/openziti/runzmd v1.0.83
-	github.com/openziti/sdk-golang v1.2.6
+	github.com/openziti/sdk-golang/v2 v2.0.0-00010101000000-000000000000
 	github.com/openziti/transport/v2 v2.0.216
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.4

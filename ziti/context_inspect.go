@@ -18,8 +18,8 @@ package ziti
 
 import (
 	"github.com/openziti/edge-api/rest_model"
-	"github.com/openziti/sdk-golang/inspect"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/inspect"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 )
 
 func (context *ContextImpl) Inspect() *inspect.ContextInspectResult {

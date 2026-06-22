@@ -10,7 +10,7 @@ import (
 
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/sequencer"
-	"github.com/openziti/sdk-golang/ziti/edge"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,12 +35,13 @@ func BenchmarkConnWrite(b *testing.B) {
 
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
-	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      mux,
-		serviceName: "test",
+	conn := &edgeConnLegacy{
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	conn.initChunkReader()
 
 	req := require.New(b)
 
@@ -63,12 +64,13 @@ func BenchmarkConnRead(b *testing.B) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
-	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       readQ,
-		msgMux:      mux,
-		serviceName: "test",
+	conn := &edgeConnLegacy{
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        readQ,
 	}
+	conn.initChunkReader()
 
 	var stop atomic.Bool
 	defer stop.Store(true)
@@ -140,12 +142,13 @@ func TestReadMultipart(t *testing.T) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
 	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
-	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       readQ,
-		msgMux:      mux,
-		serviceName: "test",
+	conn := &edgeConnLegacy{
+		edgeConnBase: edgeConnBase{serviceName: "test"},
+		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
+		mux:          mux,
+		readQ:        readQ,
 	}
+	conn.initChunkReader()
 
 	var stop atomic.Bool
 	defer stop.Store(true)
