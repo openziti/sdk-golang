@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/michaelquigley/pfxlog v0.6.10
-	github.com/openziti/edge-api v0.32.0
+	github.com/openziti/edge-api v0.34.1-0.20260703041337-e7f938dcaa70
 	github.com/openziti/foundation/v2 v2.0.95
 	github.com/openziti/runzmd v1.0.83
 	github.com/openziti/sdk-golang/v2 v2.0.0-00010101000000-000000000000
