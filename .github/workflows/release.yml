@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      - '!v*-*'   # exclude pre-release qualifiers (e.g. v2.0.0-pre)
+      - '!v*+*'   # exclude build metadata (e.g. v2.0.0+build)
 
 jobs:
   release:
