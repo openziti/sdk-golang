@@ -30,6 +30,17 @@ func (self *XgAdapter) HandleXgressClose(x *xgress.Xgress) {
 		pfxlog.Logger().WithError(err).Error("failed to send close xg close message")
 	}
 
+	// The xgress is fully closed, so no more data will flow in either direction.
+	// Mark the owning conn closed so IsClosed reflects it. This is the single
+	// point that covers every teardown that ends at the xgress: an app-initiated
+	// Close, a peer end-of-circuit (e.g. the host's access being revoked), or a
+	// router StateClosed that drains and then closes. Without this the conn would
+	// report open until the underlying channel went away. close is idempotent, so
+	// the app-initiated path (which calls close first) is unaffected.
+	if conn, ok := self.muxSink.(*edgeConnXgress); ok {
+		conn.close(false)
+	}
+
 	// see note in close
 	self.mux.Remove(self.muxSink)
 }
