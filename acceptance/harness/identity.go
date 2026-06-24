@@ -28,6 +28,13 @@ import (
 	"testing"
 )
 
+// NamedEntity is anything with a controller name. The policy grant helpers take
+// it so they work across identity credential types (cert Identity, UpdbIdentity,
+// ...) without overloading per type.
+type NamedEntity interface {
+	Name() string
+}
+
 // Identity is a created-and-enrolled identity, usable to build an SDK context.
 type Identity struct {
 	name     string

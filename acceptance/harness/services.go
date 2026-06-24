@@ -47,19 +47,19 @@ func (h *Harness) CreateService(t testing.TB, base string) *Service {
 // GrantDial creates a Dial service policy granting the identities access to svc.
 // Per the isolation contract the policy targets the named entities explicitly,
 // never #all or shared attributes.
-func (h *Harness) GrantDial(t testing.TB, svc *Service, ids ...*Identity) {
+func (h *Harness) GrantDial(t testing.TB, svc *Service, ids ...NamedEntity) {
 	t.Helper()
 	h.createServicePolicy(t, "Dial", svc, ids)
 }
 
 // GrantBind creates a Bind service policy granting the identities hosting access
 // to svc, targeting the named entities explicitly.
-func (h *Harness) GrantBind(t testing.TB, svc *Service, ids ...*Identity) {
+func (h *Harness) GrantBind(t testing.TB, svc *Service, ids ...NamedEntity) {
 	t.Helper()
 	h.createServicePolicy(t, "Bind", svc, ids)
 }
 
-func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service, ids []*Identity) {
+func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service, ids []NamedEntity) {
 	t.Helper()
 	name := uniqueName(t, strings.ToLower(polType))
 	h.Cli(t, "edge", "create", "service-policy", name, polType,
@@ -72,7 +72,7 @@ func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service
 
 // GrantRouterAccess creates an edge-router policy letting the identities use the
 // router, targeting both sides by name.
-func (h *Harness) GrantRouterAccess(t testing.TB, r *Router, ids ...*Identity) {
+func (h *Harness) GrantRouterAccess(t testing.TB, r *Router, ids ...NamedEntity) {
 	t.Helper()
 	name := uniqueName(t, "erp")
 	h.Cli(t, "edge", "create", "edge-router-policy", name,
@@ -96,7 +96,7 @@ func (h *Harness) GrantServiceRouterAccess(t testing.TB, svc *Service, r *Router
 	})
 }
 
-func identityRoles(ids []*Identity) string {
+func identityRoles(ids []NamedEntity) string {
 	roles := make([]string, len(ids))
 	for i, id := range ids {
 		roles[i] = "@" + id.Name()
