@@ -44,22 +44,41 @@ func (h *Harness) CreateService(t testing.TB, base string) *Service {
 	return &Service{name: name}
 }
 
-// GrantDial creates a Dial service policy granting the identities access to svc.
-// Per the isolation contract the policy targets the named entities explicitly,
-// never #all or shared attributes.
-func (h *Harness) GrantDial(t testing.TB, svc *Service, ids ...NamedEntity) {
+// Policy is a created policy. Beyond its automatic best-effort cleanup it can be
+// deleted mid-test, e.g. to revoke access and observe the SDK react.
+type Policy struct {
+	h    *Harness
+	kind string
+	name string
+}
+
+// Name returns the policy's unique name on the controller.
+func (p *Policy) Name() string { return p.name }
+
+// Delete removes the policy now (in addition to the automatic cleanup), failing
+// the test on error. Used to revoke access during a test.
+func (p *Policy) Delete(t testing.TB) {
 	t.Helper()
-	h.createServicePolicy(t, "Dial", svc, ids)
+	p.h.Cli(t, "edge", "delete", p.kind, p.name)
+}
+
+// GrantDial creates a Dial service policy granting the identities access to svc
+// and returns a handle for revoking it. Per the isolation contract the policy
+// targets the named entities explicitly, never #all or shared attributes.
+func (h *Harness) GrantDial(t testing.TB, svc *Service, ids ...NamedEntity) *Policy {
+	t.Helper()
+	return h.createServicePolicy(t, "Dial", svc, ids)
 }
 
 // GrantBind creates a Bind service policy granting the identities hosting access
-// to svc, targeting the named entities explicitly.
-func (h *Harness) GrantBind(t testing.TB, svc *Service, ids ...NamedEntity) {
+// to svc, targeting the named entities explicitly, and returns a handle for
+// revoking it.
+func (h *Harness) GrantBind(t testing.TB, svc *Service, ids ...NamedEntity) *Policy {
 	t.Helper()
-	h.createServicePolicy(t, "Bind", svc, ids)
+	return h.createServicePolicy(t, "Bind", svc, ids)
 }
 
-func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service, ids []NamedEntity) {
+func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service, ids []NamedEntity) *Policy {
 	t.Helper()
 	name := uniqueName(t, strings.ToLower(polType))
 	h.Cli(t, "edge", "create", "service-policy", name, polType,
@@ -68,6 +87,7 @@ func (h *Harness) createServicePolicy(t testing.TB, polType string, svc *Service
 	t.Cleanup(func() {
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "service-policy", name)
 	})
+	return &Policy{h: h, kind: "service-policy", name: name}
 }
 
 // GrantRouterAccess creates an edge-router policy letting the identities use the
