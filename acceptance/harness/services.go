@@ -36,12 +36,38 @@ func (s *Service) Name() string {
 // isolation contract, with best-effort cleanup.
 func (h *Harness) CreateService(t testing.TB, base string) *Service {
 	t.Helper()
+	return h.CreateServiceWithConfigs(t, base)
+}
+
+// CreateServiceWithConfigs creates a service associated with the given config
+// names (e.g. an intercept.v1 config for intercept-style dialing), uniquely
+// named with best-effort cleanup.
+func (h *Harness) CreateServiceWithConfigs(t testing.TB, base string, configs ...string) *Service {
+	t.Helper()
 	name := uniqueName(t, base)
-	h.Cli(t, "edge", "create", "service", name)
+	args := []string{"edge", "create", "service", name}
+	if len(configs) > 0 {
+		args = append(args, "--configs", strings.Join(configs, ","))
+	}
+	h.Cli(t, args...)
 	t.Cleanup(func() {
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "service", name)
 	})
 	return &Service{name: name}
+}
+
+// CreateConfig creates a config of the given type with the given JSON value,
+// uniquely named with best-effort cleanup, and returns its name. The config
+// types it references (e.g. intercept.v1) are created by the controller
+// quickstart bootstrap.
+func (h *Harness) CreateConfig(t testing.TB, base, configType, jsonValue string) string {
+	t.Helper()
+	name := uniqueName(t, base)
+	h.Cli(t, "edge", "create", "config", name, configType, jsonValue)
+	t.Cleanup(func() {
+		_, _ = h.cli.Run(context.Background(), "edge", "delete", "config", name)
+	})
+	return name
 }
 
 // GrantDial creates a Dial service policy granting the identities access to svc.

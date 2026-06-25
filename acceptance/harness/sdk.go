@@ -40,6 +40,30 @@ func (h *Harness) NewLegacySdkContext(t testing.TB, id *Identity) ziti.Context {
 	return h.newSdkContext(t, id, true)
 }
 
+// NewSdkContextWithConfigTypes is NewSdkContext that also requests the given
+// service config types, so the context populates per-service config (e.g.
+// intercept.v1) used by GetServiceForAddr/DialAddr.
+func (h *Harness) NewSdkContextWithConfigTypes(t testing.TB, id *Identity, configTypes ...string) ziti.Context {
+	t.Helper()
+
+	cfg, err := ziti.NewConfigFromFile(id.ConfigPath())
+	if err != nil {
+		t.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
+	}
+	cfg.ConfigTypes = append(cfg.ConfigTypes, configTypes...)
+
+	ctx, err := ziti.NewContext(cfg)
+	if err != nil {
+		t.Fatalf("creating sdk context for %s: %v", id.Name(), err)
+	}
+	t.Cleanup(ctx.Close)
+
+	if err := ctx.Authenticate(); err != nil {
+		t.Fatalf("authenticating %s: %v", id.Name(), err)
+	}
+	return ctx
+}
+
 func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) ziti.Context {
 	t.Helper()
 
