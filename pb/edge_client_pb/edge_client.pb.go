@@ -471,6 +471,54 @@ func (PrecedenceValue) EnumDescriptor() ([]byte, []int) {
 	return file_edge_client_proto_rawDescGZIP(), []int{3}
 }
 
+// RouterCapability values are bit positions within the RouterCapabilities header bitmask.
+type RouterCapability int32
+
+const (
+	RouterCapability_NoRouterCapabilities RouterCapability = 0
+	// ConnectV2 indicates the router supports the ConnectV2 message flow
+	RouterCapability_ConnectV2 RouterCapability = 1
+)
+
+// Enum value maps for RouterCapability.
+var (
+	RouterCapability_name = map[int32]string{
+		0: "NoRouterCapabilities",
+		1: "ConnectV2",
+	}
+	RouterCapability_value = map[string]int32{
+		"NoRouterCapabilities": 0,
+		"ConnectV2":            1,
+	}
+)
+
+func (x RouterCapability) Enum() *RouterCapability {
+	p := new(RouterCapability)
+	*p = x
+	return p
+}
+
+func (x RouterCapability) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RouterCapability) Descriptor() protoreflect.EnumDescriptor {
+	return file_edge_client_proto_enumTypes[4].Descriptor()
+}
+
+func (RouterCapability) Type() protoreflect.EnumType {
+	return &file_edge_client_proto_enumTypes[4]
+}
+
+func (x RouterCapability) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RouterCapability.Descriptor instead.
+func (RouterCapability) EnumDescriptor() ([]byte, []int) {
+	return file_edge_client_proto_rawDescGZIP(), []int{4}
+}
+
 type Flag int32
 
 const (
@@ -519,11 +567,11 @@ func (x Flag) String() string {
 }
 
 func (Flag) Descriptor() protoreflect.EnumDescriptor {
-	return file_edge_client_proto_enumTypes[4].Descriptor()
+	return file_edge_client_proto_enumTypes[5].Descriptor()
 }
 
 func (Flag) Type() protoreflect.EnumType {
-	return &file_edge_client_proto_enumTypes[4]
+	return &file_edge_client_proto_enumTypes[5]
 }
 
 func (x Flag) Number() protoreflect.EnumNumber {
@@ -532,7 +580,7 @@ func (x Flag) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Flag.Descriptor instead.
 func (Flag) EnumDescriptor() ([]byte, []int) {
-	return file_edge_client_proto_rawDescGZIP(), []int{4}
+	return file_edge_client_proto_rawDescGZIP(), []int{5}
 }
 
 type ServicePostureStateRequest struct {
@@ -1894,7 +1942,10 @@ const file_edge_client_proto_rawDesc = "" +
 	"\aDefault\x10\x00\x12\f\n" +
 	"\bRequired\x10\x01\x12\n" +
 	"\n" +
-	"\x06Failed\x10\x02*W\n" +
+	"\x06Failed\x10\x02*;\n" +
+	"\x10RouterCapability\x12\x18\n" +
+	"\x14NoRouterCapabilities\x10\x00\x12\r\n" +
+	"\tConnectV2\x10\x01*W\n" +
 	"\x04Flag\x12\b\n" +
 	"\x04ZERO\x10\x00\x12\a\n" +
 	"\x03FIN\x10\x01\x12\x0e\n" +
@@ -1918,59 +1969,60 @@ func file_edge_client_proto_rawDescGZIP() []byte {
 	return file_edge_client_proto_rawDescData
 }
 
-var file_edge_client_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_edge_client_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_edge_client_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_edge_client_proto_goTypes = []any{
 	(ContentType)(0),                        // 0: ziti.edge_client.pb.ContentType
 	(HeaderId)(0),                           // 1: ziti.edge_client.pb.HeaderId
 	(Error)(0),                              // 2: ziti.edge_client.pb.Error
 	(PrecedenceValue)(0),                    // 3: ziti.edge_client.pb.PrecedenceValue
-	(Flag)(0),                               // 4: ziti.edge_client.pb.Flag
-	(*ServicePostureStateRequest)(nil),      // 5: ziti.edge_client.pb.ServicePostureStateRequest
-	(*ServicePostureStateResponse)(nil),     // 6: ziti.edge_client.pb.ServicePostureStateResponse
-	(*ServicePostureState)(nil),             // 7: ziti.edge_client.pb.ServicePostureState
-	(*Policy)(nil),                          // 8: ziti.edge_client.pb.Policy
-	(*PostureQuery)(nil),                    // 9: ziti.edge_client.pb.PostureQuery
-	(*PostureResponses)(nil),                // 10: ziti.edge_client.pb.PostureResponses
-	(*PostureResponse)(nil),                 // 11: ziti.edge_client.pb.PostureResponse
-	nil,                                     // 12: ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry
-	nil,                                     // 13: ziti.edge_client.pb.ServicePostureState.PoliciesEntry
-	nil,                                     // 14: ziti.edge_client.pb.Policy.PostureQueriesEntry
-	(*PostureQuery_Processes)(nil),          // 15: ziti.edge_client.pb.PostureQuery.Processes
-	(*PostureQuery_Process)(nil),            // 16: ziti.edge_client.pb.PostureQuery.Process
-	(*PostureResponse_TotpToken)(nil),       // 17: ziti.edge_client.pb.PostureResponse.TotpToken
-	(*PostureResponse_Macs)(nil),            // 18: ziti.edge_client.pb.PostureResponse.Macs
-	(*PostureResponse_OperatingSystem)(nil), // 19: ziti.edge_client.pb.PostureResponse.OperatingSystem
-	(*PostureResponse_Domain)(nil),          // 20: ziti.edge_client.pb.PostureResponse.Domain
-	(*PostureResponse_Process)(nil),         // 21: ziti.edge_client.pb.PostureResponse.Process
-	(*PostureResponse_ProcessList)(nil),     // 22: ziti.edge_client.pb.PostureResponse.ProcessList
-	(*PostureResponse_Woken)(nil),           // 23: ziti.edge_client.pb.PostureResponse.Woken
-	(*PostureResponse_Unlocked)(nil),        // 24: ziti.edge_client.pb.PostureResponse.Unlocked
-	(*PostureResponse_SdkInfo)(nil),         // 25: ziti.edge_client.pb.PostureResponse.SdkInfo
-	(*timestamppb.Timestamp)(nil),           // 26: google.protobuf.Timestamp
+	(RouterCapability)(0),                   // 4: ziti.edge_client.pb.RouterCapability
+	(Flag)(0),                               // 5: ziti.edge_client.pb.Flag
+	(*ServicePostureStateRequest)(nil),      // 6: ziti.edge_client.pb.ServicePostureStateRequest
+	(*ServicePostureStateResponse)(nil),     // 7: ziti.edge_client.pb.ServicePostureStateResponse
+	(*ServicePostureState)(nil),             // 8: ziti.edge_client.pb.ServicePostureState
+	(*Policy)(nil),                          // 9: ziti.edge_client.pb.Policy
+	(*PostureQuery)(nil),                    // 10: ziti.edge_client.pb.PostureQuery
+	(*PostureResponses)(nil),                // 11: ziti.edge_client.pb.PostureResponses
+	(*PostureResponse)(nil),                 // 12: ziti.edge_client.pb.PostureResponse
+	nil,                                     // 13: ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry
+	nil,                                     // 14: ziti.edge_client.pb.ServicePostureState.PoliciesEntry
+	nil,                                     // 15: ziti.edge_client.pb.Policy.PostureQueriesEntry
+	(*PostureQuery_Processes)(nil),          // 16: ziti.edge_client.pb.PostureQuery.Processes
+	(*PostureQuery_Process)(nil),            // 17: ziti.edge_client.pb.PostureQuery.Process
+	(*PostureResponse_TotpToken)(nil),       // 18: ziti.edge_client.pb.PostureResponse.TotpToken
+	(*PostureResponse_Macs)(nil),            // 19: ziti.edge_client.pb.PostureResponse.Macs
+	(*PostureResponse_OperatingSystem)(nil), // 20: ziti.edge_client.pb.PostureResponse.OperatingSystem
+	(*PostureResponse_Domain)(nil),          // 21: ziti.edge_client.pb.PostureResponse.Domain
+	(*PostureResponse_Process)(nil),         // 22: ziti.edge_client.pb.PostureResponse.Process
+	(*PostureResponse_ProcessList)(nil),     // 23: ziti.edge_client.pb.PostureResponse.ProcessList
+	(*PostureResponse_Woken)(nil),           // 24: ziti.edge_client.pb.PostureResponse.Woken
+	(*PostureResponse_Unlocked)(nil),        // 25: ziti.edge_client.pb.PostureResponse.Unlocked
+	(*PostureResponse_SdkInfo)(nil),         // 26: ziti.edge_client.pb.PostureResponse.SdkInfo
+	(*timestamppb.Timestamp)(nil),           // 27: google.protobuf.Timestamp
 }
 var file_edge_client_proto_depIdxs = []int32{
-	12, // 0: ziti.edge_client.pb.ServicePostureStateResponse.states:type_name -> ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry
-	13, // 1: ziti.edge_client.pb.ServicePostureState.policies:type_name -> ziti.edge_client.pb.ServicePostureState.PoliciesEntry
-	14, // 2: ziti.edge_client.pb.Policy.postureQueries:type_name -> ziti.edge_client.pb.Policy.PostureQueriesEntry
-	26, // 3: ziti.edge_client.pb.PostureQuery.timeoutAt:type_name -> google.protobuf.Timestamp
-	15, // 4: ziti.edge_client.pb.PostureQuery.processes:type_name -> ziti.edge_client.pb.PostureQuery.Processes
-	11, // 5: ziti.edge_client.pb.PostureResponses.responses:type_name -> ziti.edge_client.pb.PostureResponse
-	18, // 6: ziti.edge_client.pb.PostureResponse.macs:type_name -> ziti.edge_client.pb.PostureResponse.Macs
-	19, // 7: ziti.edge_client.pb.PostureResponse.os:type_name -> ziti.edge_client.pb.PostureResponse.OperatingSystem
-	22, // 8: ziti.edge_client.pb.PostureResponse.processList:type_name -> ziti.edge_client.pb.PostureResponse.ProcessList
-	20, // 9: ziti.edge_client.pb.PostureResponse.domain:type_name -> ziti.edge_client.pb.PostureResponse.Domain
-	23, // 10: ziti.edge_client.pb.PostureResponse.woken:type_name -> ziti.edge_client.pb.PostureResponse.Woken
-	24, // 11: ziti.edge_client.pb.PostureResponse.unlocked:type_name -> ziti.edge_client.pb.PostureResponse.Unlocked
-	25, // 12: ziti.edge_client.pb.PostureResponse.sdkInfo:type_name -> ziti.edge_client.pb.PostureResponse.SdkInfo
-	17, // 13: ziti.edge_client.pb.PostureResponse.totpToken:type_name -> ziti.edge_client.pb.PostureResponse.TotpToken
-	7,  // 14: ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry.value:type_name -> ziti.edge_client.pb.ServicePostureState
-	8,  // 15: ziti.edge_client.pb.ServicePostureState.PoliciesEntry.value:type_name -> ziti.edge_client.pb.Policy
-	9,  // 16: ziti.edge_client.pb.Policy.PostureQueriesEntry.value:type_name -> ziti.edge_client.pb.PostureQuery
-	16, // 17: ziti.edge_client.pb.PostureQuery.Processes.processes:type_name -> ziti.edge_client.pb.PostureQuery.Process
-	21, // 18: ziti.edge_client.pb.PostureResponse.ProcessList.processes:type_name -> ziti.edge_client.pb.PostureResponse.Process
-	26, // 19: ziti.edge_client.pb.PostureResponse.Woken.Time:type_name -> google.protobuf.Timestamp
-	26, // 20: ziti.edge_client.pb.PostureResponse.Unlocked.Time:type_name -> google.protobuf.Timestamp
+	13, // 0: ziti.edge_client.pb.ServicePostureStateResponse.states:type_name -> ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry
+	14, // 1: ziti.edge_client.pb.ServicePostureState.policies:type_name -> ziti.edge_client.pb.ServicePostureState.PoliciesEntry
+	15, // 2: ziti.edge_client.pb.Policy.postureQueries:type_name -> ziti.edge_client.pb.Policy.PostureQueriesEntry
+	27, // 3: ziti.edge_client.pb.PostureQuery.timeoutAt:type_name -> google.protobuf.Timestamp
+	16, // 4: ziti.edge_client.pb.PostureQuery.processes:type_name -> ziti.edge_client.pb.PostureQuery.Processes
+	12, // 5: ziti.edge_client.pb.PostureResponses.responses:type_name -> ziti.edge_client.pb.PostureResponse
+	19, // 6: ziti.edge_client.pb.PostureResponse.macs:type_name -> ziti.edge_client.pb.PostureResponse.Macs
+	20, // 7: ziti.edge_client.pb.PostureResponse.os:type_name -> ziti.edge_client.pb.PostureResponse.OperatingSystem
+	23, // 8: ziti.edge_client.pb.PostureResponse.processList:type_name -> ziti.edge_client.pb.PostureResponse.ProcessList
+	21, // 9: ziti.edge_client.pb.PostureResponse.domain:type_name -> ziti.edge_client.pb.PostureResponse.Domain
+	24, // 10: ziti.edge_client.pb.PostureResponse.woken:type_name -> ziti.edge_client.pb.PostureResponse.Woken
+	25, // 11: ziti.edge_client.pb.PostureResponse.unlocked:type_name -> ziti.edge_client.pb.PostureResponse.Unlocked
+	26, // 12: ziti.edge_client.pb.PostureResponse.sdkInfo:type_name -> ziti.edge_client.pb.PostureResponse.SdkInfo
+	18, // 13: ziti.edge_client.pb.PostureResponse.totpToken:type_name -> ziti.edge_client.pb.PostureResponse.TotpToken
+	8,  // 14: ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry.value:type_name -> ziti.edge_client.pb.ServicePostureState
+	9,  // 15: ziti.edge_client.pb.ServicePostureState.PoliciesEntry.value:type_name -> ziti.edge_client.pb.Policy
+	10, // 16: ziti.edge_client.pb.Policy.PostureQueriesEntry.value:type_name -> ziti.edge_client.pb.PostureQuery
+	17, // 17: ziti.edge_client.pb.PostureQuery.Processes.processes:type_name -> ziti.edge_client.pb.PostureQuery.Process
+	22, // 18: ziti.edge_client.pb.PostureResponse.ProcessList.processes:type_name -> ziti.edge_client.pb.PostureResponse.Process
+	27, // 19: ziti.edge_client.pb.PostureResponse.Woken.Time:type_name -> google.protobuf.Timestamp
+	27, // 20: ziti.edge_client.pb.PostureResponse.Unlocked.Time:type_name -> google.protobuf.Timestamp
 	21, // [21:21] is the sub-list for method output_type
 	21, // [21:21] is the sub-list for method input_type
 	21, // [21:21] is the sub-list for extension type_name
@@ -1998,7 +2050,7 @@ func file_edge_client_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_edge_client_proto_rawDesc), len(file_edge_client_proto_rawDesc)),
-			NumEnums:      5,
+			NumEnums:      6,
 			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,

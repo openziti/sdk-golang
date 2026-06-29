@@ -207,7 +207,7 @@ const (
 
 // Router capabilities advertised via RouterCapabilitiesHeader bitmask.
 const (
-	RouterCapabilityConnectV2 int = 1
+	RouterCapabilityConnectV2 = int(edge_client_pb.RouterCapability_ConnectV2)
 )
 
 // IsRouterCapable checks whether a router hello header set includes the given capability bit.

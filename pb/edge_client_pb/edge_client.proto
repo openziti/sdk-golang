@@ -121,6 +121,13 @@ enum PrecedenceValue {
   Failed = 2;
 }
 
+// RouterCapability values are bit positions within the RouterCapabilities header bitmask.
+enum RouterCapability {
+  NoRouterCapabilities = 0;
+  // ConnectV2 indicates the router supports the ConnectV2 message flow
+  ConnectV2 = 1;
+}
+
 enum Flag {
   ZERO = 0;
 
