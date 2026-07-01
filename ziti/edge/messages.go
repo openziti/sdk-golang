@@ -205,9 +205,12 @@ const (
 	ServiceIdentifierByName ServiceIdentifierType = 1
 )
 
-// Router capabilities advertised via RouterCapabilitiesHeader bitmask.
+// Router capabilities advertised via RouterCapabilitiesHeader bitmask. The bit
+// positions form a single namespace shared with the control channel; the SDK
+// acts on the bits it recognizes and ignores the rest.
 const (
-	RouterCapabilityConnectV2 = int(edge_client_pb.RouterCapability_ConnectV2)
+	RouterCapabilityMultiChannel = int(edge_client_pb.RouterCapability_MultiChannel)
+	RouterCapabilityConnectV2    = int(edge_client_pb.RouterCapability_ConnectV2)
 )
 
 // IsRouterCapable checks whether a router hello header set includes the given capability bit.

@@ -121,11 +121,18 @@ enum PrecedenceValue {
   Failed = 2;
 }
 
-// RouterCapability values are bit positions within the RouterCapabilities header bitmask.
+// RouterCapability values are bit positions within a single router capability
+// namespace shared across the control channel and the edge channel. A router
+// advertises the full set on both channels; each consumer acts on the bits it
+// recognizes and ignores the rest.
+//
+// Bits 3 and 4 are reserved for RouterDataModel and ServiceSubscriptions.
 enum RouterCapability {
   NoRouterCapabilities = 0;
+  // MultiChannel indicates the router supports multi-underlay channels
+  MultiChannel = 1;
   // ConnectV2 indicates the router supports the ConnectV2 message flow
-  ConnectV2 = 1;
+  ConnectV2 = 2;
 }
 
 enum Flag {
