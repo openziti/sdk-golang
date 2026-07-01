@@ -60,12 +60,21 @@ func (conn *testConn) HandleControlMsg(ControlType, channel.Headers, ControlRece
 	return nil
 }
 
+// testPath is a trivial Path for test adapters. Test adapters return a
+// non-nil path so payloads are marked sent, matching pre-metrics behavior; the
+// record methods are no-ops since these tests don't assert on per-path stats.
+type testPath string
+
+func (t testPath) ID() string       { return string(t) }
+func (t testPath) RecordRtt(uint16) {}
+func (t testPath) RecordLoss()      {}
+
 type noopReceiveHandler struct {
 	payloadIngester *PayloadIngester
 }
 
-func (n noopReceiveHandler) RetransmitPayload(srcAddr Address, payload *Payload) error {
-	return nil
+func (n noopReceiveHandler) RetransmitPayload(previous Path, srcAddr Address, payload *Payload) (Path, error) {
+	return testPath("test"), nil
 }
 
 func (n noopReceiveHandler) GetMetrics() Metrics {
@@ -76,9 +85,11 @@ func (n noopReceiveHandler) GetPayloadIngester() *PayloadIngester {
 	return n.payloadIngester
 }
 
-func (n noopReceiveHandler) ForwardAcknowledgement(*Acknowledgement, Address) {}
+func (n noopReceiveHandler) ForwardAcknowledgement(*Acknowledgement, Address, Path) {}
 
-func (n noopReceiveHandler) ForwardPayload(*Payload, *Xgress, context.Context) {}
+func (n noopReceiveHandler) ForwardPayload(*Payload, *Xgress, context.Context) Path {
+	return testPath("test")
+}
 
 func (n noopReceiveHandler) ForwardControlMessage(*Control, *Xgress) {}
 

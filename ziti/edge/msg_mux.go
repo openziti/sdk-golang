@@ -398,9 +398,10 @@ func (mux *ConnMuxImpl[T]) handlePayloadWithNoSink(msg *channel.Message, ch chan
 	payload, err := xgress.UnmarshallPayload(msg)
 	if err == nil {
 		if (payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet()) && len(payload.Data) == 0 {
+			// the router routes xgress acks by the circuit id in the message;
+			// no ConnIdHeader is needed
 			ack := xgress.NewAcknowledgement(payload.CircuitId, payload.GetOriginator().Invert())
 			ackMsg := ack.Marshall()
-			ackMsg.PutUint32Header(ConnIdHeader, connId)
 			_, _ = ch.TrySend(ackMsg)
 		} else {
 			pfxlog.Logger().WithField("connId", int(connId)).WithField("circuitId", payload.CircuitId).

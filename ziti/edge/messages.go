@@ -205,7 +205,10 @@ const (
 	ServiceIdentifierByName ServiceIdentifierType = 1
 )
 
-// Router capabilities advertised via RouterCapabilitiesHeader bitmask.
+// Router capabilities advertised via RouterCapabilitiesHeader, a bitmask in
+// the router's hello headers. Each capability is a bit index; new capabilities
+// are added here (and on the router side, which must use the same bit index)
+// and read through RouterConn.HasCapability, not a dedicated method each.
 const (
 	RouterCapabilityConnectV2 = int(edge_client_pb.RouterCapability_ConnectV2)
 )

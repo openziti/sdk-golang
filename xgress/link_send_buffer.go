@@ -71,10 +71,28 @@ type txPayload struct {
 	x          *Xgress
 	next       *txPayload
 	prev       *txPayload
+	path       atomic.Pointer[Path]
 }
 
-func (self *txPayload) markSent() {
+// markSentOn records that the payload was handed to the given transport path,
+// updating both the stored path and the send time. A nil path means no live
+// path accepted the payload (the no-send contract): the payload is left
+// unsent, so it is not treated as in-flight.
+func (self *txPayload) markSentOn(path Path) {
+	if path == nil {
+		return
+	}
+	self.path.Store(&path)
 	atomic.StoreInt64(&self.age, time.Now().UnixMilli())
+}
+
+// getPath returns the path this payload was last sent over, or nil if it has
+// not been sent.
+func (self *txPayload) getPath() Path {
+	if t := self.path.Load(); t != nil {
+		return *t
+	}
+	return nil
 }
 
 func (self *txPayload) getAge() int64 {
@@ -130,19 +148,19 @@ func (buffer *LinkSendBuffer) CloseWhenEmpty() bool {
 	return buffer.closeWhenEmpty.CompareAndSwap(false, true)
 }
 
-func (buffer *LinkSendBuffer) BufferPayload(payload *Payload) (func(), error) {
+func (buffer *LinkSendBuffer) BufferPayload(payload *Payload) (func(Path), error) {
 	txPayload := &txPayload{payload: payload, age: math.MaxInt64, x: buffer.x}
 
 	select {
 	case buffer.newlyBuffered <- txPayload:
 		pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
-		return txPayload.markSent, nil
+		return txPayload.markSentOn, nil
 	case <-buffer.closeNotify:
 		return nil, ErrWriteClosed
 	}
 }
 
-func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ctx context.Context) (func(), error) {
+func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ctx context.Context) (func(Path), error) {
 	txPayload := &txPayload{payload: payload, age: math.MaxInt64, x: buffer.x}
 
 	for {
@@ -151,10 +169,24 @@ func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ctx co
 			return nil, os.ErrDeadlineExceeded
 		case buffer.newlyBuffered <- txPayload:
 			pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
-			return txPayload.markSent, nil
+			return txPayload.markSentOn, nil
 		case <-buffer.closeNotify:
 			return nil, ErrWriteClosed
 		}
+	}
+}
+
+// Flush re-dispatches every currently buffered payload for (re)transmission.
+// It is used to resume a circuit after a pathless gap, once a new transport
+// path becomes available. Payloads written while there was no path to send on
+// were buffered but never marked sent (age stays at its initial max), and the
+// retransmit timer only revisits payloads that have actually been sent, so
+// without a flush they would sit indefinitely. Re-dispatch is idempotent: a
+// payload already queued for retransmit is skipped.
+func (buffer *LinkSendBuffer) Flush() {
+	select {
+	case buffer.events <- sendBufferFlushEvent{}:
+	case <-buffer.closeNotify:
 	}
 }
 
@@ -431,6 +463,16 @@ func (buffer *LinkSendBuffer) receiveAcknowledgement(ack *Acknowledgement) {
 	if ack.RTT > 0 {
 		rtt := uint16(time.Now().UnixMilli()) - ack.RTT
 
+		// Per-path RTT: attribute the raw round-trip sample to the path the ack
+		// arrived on (not the stored send path), since arrival affinity routes
+		// each ack back over the path its payload traveled. This runs for every
+		// nonzero-RTT ack, including duplicate acks, so when both copies of a
+		// cross-path retransmit arrive each path gets its own sample; only the
+		// first ack mutated delivery/loss state above.
+		if p := ack.ArrivalPath(); p != nil {
+			p.RecordRtt(rtt)
+		}
+
 		// Cap RTT growth rate — a single sample can move at most MaxRttScale * lastRtt.
 		// MaxRttScale == 0 disables the cap.
 		if buffer.lastRtt > 0 && buffer.x.Options.MaxRttScale > 0 {
@@ -470,6 +512,13 @@ func (buffer *LinkSendBuffer) retransmit() {
 		})
 
 		for _, v := range rtxList {
+			// Per-path loss: charge the path the payload was last sent on. The
+			// stored tag still points there (it advances only when a retransmit
+			// is accepted on a new path), and rtxList excludes never-sent
+			// payloads, so the tag is non-nil here.
+			if p := v.getPath(); p != nil {
+				p.RecordLoss()
+			}
 			v.markQueued()
 			buffer.retransmitPush(v)
 			retransmitted++
@@ -533,23 +582,9 @@ func (buffer *LinkSendBuffer) retransmitPop() *txPayload {
 // retransmitSender processes the retransmit list using blocking sends. Each LinkSendBuffer
 // gets its own goroutine so one slow xgress can't stall others.
 func (buffer *LinkSendBuffer) retransmitSender() {
-	log := pfxlog.ContextLogger(buffer.x.Label())
 	for {
 		for p := buffer.retransmitPop(); p != nil; p = buffer.retransmitPop() {
-			if !p.isAcked() {
-				p.payload.MarkAsRetransmit()
-				if err := buffer.x.dataPlane.RetransmitPayload(buffer.x.address, p.payload); err != nil {
-					if !buffer.IsClosed() {
-						log.WithError(err).Errorf("unexpected error while retransmitting payload from [@/%v]", buffer.x.address)
-						buffer.metrics().MarkRetransmissionFailure()
-					} else {
-						log.WithError(err).Tracef("unexpected error while retransmitting payload from [@/%v] (already closed)", buffer.x.address)
-					}
-				} else {
-					p.markSent()
-					buffer.metrics().MarkRetransmission()
-				}
-			}
+			buffer.sendQueuedPayload(p)
 			p.dequeued()
 		}
 
@@ -557,6 +592,48 @@ func (buffer *LinkSendBuffer) retransmitSender() {
 		case <-buffer.retransmitNotify:
 		case <-buffer.closeNotify:
 			return
+		}
+	}
+}
+
+// sendQueuedPayload sends one payload popped from the retransmit list. The list
+// carries two kinds of payload: genuine retransmits of already-sent payloads
+// (queued by the retransmit timer), and never-sent payloads requeued by a
+// pathless flush (age still at its initial max). A never-sent payload's send
+// here is its FIRST transmission, so it must not be marked PayloadFlagRetransmit
+// nor counted as a retransmit: the receiver meters each payload once, on its
+// first non-retransmit arrival, and flagging a first send would exclude it from
+// that count and undercount usage. Only genuine retransmits are flagged/counted.
+func (buffer *LinkSendBuffer) sendQueuedPayload(p *txPayload) {
+	if p.isAcked() {
+		return
+	}
+	log := pfxlog.ContextLogger(buffer.x.Label())
+
+	retransmit := p.getAge() != math.MaxInt64
+	if retransmit {
+		p.payload.MarkAsRetransmit()
+	}
+
+	newTag, err := buffer.x.dataPlane.RetransmitPayload(p.getPath(), buffer.x.address, p.payload)
+	if err != nil {
+		if !buffer.IsClosed() {
+			log.WithError(err).Errorf("unexpected error while sending payload from [@/%v]", buffer.x.address)
+			if retransmit {
+				buffer.metrics().MarkRetransmissionFailure()
+			}
+		} else {
+			log.WithError(err).Tracef("unexpected error while sending payload from [@/%v] (already closed)", buffer.x.address)
+		}
+		return
+	}
+	if newTag != nil {
+		// the send was accepted on a (possibly different) path: advance the
+		// stored tag and send time. A nil tag means no live path took it; the
+		// payload stays as-is and remains eligible.
+		p.markSentOn(newTag)
+		if retransmit {
+			buffer.metrics().MarkRetransmission()
 		}
 	}
 }
@@ -636,3 +713,24 @@ func (self *sendBufferInspectEvent) handle(buffer *LinkSendBuffer) {
 type deadlineWakeEvent struct{}
 
 func (deadlineWakeEvent) handle(*LinkSendBuffer) {}
+
+// sendBufferFlushEvent re-queues all buffered payloads for (re)transmission,
+// in sequence order. Handled in the run loop so it has exclusive access to the
+// buffer map.
+type sendBufferFlushEvent struct{}
+
+func (sendBufferFlushEvent) handle(buffer *LinkSendBuffer) {
+	var list []*txPayload
+	for _, v := range buffer.buffer {
+		if v.isRetransmittable() {
+			list = append(list, v)
+		}
+	}
+	slices.SortFunc(list, func(a, b *txPayload) int {
+		return int(a.payload.Sequence - b.payload.Sequence)
+	})
+	for _, v := range list {
+		v.markQueued()
+		buffer.retransmitPush(v)
+	}
+}

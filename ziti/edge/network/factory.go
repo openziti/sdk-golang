@@ -239,9 +239,15 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 	return edgeCh
 }
 
+// HasCapability returns true if the router advertised the given capability bit
+// in its hello headers.
+func (conn *routerConn) HasCapability(capability int) bool {
+	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), capability)
+}
+
 // SupportsConnectV2 returns true if the router advertises ConnectV2 capability in its hello headers.
 func (conn *routerConn) SupportsConnectV2() bool {
-	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), edge.RouterCapabilityConnectV2)
+	return conn.HasCapability(edge.RouterCapabilityConnectV2)
 }
 
 // ConnectV2 performs a sessionless dial via the V2 protocol. The router
@@ -260,7 +266,7 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 			crypto:      crypto,
 			keyPair:     keyPair,
 		},
-		connId: connId,
+		localId: nextLocalConnId(),
 	}
 	ec.initChunkReader()
 
@@ -309,15 +315,17 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
 	logger = logger.WithField("circuitId", circuitId)
 
-	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux); err != nil {
+	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux, connId); err != nil {
 		conn.mux.RemoveByConnId(connId)
 		return nil, err
 	}
 
-	// Hand anything the pending sink buffered to the conn, in order, then route
-	// subsequent messages to it directly.
-	pending.delegateTo(ec)
-	if err := conn.mux.Replace(ec); err != nil {
+	// The conn's path is the mux sink. Hand anything the pending placeholder
+	// buffered to it, in order, then replace the placeholder so subsequent
+	// messages route to the path directly.
+	pathSink := ec.primaryPathSink()
+	pending.delegateTo(pathSink)
+	if err := conn.mux.Replace(pathSink); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", *service.Name, connId, err)
 	}
 
@@ -419,22 +427,23 @@ func (conn *routerConn) buildV1XgressConn(
 			crypto:      crypto,
 			keyPair:     keyPair,
 		},
-		connId: connId,
+		localId: nextLocalConnId(),
 	}
 	ec.initChunkReader()
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
 
-	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux); err != nil {
+	if err := ec.setupXgressFlowControl(replyMsg, xgress.Initiator, envF, conn.ch, conn.mux, connId); err != nil {
 		conn.mux.RemoveByConnId(connId)
 		return nil, err
 	}
 
-	pending.delegateTo(ec)
-	if err := conn.mux.Replace(ec); err != nil {
+	// replace the pending placeholder with the conn's path sink (see ConnectV2)
+	pathSink := ec.primaryPathSink()
+	pending.delegateTo(pathSink)
+	if err := conn.mux.Replace(pathSink); err != nil {
 		pfxlog.Logger().Warnf("error adding message sink %s[%d]: %v", serviceName, connId, err)
 	}
 
-	// Start the xgress only after the sink is registered (see C1).
 	ec.start()
 
 	if crypto {
