@@ -7,25 +7,25 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
-	github.com/go-openapi/runtime v0.32.3
-	github.com/go-openapi/strfmt v0.26.3
+	github.com/go-openapi/runtime v0.32.4
+	github.com/go-openapi/strfmt v0.26.4
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/kataras/go-events v0.0.3
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openziti/channel/v5 v5.0.10
-	github.com/openziti/edge-api v0.32.0
-	github.com/openziti/foundation/v2 v2.0.95
-	github.com/openziti/identity v1.0.133
+	github.com/openziti/channel/v5 v5.0.15
+	github.com/openziti/edge-api v0.34.0
+	github.com/openziti/foundation/v2 v2.0.99
+	github.com/openziti/identity v1.0.137
 	github.com/openziti/metrics v1.4.5
 	github.com/openziti/secretstream v0.1.51
 	github.com/openziti/transport/v2 v2.0.216
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
-	github.com/shirou/gopsutil/v4 v4.26.5
+	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/zitadel/oidc/v3 v3.47.5
@@ -50,7 +50,7 @@ require (
 	github.com/go-openapi/jsonreference v0.21.6 // indirect
 	github.com/go-openapi/loads v0.24.0 // indirect
 	github.com/go-openapi/runtime/server-middleware v0.32.3 // indirect
-	github.com/go-openapi/spec v0.22.5 // indirect
+	github.com/go-openapi/spec v0.22.6 // indirect
 	github.com/go-openapi/swag v0.26.1 // indirect
 	github.com/go-openapi/swag/cmdutils v0.26.1 // indirect
 	github.com/go-openapi/swag/conv v0.26.1 // indirect
