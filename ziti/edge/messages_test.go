@@ -30,6 +30,8 @@ func TestRouterCapabilityBitNumbering(t *testing.T) {
 	req := require.New(t)
 	req.Equal(1, RouterCapabilityMultiChannel)
 	req.Equal(2, RouterCapabilityConnectV2)
+	req.Equal(5, RouterCapabilityPostureChecks)
+	req.Equal(6, RouterCapabilityBindSuccess)
 }
 
 func TestIsRouterCapable(t *testing.T) {

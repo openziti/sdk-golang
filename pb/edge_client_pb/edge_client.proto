@@ -79,6 +79,10 @@ enum HeaderId {
   ListenerId = 1021;
   ConnType = 1022;
   SupportsInspect = 1023;
+  // SupportsBindSuccess: legacy boolean flag. The router->SDK advertisement is
+  // superseded by RouterCapability_BindSuccess; routers still send this header
+  // for pre-capability SDKs. The SDK->router bind-message use of this header is
+  // unchanged.
   SupportsBindSuccess = 1024;
   ConnectionMarker = 1025;
   CircuitId = 1026;
@@ -87,6 +91,9 @@ enum HeaderId {
   XgressCtrlId = 1029;
   XgressAddress = 1030;
   InspectRequestedValues = 1031;
+  // SupportsPostureChecks: legacy boolean flag, superseded by
+  // RouterCapability_PostureChecks. Routers still send this header for
+  // pre-capability SDKs.
   SupportsPostureChecks = 1032;
   StructuredError = 1033;
   DialerIdentityId = 1034;
@@ -121,18 +128,44 @@ enum PrecedenceValue {
   Failed = 2;
 }
 
-// RouterCapability values are bit positions within a single router capability
-// namespace shared across the control channel and the edge channel. A router
-// advertises the full set on both channels; each consumer acts on the bits it
-// recognizes and ignores the rest.
+// RouterCapability wraps the router capability enum. The enum values are bit
+// positions within a single router capability namespace shared across the
+// control channel and the edge channel. A router advertises the full set on both
+// channels; each consumer acts on the bits it recognizes and ignores the rest.
 //
-// Bits 3 and 4 are reserved for RouterDataModel and ServiceSubscriptions.
-enum RouterCapability {
-  NoRouterCapabilities = 0;
-  // MultiChannel indicates the router supports multi-underlay channels
-  MultiChannel = 1;
-  // ConnectV2 indicates the router supports the ConnectV2 message flow
-  ConnectV2 = 2;
+// This enum is the source of truth for capabilities that the SDK cares about.
+// These are numbered upward from bit 1; add a shared capability at the next
+// unused position.
+//
+// Note: the ziti controller/router may also define control-plane-only
+// capabilities that are NOT listed here (see ziti/common/capabilities/consts.go
+// in the ziti repo). Those are given negative values that occupy bit positions
+// counting down from the top of the mask, so they never collide with the values
+// here and will appear to SDKs and the edge-api as unknown bits, which is
+// expected.
+//
+// The enum is nested in a message so its value names are scoped to
+// RouterCapability and cannot collide with other enum values in this package
+// (proto enum values otherwise share one package-wide namespace). Generated Go
+// value names are unchanged (e.g. RouterCapability_MultiChannel); only the enum
+// type name becomes RouterCapability_Kind.
+message RouterCapability {
+  enum Kind {
+    NoRouterCapabilities = 0;
+    // MultiChannel indicates the router supports multi-underlay channels
+    MultiChannel = 1;
+    // ConnectV2 indicates the router supports the ConnectV2 message flow
+    ConnectV2 = 2;
+    // Bits 3 and 4 are earmarked for RouterDataModel and ServiceSubscriptions
+    // (added separately). Left as a gap here on purpose; not using proto
+    // 'reserved' so those values can be added later.
+    // PostureChecks indicates the router supports posture checks. Also advertised
+    // to older SDKs via the deprecated SupportsPostureChecks header.
+    PostureChecks = 5;
+    // BindSuccess indicates the router sends bind-success notifications. Also
+    // advertised to older SDKs via the deprecated SupportsBindSuccess header.
+    BindSuccess = 6;
+  }
 }
 
 enum Flag {

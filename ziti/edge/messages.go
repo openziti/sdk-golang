@@ -211,6 +211,15 @@ const (
 const (
 	RouterCapabilityMultiChannel = int(edge_client_pb.RouterCapability_MultiChannel)
 	RouterCapabilityConnectV2    = int(edge_client_pb.RouterCapability_ConnectV2)
+
+	// RouterCapabilityPostureChecks supersedes the SupportsPostureChecksHeader
+	// boolean flag. Routers advertise both for backwards compatibility.
+	RouterCapabilityPostureChecks = int(edge_client_pb.RouterCapability_PostureChecks)
+
+	// RouterCapabilityBindSuccess supersedes the router->SDK use of the
+	// SupportsBindSuccessHeader boolean flag. Routers advertise both for
+	// backwards compatibility.
+	RouterCapabilityBindSuccess = int(edge_client_pb.RouterCapability_BindSuccess)
 )
 
 // IsRouterCapable checks whether a router hello header set includes the given capability bit.

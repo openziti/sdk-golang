@@ -81,6 +81,9 @@ type RouterConn interface {
 	GetRouterAddr() string
 	GetRouterName() string
 	GetBoolHeader(key int32) bool
+	// IsRouterCapable reports whether the router advertised the given capability
+	// bit in its hello headers (RouterCapabilitiesHeader bitmask).
+	IsRouterCapable(capability int) bool
 	Inspect() *inspect.RouterConnInspectDetail
 }
 

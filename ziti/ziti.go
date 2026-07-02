@@ -2160,7 +2160,7 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 		})
 
 	apiSession := context.CtrlClt.GetCurrentApiSession()
-	if useConn.GetBoolHeader(edge.SupportsPostureChecksHeader) && apiSession != nil && apiSession.GetType() == apis.ApiSessionTypeOidc {
+	if (useConn.IsRouterCapable(edge.RouterCapabilityPostureChecks) || useConn.GetBoolHeader(edge.SupportsPostureChecksHeader)) && apiSession != nil && apiSession.GetType() == apis.ApiSessionTypeOidc {
 		err = context.CtrlClt.PostureCache.InitializePostureOnEdgeRouter(useConn)
 
 		if err != nil {
@@ -2807,7 +2807,7 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 			}
 		})
 		mgr.eventChan <- &listenSuccessEvent{router: routerName, attemptId: attemptId}
-		if !routerConnection.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+		if !routerConnection.IsRouterCapable(edge.RouterCapabilityBindSuccess) && !routerConnection.GetBoolHeader(edge.SupportsBindSuccessHeader) {
 			mgr.eventChan <- &listenerEstablishedEvent{}
 		}
 	} else {
