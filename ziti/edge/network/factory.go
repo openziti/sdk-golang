@@ -49,6 +49,10 @@ func (conn *routerConn) GetBoolHeader(key int32) bool {
 	return len(val) == 1 && val[0] == 1
 }
 
+func (conn *routerConn) IsRouterCapable(capability int) bool {
+	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), capability)
+}
+
 func (conn *routerConn) GetRouterAddr() string {
 	return conn.routerAddr
 }
@@ -241,7 +245,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 
 // SupportsConnectV2 returns true if the router advertises ConnectV2 capability in its hello headers.
 func (conn *routerConn) SupportsConnectV2() bool {
-	return edge.IsRouterCapable(conn.ch.GetChannel().Headers(), edge.RouterCapabilityConnectV2)
+	return conn.IsRouterCapable(edge.RouterCapabilityConnectV2)
 }
 
 // ConnectV2 performs a sessionless dial via the V2 protocol. The router
@@ -512,7 +516,7 @@ func (conn *routerConn) Listen(service *rest_model.ServiceDetail, session *rest_
 		return nil, err
 	}
 
-	if !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
+	if !conn.IsRouterCapable(edge.RouterCapabilityBindSuccess) && !conn.GetBoolHeader(edge.SupportsBindSuccessHeader) {
 		ec.established.Store(true)
 	}
 

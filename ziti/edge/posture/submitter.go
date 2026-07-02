@@ -76,7 +76,7 @@ func (m *MultiSubmitter) SendPostureResponseBulk(responses []rest_model.PostureR
 	}
 
 	for _, routerConn := range routerConns {
-		if routerConn.GetBoolHeader(edge.SupportsPostureChecksHeader) {
+		if routerConn.IsRouterCapable(edge.RouterCapabilityPostureChecks) || routerConn.GetBoolHeader(edge.SupportsPostureChecksHeader) {
 			err := routerConn.SendPosture(responses)
 			if err != nil {
 				errors.routerErrors[routerConn] = err
