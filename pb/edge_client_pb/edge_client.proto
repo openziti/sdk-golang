@@ -174,8 +174,9 @@ message RouterCapability {
     MultiChannel = 1;
     // ConnectV2 indicates the router supports the ConnectV2 message flow
     ConnectV2 = 2;
-    // RouterDataModel indicates the router supports the router data model
-    RouterDataModel = 3;
+    // 3 was RouterDataModel, moved to a side-local (negative) capability position: it is only
+    // meaningful between controller and router and needs no name on the SDK surface.
+    reserved 3;
     // ServiceSubscriptions indicates the router supports service change push subscriptions
     ServiceSubscriptions = 4;
     // PostureChecks indicates the router supports posture checks. Also advertised
