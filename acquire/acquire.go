@@ -25,14 +25,39 @@ import (
 	"sync"
 )
 
+// Option customizes how a binary is acquired.
+type Option func(*buildOptions)
+
+// buildOptions holds the resolved acquire options.
+type buildOptions struct {
+	stampVersion string
+}
+
+// newBuildOptions applies opts and returns the resolved options.
+func newBuildOptions(opts []Option) buildOptions {
+	var bo buildOptions
+	for _, opt := range opts {
+		opt(&bo)
+	}
+	return bo
+}
+
+// WithVersion stamps the built binary's common/version Version (and Revision) when a git-ref
+// selector is built from source, so it reports version rather than the unstamped dev default
+// ("v0.0.0"). Binaries built from the same commit but stamped with different versions cache
+// separately. It has no effect on release selectors, whose artifacts are already stamped.
+func WithVersion(version string) Option {
+	return func(o *buildOptions) { o.stampVersion = version }
+}
+
 // Ziti resolves selector to an immutable id and returns the path to a ziti
 // binary for it: release selectors download the release artifact on a cache
 // miss, and git-ref selectors (a branch, non-release tag, or SHA) resolve to a
 // commit and build from source. The cache is keyed on the immutable id (tag or
 // SHA), so a moved mutable selector misses the cache rather than serving a
 // stale binary.
-func Ziti(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
-	return acquireFor(ctx, selector, cfg, src, cacheDir, runtime.GOOS, runtime.GOARCH)
+func Ziti(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string, opts ...Option) (string, ResolvedID, error) {
+	return acquireFor(ctx, selector, cfg, src, cacheDir, runtime.GOOS, runtime.GOARCH, opts...)
 }
 
 // acquireMemo caches successful Ziti results per selector for the life of the
@@ -61,23 +86,31 @@ func resetAcquireMemo() {
 // resolves once, which also keeps every test in a suite on the same version. The
 // lock is held across a cache-miss download, so concurrent callers can't
 // duplicate work.
-func ZitiMemoized(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string) (string, ResolvedID, error) {
+func ZitiMemoized(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string, opts ...Option) (string, ResolvedID, error) {
 	acquireMemo.Lock()
 	defer acquireMemo.Unlock()
 
-	if entry, ok := acquireMemo.bySelector[selector]; ok {
+	// A stamped version produces a distinct binary, so it must key the memo separately from an
+	// unstamped acquire of the same selector.
+	memoKey := selector
+	if v := newBuildOptions(opts).stampVersion; v != "" {
+		memoKey = selector + "\x00" + v
+	}
+
+	if entry, ok := acquireMemo.bySelector[memoKey]; ok {
 		return entry.binPath, entry.id, nil
 	}
-	binPath, id, err := Ziti(ctx, selector, cfg, src, cacheDir)
+	binPath, id, err := Ziti(ctx, selector, cfg, src, cacheDir, opts...)
 	if err != nil {
 		return "", ResolvedID{}, err
 	}
-	acquireMemo.bySelector[selector] = memoEntry{binPath: binPath, id: id}
+	acquireMemo.bySelector[memoKey] = memoEntry{binPath: binPath, id: id}
 	return binPath, id, nil
 }
 
 // acquireFor is Ziti with the platform injected, so tests can pin it.
-func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir, goos, goarch string) (string, ResolvedID, error) {
+func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir, goos, goarch string, opts ...Option) (string, ResolvedID, error) {
+	bo := newBuildOptions(opts)
 	spec, err := ParseSpec(selector, cfg)
 	if err != nil {
 		return "", ResolvedID{}, err
@@ -111,13 +144,19 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 			useCache = !dirty
 		}
 
+		// A stamped version changes the binary, so it must key the cache separately from an
+		// unstamped build of the same commit.
+		if bo.stampVersion != "" {
+			cacheKey += versionCacheSuffix(bo.stampVersion)
+		}
+
 		if useCache {
 			binPath := cachedBinaryPath(cacheDir, cacheKey)
 			if _, statErr := os.Stat(binPath); statErr == nil {
 				return binPath, id, nil
 			}
 		}
-		path, err := buildZitiFromSource(ctx, cfg.Source, sha, cacheDir, cacheKey, sdkReplace)
+		path, err := buildZitiFromSource(ctx, cfg.Source, sha, cacheDir, cacheKey, sdkReplace, bo.stampVersion)
 		if err != nil {
 			return "", ResolvedID{}, err
 		}
