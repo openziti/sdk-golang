@@ -16,7 +16,7 @@ require (
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openziti/channel/v5 v5.0.10
-	github.com/openziti/edge-api v0.34.1-0.20260708010227-97580244baa3
+	github.com/openziti/edge-api v0.35.0
 	github.com/openziti/foundation/v2 v2.0.95
 	github.com/openziti/identity v1.0.133
 	github.com/openziti/metrics v1.4.5
