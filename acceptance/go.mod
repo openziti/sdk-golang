@@ -9,10 +9,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/mod v0.37.0
-	gopkg.in/yaml.v3 v3.0.1
 )
-
-require github.com/openziti/channel/v5 v5.0.10 // indirect
 
 require (
 	github.com/Jeffail/gabs v1.4.0 // indirect
@@ -64,9 +61,11 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
+	github.com/openziti/channel/v5 v5.0.10 // indirect
 	github.com/openziti/foundation/v2 v2.0.95 // indirect
 	github.com/openziti/identity v1.0.133 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect
+	github.com/openziti/sdk-golang/acquire v0.0.0
 	github.com/openziti/sdk-golang/v2 v2.0.0
 	github.com/openziti/secretstream v0.1.51 // indirect
 	github.com/openziti/transport/v2 v2.0.216 // indirect
@@ -98,7 +97,10 @@ require (
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
 )
 
 replace github.com/openziti/sdk-golang/v2 => ../
+
+replace github.com/openziti/sdk-golang/acquire => ../acquire

@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/openziti/sdk-golang/acceptance/internal/acquire"
+	"github.com/openziti/sdk-golang/acquire"
 	"github.com/openziti/sdk-golang/acceptance/internal/ziticli"
 )
 
