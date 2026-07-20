@@ -162,6 +162,17 @@ const (
 	// 1) Context - the context that triggered the listener
 	// 2) event DialEvent - the dial attempt's details
 	EventDial = events.EventName("dial")
+
+	// EventRouterViewChanged is emitted whenever an edge router's view changes in any way: its
+	// push subscription activates or ends, a pushed service change set applies, or its posture
+	// pass/fail state updates. The RouterView is the router's complete view after the change;
+	// consumers replace any previously held copy rather than tracking deltas. Use
+	// Context.GetRouterViews for the current views.
+	//
+	// Arguments:
+	// 1) Context - the context that triggered the listener
+	// 2) view RouterView - the router's complete view after the change
+	EventRouterViewChanged = events.EventName("router-view-changed")
 )
 
 // Eventer provides types methods for adding event listeners to a context and exposes some weakly typed functions
@@ -189,6 +200,13 @@ type Eventer interface {
 	// AddRouterDisconnectedListener adds an event listener for the EventRouterDisconnected event and returns a function to remove
 	// the listener. It is emitted any time a router connection is closed. The strings provided are router name and connection address.
 	AddRouterDisconnectedListener(func(ztx Context, name string, addr string)) func()
+
+	// AddRouterViewChangedListener adds an event listener for the EventRouterViewChanged event and
+	// returns a function to remove the listener. It is emitted whenever an edge router's view
+	// changes in any way — its push subscription activates or ends, a pushed service change set
+	// applies, or its posture pass/fail state updates. The RouterView provided is the router's
+	// complete view after the change; replace any previously held copy rather than tracking deltas.
+	AddRouterViewChangedListener(func(Context, RouterView)) func()
 
 	// AddDialListener adds an event listener for the EventDial event and returns a function to remove the listener.
 	// It is emitted once per dial attempt, successful or not, with the attempt's details: the protocol taken or

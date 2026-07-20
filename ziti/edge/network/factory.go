@@ -19,6 +19,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
@@ -42,6 +43,36 @@ type routerConn struct {
 	ch         edge.SdkChannel
 	mux        edge.ConnMux[any]
 	owner      RouterConnOwner
+
+	subscriptionHandlerMu sync.RWMutex
+	subscriptionHandler   edge.ServiceSubscriptionHandler
+}
+
+// SetServiceSubscriptionHandler registers a handler to receive service change push messages. It
+// may be called concurrently with message delivery, so the handler field is mutex-guarded.
+func (conn *routerConn) SetServiceSubscriptionHandler(h edge.ServiceSubscriptionHandler) {
+	conn.subscriptionHandlerMu.Lock()
+	defer conn.subscriptionHandlerMu.Unlock()
+	conn.subscriptionHandler = h
+}
+
+// getServiceSubscriptionHandler returns the currently registered handler, or nil.
+func (conn *routerConn) getServiceSubscriptionHandler() edge.ServiceSubscriptionHandler {
+	conn.subscriptionHandlerMu.RLock()
+	defer conn.subscriptionHandlerMu.RUnlock()
+	return conn.subscriptionHandler
+}
+
+func (conn *routerConn) handleServiceChangeSet(msg *channel.Message, _ channel.Channel) {
+	if h := conn.getServiceSubscriptionHandler(); h != nil {
+		h.HandleServiceChangeSet(conn, msg)
+	}
+}
+
+func (conn *routerConn) handlePostureStateChange(msg *channel.Message, _ channel.Channel) {
+	if h := conn.getServiceSubscriptionHandler(); h != nil {
+		h.HandlePostureStateChange(conn, msg)
+	}
 }
 
 func (conn *routerConn) GetBoolHeader(key int32) bool {
@@ -59,6 +90,12 @@ func (conn *routerConn) GetRouterAddr() string {
 
 func (conn *routerConn) GetRouterName() string {
 	return conn.routerName
+}
+
+// GetRouterId returns the edge router's identity id, taken from the router's certificate
+// identity on the established channel.
+func (conn *routerConn) GetRouterId() string {
+	return conn.ch.GetChannel().Id()
 }
 
 func (conn *routerConn) Inspect() *inspect.RouterConnInspectDetail {
@@ -115,6 +152,10 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	binding.AddReceiveHandlerF(edge.ContentTypeXgAcknowledgement, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeXgControl, conn.mux.HandleReceive)
 	binding.AddReceiveHandlerF(edge.ContentTypeInspectRequest, conn.mux.HandleReceive)
+
+	// Service subscription push messages — handlers populated by SetServiceSubscriptionHandler.
+	binding.AddReceiveHandlerF(edge.ContentTypeServiceChangeSet, conn.handleServiceChangeSet)
+	binding.AddReceiveHandlerF(edge.ContentTypePostureStateChange, conn.handlePostureStateChange)
 
 	// Since data is the common message type, it gets to be dispatched directly
 	binding.AddReceiveHandler(conn.mux.ContentType(), conn.mux)
@@ -173,6 +214,18 @@ func establishClientCryptoFromReply(
 	}
 	logger.Debug("client tx encryption setup done")
 	return nil
+}
+
+func (conn *routerConn) SubscribeToServiceUpdates(index int64) error {
+	return edge.NewSubscribeToServiceUpdatesMsg(index).Send(conn.ch.GetControlSender())
+}
+
+func (conn *routerConn) UnsubscribeFromServiceUpdates() error {
+	return edge.NewUnsubscribeFromServiceUpdatesMsg().Send(conn.ch.GetControlSender())
+}
+
+func (conn *routerConn) ResyncPostureState() error {
+	return edge.NewResyncPostureStateMsg().Send(conn.ch.GetControlSender())
 }
 
 func (conn *routerConn) SendPosture(responses []rest_model.PostureResponseCreate) error {
@@ -302,7 +355,7 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
 		conn.mux.RemoveByConnId(connId)
-		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
+		return nil, edge.ConnRefusalError(replyMsg, *service.Name, *service.ID, conn.GetRouterName(), conn.GetRouterId())
 	}
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
 		conn.mux.RemoveByConnId(connId)
@@ -379,7 +432,7 @@ func (conn *routerConn) Connect(ctx context.Context, service *rest_model.Service
 	}
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
 		conn.mux.RemoveByConnId(connId)
-		return nil, errors.Errorf("dial failed: %v", string(replyMsg.Body))
+		return nil, edge.ConnRefusalError(replyMsg, *service.Name, *service.ID, conn.GetRouterName(), conn.GetRouterId())
 	}
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {
 		conn.mux.RemoveByConnId(connId)

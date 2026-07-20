@@ -44,6 +44,12 @@ func init() {
 	AddAddressParsers()
 }
 
+// ServiceSubscriptionHandler receives service change push messages from an edge router.
+type ServiceSubscriptionHandler interface {
+	HandleServiceChangeSet(conn RouterConn, msg *channel.Message)
+	HandlePostureStateChange(conn RouterConn, msg *channel.Message)
+}
+
 type RouterClient interface {
 	Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *DialOptions, envF func() xgress.Env) (Conn, error)
 	// ConnectV2 performs a sessionless dial. The router authorizes locally via RDM.
@@ -57,6 +63,17 @@ type RouterClient interface {
 	UpdateToken(token []byte, timeout time.Duration) error
 
 	SendPosture(creates []rest_model.PostureResponseCreate) error
+
+	// SubscribeToServiceUpdates sends a subscribe request to the router for service change push notifications.
+	// index is the SDK's last committed structural index; -1 requests a full snapshot.
+	SubscribeToServiceUpdates(index int64) error
+
+	// UnsubscribeFromServiceUpdates sends an unsubscribe request to the router to stop receiving service change push notifications.
+	UnsubscribeFromServiceUpdates() error
+
+	// ResyncPostureState asks the router to re-send a full PostureStateChange; used to recover
+	// from a posture seq gap without resetting the structural stream.
+	ResyncPostureState() error
 }
 
 // EdgeRouterInfo contains the name and address of an edge router.
@@ -80,11 +97,16 @@ type RouterConn interface {
 	// GetRouterAddr returns the address used to connect to the edge router.
 	GetRouterAddr() string
 	GetRouterName() string
+	// GetRouterId returns the edge router's identity id (from the router's certificate identity
+	// on the established channel).
+	GetRouterId() string
 	GetBoolHeader(key int32) bool
 	// IsRouterCapable reports whether the router advertised the given capability
 	// bit in its hello headers (RouterCapabilitiesHeader bitmask).
 	IsRouterCapable(capability int) bool
 	Inspect() *inspect.RouterConnInspectDetail
+	// SetServiceSubscriptionHandler registers a handler for service change push messages.
+	SetServiceSubscriptionHandler(h ServiceSubscriptionHandler)
 }
 
 type Identifiable interface {
@@ -100,14 +122,25 @@ type Listener interface {
 	UpdatePrecedence(precedence Precedence) error
 	UpdateCostAndPrecedence(cost uint16, precedence Precedence) error
 	SendHealthEvent(pass bool) error
+
+	// SetConnectionChangeHandler registers a handler invoked with the full set of router-hosting
+	// connections whenever it changes, so an app can observe which routers currently host the
+	// service.
+	SetConnectionChangeHandler(func(conn []RouterHostConn))
+
+	// SetErrorEventHandler registers a handler for asynchronous hosting errors (e.g. a router
+	// refusing a bind, delivered as a typed ConnError where the router sent a structured denial).
+	SetErrorEventHandler(func(error))
+
+	// GetErrorEventHandler returns the currently registered asynchronous error handler, or nil.
+	GetErrorEventHandler() func(error)
 }
 
+// SessionListener adds legacy service-session visibility to Listener. Service sessions are part
+// of the deprecated token-backed dial/bind flow; new code should not depend on this interface.
 type SessionListener interface {
 	Listener
 	GetCurrentSession() *rest_model.SessionDetail
-	SetConnectionChangeHandler(func(conn []RouterHostConn))
-	SetErrorEventHandler(func(error))
-	GetErrorEventHandler() func(error)
 }
 
 type CloseWriter interface {

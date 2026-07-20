@@ -555,9 +555,8 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 	}
 
 	if replyMsg.ContentType == edge.ContentTypeStateClosed {
-		msg := string(replyMsg.Body)
-		logger.Errorf("bind request resulted in disconnect. msg: (%v)", msg)
-		return fmt.Errorf("attempt to use closed connection: %v", msg)
+		logger.Errorf("bind request resulted in disconnect. msg: (%v)", string(replyMsg.Body))
+		return edge.ConnRefusalError(replyMsg, *service.Name, *service.ID, "", conn.GetChannel().Id())
 	}
 
 	if replyMsg.ContentType != edge.ContentTypeStateConnected {

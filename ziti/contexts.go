@@ -198,6 +198,10 @@ func NewContextWithOpts(cfg *Config, options *Options) (Context, error) {
 	multiSubmitter := posture.NewMultiSubmitter(newContext.CtrlClt, newContext.CtrlClt, newContext)
 	totpTokenProvider := edgeApis.NewSingularTokenRequestor(newContext, newContext.CtrlClt)
 	newContext.CtrlClt.PostureCache = posture.NewCache(newContext, multiSubmitter, totpTokenProvider, newContext.closeNotify)
+	// OIDC sessions submit posture per-router: each posture-capable connection receives only what
+	// its own checks require (from its pushed state when subscribed, else the global view). Legacy
+	// sessions keep the multiSubmitter broadcast path.
+	newContext.CtrlClt.PostureCache.EnablePerRouterSubmission(newContext.CtrlClt, newContext, newContext, newContext.CtrlClt)
 
 	newContext.CtrlClt.AddOnControllerUpdateListeners(func(urls []*url.URL) {
 		newContext.Emit(EventControllerUrlsUpdated, urls)

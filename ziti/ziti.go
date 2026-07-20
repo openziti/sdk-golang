@@ -138,8 +138,10 @@ type Context interface {
 	// DialAddr finds the service for a given address and performs a Dial for it.
 	DialAddr(network string, addr string) (edge.Conn, error)
 
-	// Listen attempts to host a service by the given service name;  authenticating as necessary in order to obtain
-	// a service session, attach to Edge Routers, and bind (host) the service.
+	// Listen attempts to host a service by the given service name; authenticating as necessary in order to
+	// attach to Edge Routers and bind (host) the service. The returned Listener exposes hosting
+	// observability directly: SetErrorEventHandler for asynchronous bind errors (typed ConnErrors where a
+	// router refused) and SetConnectionChangeHandler for the set of routers currently hosting the service.
 	Listen(serviceName string) (edge.Listener, error)
 
 	// ListenWithOptions performs the same logic as Listen but allows the specification of ListenOptions.
@@ -166,6 +168,23 @@ type Context interface {
 	// RefreshService forces the context to refresh just the service with the given name. If the given service isn't
 	// found, nil will be returned
 	RefreshService(serviceName string) (*rest_model.ServiceDetail, error)
+
+	// SubscribeToServiceUpdatesFromRouter opts in to router-pushed service and posture updates,
+	// suspending controller-side service polling while at least one capable router push is active.
+	// Routers that do not advertise the ServiceSubscriptions capability are skipped; if none
+	// support it, polling continues unchanged.
+	SubscribeToServiceUpdatesFromRouter() error
+
+	// UnsubscribeFromServiceUpdatesFromRouter cancels the push opt-in, tells connected routers to
+	// stop pushing, and resumes controller-side service polling.
+	UnsubscribeFromServiceUpdatesFromRouter()
+
+	// GetRouterViews returns the context's live view of every connected edge router: name,
+	// address, push capability and subscription state, and — for routers with an applied
+	// snapshot — the services that router can satisfy with its posture pass/fail overlaid into
+	// each service's PostureQueries. Absence from the result means not connected.
+	// EventRouterViewChanged signals changes to any router's view.
+	GetRouterViews() []RouterView
 
 	// GetServiceTerminators will return a slice of rest_model.TerminatorClientDetail for a specific service name.
 	// The offset and limit options can be used to page through excessive lists of items. A max of 500 is imposed on
@@ -227,8 +246,27 @@ type ContextImpl struct {
 
 	firstAuthOnce sync.Once
 
-	closed      atomic.Bool
-	closeNotify chan struct{}
+	closed                 atomic.Bool
+	pushSubscriptionActive atomic.Bool
+	closeNotify            chan struct{}
+
+	// Service-subscription reconciliation state. pushSubscriptionDesired records that the app
+	// opted into router push (it persists across routers coming and going); pushSubscriptionActive
+	// reflects whether a live, confirmed-capable subscribed connection currently exists.
+	// subscribedRouters tracks the router addresses we have an active subscription on, so the
+	// reconcile loop does not re-subscribe (and re-snapshot) routers it already covers.
+	// subscriptionCoordinator is created once (under subscriptionLock) and then read lock-free:
+	// posture evaluation resolves it while paths holding subscriptionLock (e.g. reconcile ->
+	// connect -> initialize posture) re-enter evaluation, so reading it under subscriptionLock
+	// would self-deadlock.
+	pushSubscriptionDesired atomic.Bool
+	subscriptionLock        sync.Mutex
+	subscriptionCoordinator atomic.Pointer[subscriptionCoordinator]
+	subscribedRouters       map[string]struct{}
+	// subscribingRouters reserves router addresses whose subscribe is in flight, so concurrent
+	// paths (reconcile, dial-driven ensureRouterSubscribed) never double-subscribe one router.
+	// The subscribe network I/O itself always happens outside subscriptionLock.
+	subscribingRouters map[string]struct{}
 
 	events.EventEmmiter
 	authAttemptLock                 sync.Mutex
@@ -710,6 +748,34 @@ func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
 	if removed {
 		context.Emit(EventRouterDisconnected, routerConn.GetRouterName(), routerConn.GetRouterAddr())
 	}
+
+	// If the closed connection was carrying a push subscription, recompute whether any
+	// confirmed-capable subscribed connection remains. When none do, push is no longer live and
+	// the SDK must fall back to controller polling (the reconcile loop will re-establish push if a
+	// capable router returns).
+	if context.pushSubscriptionDesired.Load() {
+		context.subscriptionLock.Lock()
+		delete(context.subscribedRouters, routerConn.GetRouterAddr())
+		coordinator := context.subscriptionCoordinator.Load()
+		stillActive := false
+		for addr := range context.subscribedRouters {
+			if conn, found := context.routerConnections.Get(addr); found && !conn.IsClosed() {
+				stillActive = true
+				break
+			}
+		}
+		context.subscriptionLock.Unlock()
+
+		// Drop the closed router's per-router state and re-materialize the app view from the
+		// highest-index router that remains.
+		if coordinator != nil {
+			coordinator.removeRouter(routerConn)
+		}
+
+		if !stillActive {
+			context.setPushSubscriptionActive(false)
+		}
+	}
 }
 
 func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
@@ -721,22 +787,15 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 	}
 
 	// process Deletes
-	var deletes []string
+	var deletes []*rest_model.ServiceDetail
 	context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
 		if _, found := idMap[*svc.ID]; !found {
-			deletes = append(deletes, key)
-			if context.options.OnServiceUpdate != nil {
-				context.options.OnServiceUpdate(ServiceRemoved, svc)
-			}
-			context.Emit(EventServiceRemoved, svc)
-
-			context.deleteServiceSessions(*svc.ID)
+			deletes = append(deletes, svc)
 		}
 	})
 
-	for _, deletedKey := range deletes {
-		context.services.Remove(deletedKey)
-		context.intercepts.Remove(deletedKey)
+	for _, svc := range deletes {
+		context.removeService(*svc.Name, svc)
 	}
 
 	// Adds and Updates
@@ -748,26 +807,34 @@ func (context *ContextImpl) processServiceUpdates(services []*rest_model.Service
 func (context *ContextImpl) processSingleServiceUpdate(name string, s *rest_model.ServiceDetail) {
 	// process Deletes
 	if s == nil {
-		var deletes []string
+		var deletes []*rest_model.ServiceDetail
 		context.services.IterCb(func(key string, svc *rest_model.ServiceDetail) {
 			if *svc.Name == name {
-				deletes = append(deletes, key)
-				if context.options.OnServiceUpdate != nil {
-					context.options.OnServiceUpdate(ServiceRemoved, svc)
-				}
-				context.Emit(EventServiceRemoved, svc)
-				context.deleteServiceSessions(*svc.ID)
+				deletes = append(deletes, svc)
 			}
 		})
 
-		for _, deletedKey := range deletes {
-			context.services.Remove(deletedKey)
-			context.intercepts.Remove(deletedKey)
+		for _, svc := range deletes {
+			context.removeService(*svc.Name, svc)
 		}
 	} else {
 		// Adds and Updates
 		context.processServiceAddOrUpdated(s)
 	}
+}
+
+// removeService tears down a service that is no longer accessible: it notifies listeners, drops the
+// service's cached sessions, and removes the service and its intercept from the caches. name is the
+// key used in the services and intercepts caches (the service name). Shared by the polling refresh
+// and the router-push removal path so both clean up identically.
+func (context *ContextImpl) removeService(name string, svc *rest_model.ServiceDetail) {
+	if context.options.OnServiceUpdate != nil {
+		context.options.OnServiceUpdate(ServiceRemoved, svc)
+	}
+	context.Emit(EventServiceRemoved, svc)
+	context.deleteServiceSessions(*svc.ID)
+	context.services.Remove(name)
+	context.intercepts.Remove(name)
 }
 
 func (context *ContextImpl) processServiceAddOrUpdated(s *rest_model.ServiceDetail) {
@@ -1186,6 +1253,18 @@ func (context *ContextImpl) runRefreshes() {
 			}
 
 		case <-svcRefreshTimer:
+			// If the app opted into router push, reconcile each tick: maintain the >=1 subscription
+			// floor and recompute whether push is live (the heartbeat that re-establishes push when a
+			// capable router returns), then unsubscribe routers gone idle since their last dial/bind.
+			if context.pushSubscriptionDesired.Load() {
+				context.reconcilePushSubscription()
+				context.sweepIdleSubscriptions()
+			}
+			// Push subscription is active; the router delivers service changes, so skip the poll.
+			if context.pushSubscriptionActive.Load() {
+				svcRefreshTimer = time.After(jitteredDuration(svcRefreshInterval, jitter))
+				continue
+			}
 			// If the token is about to expire, skip this service refresh cycle.
 			// The token refresh case will fire next, and the following service
 			// refresh will use the new token. This avoids a race where the
@@ -1552,9 +1631,12 @@ func (context *ContextImpl) onFullAuth(apiSession apis.ApiSession) error {
 
 	context.Emit(EventAuthenticationStateFull, apiSession)
 
-	// get services
-	if err := context.refreshServices(true, true); err != nil {
-		doOnceErr = err
+	// Fetch services via polling only if a push subscription is not already
+	// active. When push is active, the router delivers service state directly.
+	if !context.pushSubscriptionActive.Load() {
+		if err := context.refreshServices(true, true); err != nil {
+			doOnceErr = err
+		}
 	}
 
 	return doOnceErr
@@ -1673,7 +1755,7 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 
 	svc, ok := context.GetService(serviceName)
 	if !ok {
-		return nil, fmt.Errorf("service '%s' not found", serviceName)
+		return nil, &ConnError{ServiceName: serviceName, Cause: CauseServiceNotAvailable}
 	}
 
 	context.addActiveDialService(svc)
@@ -1958,6 +2040,7 @@ func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, ers []*rest
 	if bestER != nil {
 		logger.Debugf("selected router[%s@%s] for best latency(%d ms)",
 			bestER.GetRouterName(), bestER.GetRouterAddr(), bestLatency.Milliseconds())
+		context.ensureRouterSubscribed(bestER)
 		return bestER, nil
 	}
 
@@ -1966,6 +2049,7 @@ func (context *ContextImpl) getEdgeRouterConn(ctx gocontext.Context, ers []*rest
 		case f := <-ch:
 			if f.routerConnection != nil {
 				logger.Debugf("using edgeRouter[%s]", f.routerConnection.GetRouterAddr())
+				context.ensureRouterSubscribed(f.routerConnection)
 				return f.routerConnection, nil
 			}
 		case <-ctx.Done():

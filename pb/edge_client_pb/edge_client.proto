@@ -50,6 +50,17 @@ enum ContentType {
   PostureResponseType = 10800;
   ServicePostureStateRequestType = 108001;
   ServicePostureStateResponseType = 108002;
+
+  // SDK -> router: opt in to service change push notifications
+  SubscribeToServiceUpdatesType     = 10900;
+  // SDK -> router: stop receiving service change push notifications
+  UnsubscribeFromServiceUpdatesType = 10901;
+  // SDK -> router: request a full posture state retransmit after a seq gap
+  ResyncPostureStateType            = 10902;
+  // router -> SDK: atomic structural changeset (services, policies, posture check defs)
+  ServiceChangeSetType              = 10903;
+  // router -> SDK: posture pass/fail state for all checks and policies in scope
+  PostureStateChangeType            = 10904;
 }
 
 enum HeaderId {
@@ -102,6 +113,10 @@ enum HeaderId {
   ServiceIdentifierType = 1037;
   ConnectRequestId = 1038;
   RouterCapabilities = 1039;
+  // RESERVED for the deferred index fast-forward: SDK -> router hello carrying the last committed
+  // structural index (-1 = no prior state). Not yet sent by the SDK or read by the router; the
+  // initial feature always uses a full snapshot.
+  ServiceSubscriptionIndex     = 1040;
 }
 
 enum Error {
@@ -120,6 +135,9 @@ enum Error {
   InvalidApiSessionType = 12;
   InvalidInstanceId = 13;
   AccessDenied = 14;
+  // PostureCheckFailed: policies grant access but their posture checks are failing. The
+  // structured error's failingPostureCheckIds carries the failing check ids.
+  PostureCheckFailed = 15;
 }
 
 enum PrecedenceValue {
@@ -156,9 +174,11 @@ message RouterCapability {
     MultiChannel = 1;
     // ConnectV2 indicates the router supports the ConnectV2 message flow
     ConnectV2 = 2;
-    // Bits 3 and 4 are earmarked for RouterDataModel and ServiceSubscriptions
-    // (added separately). Left as a gap here on purpose; not using proto
-    // 'reserved' so those values can be added later.
+    // 3 was RouterDataModel, moved to a side-local (negative) capability position: it is only
+    // meaningful between controller and router and needs no name on the SDK surface.
+    reserved 3;
+    // ServiceSubscriptions indicates the router supports service change push subscriptions
+    ServiceSubscriptions = 4;
     // PostureChecks indicates the router supports posture checks. Also advertised
     // to older SDKs via the deprecated SupportsPostureChecks header.
     PostureChecks = 5;
@@ -295,5 +315,140 @@ message PostureResponse {
     string revision = 4;
     string type = 5;
     string version = 6;
+  }
+}
+
+// Op is the change operation for a structural entry in a ServiceChangeSet.
+enum Op {
+  Added   = 0;
+  Updated = 1;
+  Removed = 2;
+}
+
+// PolicyType distinguishes dial-access policies from bind-access policies.
+enum PolicyType {
+  Dial = 0;
+  Bind = 1;
+}
+
+// SubscribeToServiceUpdates is sent by the SDK to start receiving service change push notifications.
+// index is RESERVED for the deferred fast-forward (last committed structural index); the SDK
+// currently always sends -1 and the router treats every value as a full-snapshot request.
+message SubscribeToServiceUpdates {
+  int64 index = 1;
+}
+
+// UnsubscribeFromServiceUpdates is sent by the SDK to stop receiving service change push notifications.
+message UnsubscribeFromServiceUpdates {
+}
+
+// ResyncPostureState is sent by the SDK when it detects a gap in PostureStateChange seq values.
+// The router replies with a full PostureStateChange at the next seq.
+message ResyncPostureState {
+}
+
+// ServiceChangeSet is an atomic structural changeset mirroring the RDM DataState_ChangeSet envelope.
+// The SDK applies the whole message atomically and commits index on receipt.
+// previousIndex == -1 means full reset (clear structural cache, apply all Added entries).
+// On an incremental: if previousIndex != committedIndex the SDK must resubscribe at -1.
+message ServiceChangeSet {
+  int64                    index         = 1;
+  int64                    previousIndex = 2;
+  repeated ServiceDef      services      = 3;
+  repeated PolicyDef       policies      = 4;
+  repeated PostureCheckDef postureChecks = 5;
+}
+
+// ServiceDef describes one service in a ServiceChangeSet.
+// policyIds references PolicyDef entries in the same envelope or already known to the SDK.
+// configData carries the resolved config bodies for the subscribing identity, already merged
+// with that identity's per-service config overrides.
+// Removed entries carry id only; all other fields are empty.
+message ServiceDef {
+  Op                  op                 = 1;
+  string              id                 = 2;
+  string              name               = 3;
+  bool                encryptionRequired = 4;
+  repeated string     configs            = 5;
+  repeated string     policyIds          = 6;
+  repeated ConfigData configData         = 7;
+}
+
+// ConfigData is one resolved config body for a service, scoped to the subscribing identity.
+message ConfigData {
+  string typeId   = 1;
+  string typeName = 2;
+  string dataJson = 3;
+}
+
+// PolicyDef describes one service policy (dial or bind) in a ServiceChangeSet.
+// postureCheckIds references PostureCheckDef entries in the same envelope or already known to the SDK.
+message PolicyDef {
+  Op              op              = 1;
+  string          id              = 2;
+  PolicyType      type            = 3;
+  repeated string postureCheckIds = 4;
+}
+
+// PostureCheckDef describes one posture check definition in a ServiceChangeSet.
+// Only the fields relevant to the check type are populated.
+message PostureCheckDef {
+  Op     op   = 1;
+  string id   = 2;
+  // type is one of: MFA, PROCESS_MULTI, OS, MAC, DOMAIN
+  string type = 3;
+
+  // MFA prompt configuration
+  int32 promptGracePeriodSeconds = 4;
+  bool  promptOnUnlock           = 5;
+  bool  promptOnWake             = 6;
+  // timeoutSeconds is the MFA timeout; -1 when the check never times out. 0 means the sender
+  // predates this field and the timeout is unknown.
+  int64 timeoutSeconds           = 9;
+
+  // PROCESS_MULTI configuration
+  string           semantic  = 7;
+  repeated Process processes = 8;
+
+  message Process {
+    string osType = 1;
+    string path   = 2;
+  }
+}
+
+// PostureStateChange carries the current posture pass/fail state for all checks and policies
+// in scope for this connection. Sent full on subscribe; sent as a delta of affected entries
+// on subsequent posture-data changes. Not indexed — recovered via ResyncPostureState on seq gap.
+message PostureStateChange {
+  // seq is a per-connection monotonic counter starting at 1. Reset on reconnect.
+  uint64 seq = 1;
+  // structuralIndex is the router's RDM index the posture evaluation ran against, for logging and
+  // correlation only — it is the GLOBAL RDM index, while a connection's ServiceChangeSet chain
+  // advances only when its own identity's services change, so it is NOT usable as a delivery gate
+  // against the SDK's committed structural index. Apply the state on receipt; ids not yet known
+  // structurally are attached when their definitions arrive.
+  uint64 structuralIndex = 2;
+  // 3 was postureDataVersion, removed before release: never populated and never read.
+  reserved 3;
+  reserved "postureDataVersion";
+  // generatedAt is a human-readable log aid only; never used for ordering or dedup.
+  google.protobuf.Timestamp generatedAt = 4;
+
+  repeated CheckState  checkStates  = 5;
+  repeated PolicyState policyStates = 6;
+
+  // CheckState holds the current pass/fail state for one posture check.
+  // timeoutAt and timeoutRemainingSeconds are only set for checks with an active timeout (e.g. MFA).
+  message CheckState {
+    string                    checkId                 = 1;
+    bool                      isPassing               = 2;
+    google.protobuf.Timestamp timeoutAt               = 3;
+    int32                     timeoutRemainingSeconds = 4;
+  }
+
+  // PolicyState holds the current pass/fail state for one service policy.
+  message PolicyState {
+    string policyId  = 1;
+    bool   isPassing = 2;
   }
 }

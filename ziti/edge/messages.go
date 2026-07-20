@@ -71,6 +71,17 @@ const (
 	ContentTypeServicePostureStateRequestType  = int32(edge_client_pb.ContentType_ServicePostureStateRequestType)
 	ContentTypeServicePostureStateResponseType = int32(edge_client_pb.ContentType_ServicePostureStateResponseType)
 
+	// ContentTypeSubscribeToServiceUpdates is sent by the SDK to opt in to service change push notifications.
+	ContentTypeSubscribeToServiceUpdates = int32(edge_client_pb.ContentType_SubscribeToServiceUpdatesType)
+	// ContentTypeUnsubscribeFromServiceUpdates is sent by the SDK to stop receiving service change push notifications.
+	ContentTypeUnsubscribeFromServiceUpdates = int32(edge_client_pb.ContentType_UnsubscribeFromServiceUpdatesType)
+	// ContentTypeResyncPostureState is sent by the SDK to request a full posture state retransmit after a seq gap.
+	ContentTypeResyncPostureState = int32(edge_client_pb.ContentType_ResyncPostureStateType)
+	// ContentTypeServiceChangeSet is sent by the router to deliver an atomic structural changeset.
+	ContentTypeServiceChangeSet = int32(edge_client_pb.ContentType_ServiceChangeSetType)
+	// ContentTypePostureStateChange is sent by the router to deliver current posture pass/fail state.
+	ContentTypePostureStateChange = int32(edge_client_pb.ContentType_PostureStateChangeType)
+
 	ContentTypeXgPayload         = int32(edge_client_pb.ContentType_XgPayloadType)
 	ContentTypeXgAcknowledgement = int32(edge_client_pb.ContentType_XgAcknowledgementType)
 	ContentTypeXgControl         = int32(edge_client_pb.ContentType_XgControlType)
@@ -120,6 +131,10 @@ const (
 	StructuredError                = int32(edge_client_pb.HeaderId_StructuredError)
 	DialerIdentityId               = int32(edge_client_pb.HeaderId_DialerIdentityId)
 	DialerIdentityName             = int32(edge_client_pb.HeaderId_DialerIdentityName)
+	// ServiceSubscriptionIndexHeader is RESERVED for the deferred index fast-forward (a hello
+	// header carrying the SDK's last committed structural index). Neither side sends or reads it
+	// yet; subscription happens via the SubscribeToServiceUpdates message with a full snapshot.
+	ServiceSubscriptionIndexHeader = int32(edge_client_pb.HeaderId_ServiceSubscriptionIndex)
 	ServiceIdHeader                = int32(edge_client_pb.HeaderId_ServiceId)
 	ServiceIdentifierTypeHeader    = int32(edge_client_pb.HeaderId_ServiceIdentifierType)
 	ConnectRequestIdHeader         = int32(edge_client_pb.HeaderId_ConnectRequestId)
@@ -141,6 +156,7 @@ const (
 	ErrorCodeInvalidApiSessionType       = uint32(edge_client_pb.Error_InvalidApiSessionType)
 	ErrorCodeInvalidInstanceId           = uint32(edge_client_pb.Error_InvalidInstanceId)
 	ErrorCodeAccessDenied                = uint32(edge_client_pb.Error_AccessDenied)
+	ErrorCodePostureCheckFailed          = uint32(edge_client_pb.Error_PostureCheckFailed)
 )
 
 type RetryHint byte
@@ -211,6 +227,10 @@ const (
 const (
 	RouterCapabilityMultiChannel = int(edge_client_pb.RouterCapability_MultiChannel)
 	RouterCapabilityConnectV2    = int(edge_client_pb.RouterCapability_ConnectV2)
+
+	// RouterCapabilityServiceSubscriptions indicates the router can push service
+	// change and posture state notifications to subscribed SDK clients.
+	RouterCapabilityServiceSubscriptions = int(edge_client_pb.RouterCapability_ServiceSubscriptions)
 
 	// RouterCapabilityPostureChecks supersedes the SupportsPostureChecksHeader
 	// boolean flag. Routers advertise both for backwards compatibility.
@@ -569,6 +589,25 @@ func (p *PostureResponseTotp) TypeID() rest_model.PostureCheckType {
 
 func (p *PostureResponseTotp) SetTypeID(_ rest_model.PostureCheckType) {}
 
+// NewSubscribeToServiceUpdatesMsg creates a message to opt in to service change push notifications.
+// index is the SDK's last committed structural index; -1 requests a full snapshot.
+func NewSubscribeToServiceUpdatesMsg(index int64) *channel.Message {
+	b, _ := proto.Marshal(&edge_client_pb.SubscribeToServiceUpdates{Index: index})
+	return channel.NewMessage(ContentTypeSubscribeToServiceUpdates, b)
+}
+
+// NewUnsubscribeFromServiceUpdatesMsg creates a message to stop receiving service change push notifications.
+func NewUnsubscribeFromServiceUpdatesMsg() *channel.Message {
+	b, _ := proto.Marshal(&edge_client_pb.UnsubscribeFromServiceUpdates{})
+	return channel.NewMessage(ContentTypeUnsubscribeFromServiceUpdates, b)
+}
+
+// NewResyncPostureStateMsg creates a message to request a full posture state retransmit after a seq gap.
+func NewResyncPostureStateMsg() *channel.Message {
+	b, _ := proto.Marshal(&edge_client_pb.ResyncPostureState{})
+	return channel.NewMessage(ContentTypeResyncPostureState, b)
+}
+
 // NewUpdateTokenMsg creates a message sent to edge routers to update the token that
 // allows the client to stay connection. If the token is not update before the current
 // one expires, the connection and all service connections through it will be terminated.
@@ -714,10 +753,16 @@ func UnmarshalInspectResult(msg *channel.Message) (*InspectResult, error) {
 }
 
 type Error struct {
-	Message   string    `json:"message"`
-	Code      uint32    `json:"code"`
-	Cause     error     `json:"cause"`
+	Message string `json:"message"`
+	Code    uint32 `json:"code"`
+	// Cause never rides the wire: a non-nil error marshals as a JSON object that cannot be
+	// unmarshaled back into an error-typed field, which would discard the whole structured
+	// error. Senders put the cause's text into Message.
+	Cause     error     `json:"-"`
 	RetryHint RetryHint `json:"retryHint"`
+	// FailingPostureCheckIds carries the ids of the posture checks that denied access when Code
+	// is ErrorCodePostureCheckFailed.
+	FailingPostureCheckIds []string `json:"failingPostureCheckIds,omitempty"`
 }
 
 func (e Error) Error() string {
