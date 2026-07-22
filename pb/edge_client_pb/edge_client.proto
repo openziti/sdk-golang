@@ -46,6 +46,7 @@ enum ContentType {
 
   ConnectV2Type = 60806;
   RouteCircuitType = 60807;
+  TakeoverCircuitType = 60808;
 
   PostureResponseType = 10800;
   ServicePostureStateRequestType = 108001;
@@ -117,6 +118,9 @@ enum HeaderId {
   // structural index (-1 = no prior state). Not yet sent by the SDK or read by the router; the
   // initial feature always uses a full snapshot.
   ServiceSubscriptionIndex     = 1040;
+  RequestReroutable = 1041;
+  RerouteToken = 1042;
+  TakeoverResultCode = 1043;
 }
 
 enum Error {
@@ -185,7 +189,29 @@ message RouterCapability {
     // BindSuccess indicates the router sends bind-success notifications. Also
     // advertised to older SDKs via the deprecated SupportsBindSuccess header.
     BindSuccess = 6;
+    // SDKReroute indicates the router supports SDK-driven circuit reroute (takeover)
+    SDKReroute = 7;
   }
+}
+
+// TakeoverResult is the disposition of a TakeoverCircuit attempt, carried in the
+// TakeoverResultCode header of the reply. The proto3 zero value is unspecified and MUST be
+// treated as a fatal abort, never as success.
+enum TakeoverResult {
+  TakeoverResultUnspecified = 0;
+  TakeoverSuccess = 1;
+  // TakeoverOwnerUnreachable: the router has no channel to the owning controller (retryable)
+  TakeoverOwnerUnreachable = 2;
+  // TakeoverBusy: a concurrent mutation held the circuit's CAS guard (retryable)
+  TakeoverBusy = 3;
+  // TakeoverRouteInstallFailed: new-path install failed and was rolled back (retryable)
+  TakeoverRouteInstallFailed = 4;
+  // TakeoverTokenRejected: bad signature, identity mismatch, stale iteration, or authz denied (fatal)
+  TakeoverTokenRejected = 5;
+  // TakeoverNotReroutable: circuit exists but is not in a reroutable/Limbo state (fatal)
+  TakeoverNotReroutable = 6;
+  // TakeoverNotFound: circuit is gone (grace expired or removed) (fatal)
+  TakeoverNotFound = 7;
 }
 
 enum Flag {

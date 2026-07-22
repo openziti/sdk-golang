@@ -87,8 +87,9 @@ const (
 	ContentTypeXgControl         = int32(edge_client_pb.ContentType_XgControlType)
 	ContentTypeXgClose           = int32(edge_client_pb.ContentType_XgCloseType)
 
-	ContentTypeConnectV2    = int32(edge_client_pb.ContentType_ConnectV2Type)
-	ContentTypeRouteCircuit = int32(edge_client_pb.ContentType_RouteCircuitType)
+	ContentTypeConnectV2       = int32(edge_client_pb.ContentType_ConnectV2Type)
+	ContentTypeRouteCircuit    = int32(edge_client_pb.ContentType_RouteCircuitType)
+	ContentTypeTakeoverCircuit = int32(edge_client_pb.ContentType_TakeoverCircuitType)
 )
 
 const (
@@ -139,6 +140,9 @@ const (
 	ServiceIdentifierTypeHeader    = int32(edge_client_pb.HeaderId_ServiceIdentifierType)
 	ConnectRequestIdHeader         = int32(edge_client_pb.HeaderId_ConnectRequestId)
 	RouterCapabilitiesHeader       = int32(edge_client_pb.HeaderId_RouterCapabilities)
+	RequestReroutableHeader        = int32(edge_client_pb.HeaderId_RequestReroutable)
+	RerouteTokenHeader             = int32(edge_client_pb.HeaderId_RerouteToken)
+	TakeoverResultCodeHeader       = int32(edge_client_pb.HeaderId_TakeoverResultCode)
 )
 
 const (
@@ -242,6 +246,10 @@ const (
 	// SupportsBindSuccessHeader boolean flag. Routers advertise both for
 	// backwards compatibility.
 	RouterCapabilityBindSuccess = int(edge_client_pb.RouterCapability_BindSuccess)
+
+	// RouterCapabilitySDKReroute indicates the router accepts SDK-driven circuit
+	// reroute (takeover) requests.
+	RouterCapabilitySDKReroute = int(edge_client_pb.RouterCapability_SDKReroute)
 )
 
 // IsRouterCapable checks whether a router hello header set includes the given capability bit.
