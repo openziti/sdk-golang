@@ -75,7 +75,9 @@ func (st *deadlineState) setDeadline(t time.Time) error {
 
 	st.deadline.Store(t)
 
-	// Stop any existing timer
+	// Stop any existing timer. The return value is ignored on purpose: a timer that
+	// already fired is blocked on our lock, and fireDeadline's expectedDeadline check
+	// below discards it once it gets in.
 	if st.timer != nil {
 		st.timer.Stop()
 		st.timer = nil

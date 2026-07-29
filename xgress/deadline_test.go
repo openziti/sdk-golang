@@ -78,3 +78,61 @@ func TestPendingDeadlineDoesNotRetainXgress(t *testing.T) {
 		})
 	}
 }
+
+// newDeadlineBenchXgress builds an xgress with a running send buffer and a no-op close
+// handler, so tearing it down doesn't log a warning into the benchmark output.
+func newDeadlineBenchXgress(b *testing.B) *Xgress {
+	closeNotify := make(chan struct{})
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("bench", "ctrl", "bench", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+	x.AddCloseHandler(CloseHandlerF(func(*Xgress) {}))
+
+	go x.payloadBuffer.run()
+	b.Cleanup(x.Close)
+
+	return x
+}
+
+// BenchmarkSetReadDeadline measures the cost of arming a deadline. Deadlines are driven by
+// the runtime timer heap rather than by channels the send buffer's run loop selects on, so
+// this is the whole per-call cost; the old scheme also charged the run loop a wake event and
+// a select re-evaluation that a benchmark on this goroutine would not see.
+func BenchmarkSetReadDeadline(b *testing.B) {
+	ra := newDeadlineBenchXgress(b).NewReadAdapter()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ra.SetReadDeadline(time.Now().Add(time.Minute))
+	}
+}
+
+// BenchmarkSetReadDeadlineSetClear measures arm-then-disarm, the shape an application
+// timeout loop produces.
+func BenchmarkSetReadDeadlineSetClear(b *testing.B) {
+	ra := newDeadlineBenchXgress(b).NewReadAdapter()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ra.SetReadDeadline(time.Now().Add(time.Minute))
+		_ = ra.SetReadDeadline(time.Time{})
+	}
+}
+
+func BenchmarkSetWriteDeadline(b *testing.B) {
+	wa := newDeadlineBenchXgress(b).NewWriteAdapter()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = wa.SetWriteDeadline(time.Now().Add(time.Minute))
+	}
+}
