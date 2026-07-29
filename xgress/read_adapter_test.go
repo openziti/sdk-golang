@@ -363,6 +363,43 @@ func TestReadAdapterDeadlineDoesNotDisturbStream(t *testing.T) {
 	}
 }
 
+// TestReadAdapterDeadlineDoesNotCloseWriteHalf covers a read deadline expiring on a live
+// circuit. A deadline is recoverable, so it must not run the tx-side teardown: that sends
+// a write-failed payload, which closes the peer's send buffer permanently and leaves the
+// circuit unable to deliver anything further.
+func TestReadAdapterDeadlineDoesNotCloseWriteHalf(t *testing.T) {
+	req := require.New(t)
+
+	tc := newTestCircuit(modeReadAdapter)
+	defer tc.cleanup()
+
+	// let the circuit-start and capabilities exchange settle
+	time.Sleep(50 * time.Millisecond)
+
+	req.NoError(tc.srcRA.SetReadDeadline(time.Now().Add(50 * time.Millisecond)))
+
+	_, _, err := tc.srcRA.ReadPayload()
+	var readTimeout *ReadTimeout
+	req.True(errors.As(err, &readTimeout), "expected *ReadTimeout, got %T", err)
+
+	time.Sleep(50 * time.Millisecond)
+
+	req.False(tc.dst.payloadBuffer.IsClosed(), "read deadline closed the peer's send buffer")
+
+	select {
+	case <-tc.srcConn.txClosedCh:
+		req.Fail("read deadline signaled fabric-to-xgress close")
+	default:
+	}
+
+	// The circuit must still carry data in the direction that timed out. Use a generous
+	// deadline rather than clearing it, so a wedged circuit fails the read instead of
+	// hanging the test.
+	req.NoError(tc.srcRA.SetReadDeadline(time.Now().Add(10 * time.Second)))
+	go sendPayloads(t, 3, nil, tc.dstConn.rxCh)
+	recvAndVerifyPayloads(t, req, 3, tc.srcRA, nil)
+}
+
 // TestReadAdapterDeadlineConcurrent covers deadlines set and cleared from another
 // goroutine, mirroring the concurrent cases in TestWriteTimeout.
 func TestReadAdapterDeadlineConcurrent(t *testing.T) {
