@@ -34,7 +34,7 @@ func NewReadAdapter(x *Xgress) *ReadAdapter {
 	result := &ReadAdapter{
 		x: x,
 	}
-	result.init(&x.payloadBuffer.readDeadlineCb, x.payloadBuffer.events)
+	result.init()
 	return result
 }
 
