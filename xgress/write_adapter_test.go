@@ -272,8 +272,8 @@ func TestWriteAdapterDeadlineWrite(t *testing.T) {
 
 	wa := x.NewWriteAdapter()
 
-	// Use a past deadline so Done() closes immediately in SetDeadline,
-	// without requiring the LinkSendBuffer run loop.
+	// A past deadline closes Done() synchronously inside SetDeadline, so no timer is
+	// involved. TestWriteAdapterDeadlineWhileWindowBlocked covers the timer path.
 	err := wa.SetWriteDeadline(time.Now().Add(-1 * time.Millisecond))
 	req.NoError(err)
 
@@ -305,4 +305,227 @@ func TestWriteAdapterCloseError(t *testing.T) {
 
 	_, writeErr := wa.Write([]byte("hello"))
 	req.ErrorIs(writeErr, ErrWriteClosed)
+}
+
+// TestWriteAdapterDeadlineAfterHalfClose is the write-side counterpart to
+// TestReadAdapterDeadlineAfterHalfClose. Closing the send half stops the send buffer's
+// run loop, and a write deadline registered afterward must still fire.
+func TestWriteAdapterDeadlineAfterHalfClose(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	wa := x.NewWriteAdapter()
+	go x.payloadBuffer.run()
+	defer x.Close()
+
+	// Half-close: the send half is done, the xgress as a whole is still alive.
+	x.payloadBuffer.Close()
+	req.True(x.payloadBuffer.IsClosed(), "send buffer should be closed")
+	req.False(x.IsClosed(), "only the send half should be closed")
+
+	// Let the run loop observe the close and exit, so the deadline below cannot be
+	// serviced by the loop.
+	time.Sleep(10 * time.Millisecond)
+
+	start := time.Now()
+	req.NoError(wa.SetWriteDeadline(start.Add(250 * time.Millisecond)))
+
+	select {
+	case <-wa.Done():
+		passed := time.Since(start)
+		req.True(passed >= 250*time.Millisecond, "expected at least 250ms, got %s", passed)
+	case <-time.After(2 * time.Second):
+		req.Fail("write deadline didn't fire after half-close")
+	}
+}
+
+// TestWriteAdapterDeadlineWhileWindowBlocked exercises the write-deadline path end to
+// end: Write blocks because the send window is full, the deadline expires, and
+// BufferPayloadWithDeadline surfaces os.ErrDeadlineExceeded.
+func TestWriteAdapterDeadlineWhileWindowBlocked(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	// A tiny send window lets a single unacked payload block the buffer.
+	// noopReceiveHandler never acks, so once blocked it stays blocked.
+	options := DefaultOptions()
+	options.TxPortalStartSize = 64
+	options.TxPortalMinSize = 64
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, options, nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	wa := x.NewWriteAdapter()
+	go x.payloadBuffer.run()
+	defer x.Close()
+
+	// Generous deadline on the priming write so an unexpected block fails rather than hangs.
+	req.NoError(wa.SetWriteDeadline(time.Now().Add(5 * time.Second)))
+	_, err := wa.Write(make([]byte, 128))
+	req.NoError(err)
+
+	req.Eventually(func() bool {
+		return x.payloadBuffer.Inspect().BlockedByLocalWindow
+	}, 5*time.Second, 5*time.Millisecond, "send buffer should block once the window is full")
+
+	start := time.Now()
+	req.NoError(wa.SetWriteDeadline(start.Add(100 * time.Millisecond)))
+
+	_, err = wa.Write([]byte("blocked"))
+	req.ErrorIs(err, os.ErrDeadlineExceeded)
+	req.True(time.Since(start) >= 100*time.Millisecond, "write returned before the deadline")
+}
+
+// blockWriteAdapterWindow returns an xgress whose send window is full, so the next
+// Write parks in BufferPayloadWithDeadline, along with its write adapter and the
+// sequence of the single unacked payload holding the window.
+func blockWriteAdapterWindow(t *testing.T, req *require.Assertions) (*Xgress, *WriteAdapter, int32) {
+	closeNotify := make(chan struct{})
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	options := DefaultOptions()
+	options.TxPortalStartSize = 64
+	options.TxPortalMinSize = 64
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, options, nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	wa := x.NewWriteAdapter()
+	go x.payloadBuffer.run()
+	t.Cleanup(x.Close)
+
+	// The priming payload takes the first sequence and fills the window on its own.
+	seq := int32(x.GetSequence())
+	req.NoError(wa.SetWriteDeadline(time.Now().Add(5 * time.Second)))
+	_, err := wa.Write(make([]byte, 128))
+	req.NoError(err)
+
+	req.Eventually(func() bool {
+		return x.payloadBuffer.Inspect().BlockedByLocalWindow
+	}, 5*time.Second, 5*time.Millisecond, "send buffer should block once the window is full")
+
+	return x, wa, seq
+}
+
+// TestWriteAdapterDeadlineClearedWhileBlocked verifies that clearing a deadline while a
+// Write is parked cancels the timeout: the write survives the original deadline instant
+// and completes once the send window reopens.
+func TestWriteAdapterDeadlineClearedWhileBlocked(t *testing.T) {
+	req := require.New(t)
+	x, wa, seq := blockWriteAdapterWindow(t, req)
+
+	start := time.Now()
+	req.NoError(wa.SetWriteDeadline(start.Add(100 * time.Millisecond)))
+
+	writeErr := make(chan error, 1)
+	go func() {
+		_, err := wa.Write([]byte("blocked"))
+		writeErr <- err
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	req.NoError(wa.SetWriteDeadline(time.Time{}))
+
+	// Reopen the window only after the original deadline has passed, so a completed
+	// write proves the cleared deadline never fired.
+	time.Sleep(150 * time.Millisecond)
+	ack := NewAcknowledgement("test", Terminator)
+	ack.Sequence = []int32{seq}
+	req.NoError(x.SendAcknowledgement(ack))
+
+	select {
+	case err := <-writeErr:
+		req.NoError(err)
+		req.True(time.Since(start) >= 100*time.Millisecond, "write completed before the original deadline")
+	case <-time.After(5 * time.Second):
+		req.Fail("write never completed after the deadline was cleared")
+	}
+}
+
+// TestWriteAdapterDeadlineExtendedWhileBlocked verifies that extending a deadline while a
+// Write is parked moves the timeout out rather than leaving the original in place.
+func TestWriteAdapterDeadlineExtendedWhileBlocked(t *testing.T) {
+	req := require.New(t)
+	_, wa, _ := blockWriteAdapterWindow(t, req)
+
+	start := time.Now()
+	req.NoError(wa.SetWriteDeadline(start.Add(100 * time.Millisecond)))
+
+	writeErr := make(chan error, 1)
+	go func() {
+		_, err := wa.Write([]byte("blocked"))
+		writeErr <- err
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	req.NoError(wa.SetWriteDeadline(start.Add(400 * time.Millisecond)))
+
+	select {
+	case err := <-writeErr:
+		req.ErrorIs(err, os.ErrDeadlineExceeded)
+		req.True(time.Since(start) >= 400*time.Millisecond,
+			"write timed out on the original deadline, not the extended one")
+	case <-time.After(5 * time.Second):
+		req.Fail("extended deadline never fired")
+	}
+}
+
+// TestWriteAdapterContext covers the context.Context surface WriteAdapter exposes, which
+// forwardPayloadImpl relies on to route writes through BufferPayloadWithDeadline.
+func TestWriteAdapterContext(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	wa := x.NewWriteAdapter()
+
+	deadline, ok := wa.Deadline()
+	req.False(ok, "no deadline should be reported before one is set")
+	req.True(deadline.IsZero())
+
+	expected := time.Now().Add(time.Minute)
+	req.NoError(wa.SetWriteDeadline(expected))
+	deadline, ok = wa.Deadline()
+	req.True(ok)
+	req.True(expected.Equal(deadline), "expected %s, got %s", expected, deadline)
+
+	req.NoError(wa.SetWriteDeadline(time.Time{}))
+	deadline, ok = wa.Deadline()
+	req.False(ok, "cleared deadline should no longer be reported")
+	req.True(deadline.IsZero())
+
+	req.NoError(wa.Err())
+	req.Nil(wa.Value("anything"))
 }

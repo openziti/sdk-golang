@@ -22,7 +22,7 @@ func NewWriteAdapter(x *Xgress) *WriteAdapter {
 	result := &WriteAdapter{
 		x: x,
 	}
-	result.init(&x.payloadBuffer.writeDeadlineCb, x.payloadBuffer.events)
+	result.init()
 	return result
 }
 
@@ -32,7 +32,7 @@ type WriteAdapter struct {
 }
 
 func (self *WriteAdapter) Deadline() (deadline time.Time, ok bool) {
-	deadline = self.deadline.Load()
+	deadline = self.currentDeadline()
 	return deadline, !deadline.IsZero()
 }
 
