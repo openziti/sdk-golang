@@ -1,3 +1,12 @@
+# Release notes 1.8.1
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.0 -> v1.8.1](https://github.com/openziti/sdk-golang/compare/v1.8.0...v1.8.1)
+    * [Issue #988](https://github.com/openziti/sdk-golang/issues/988) - LinkSendBuffer leaks goroutines after send-half close
+    * [Issue #992](https://github.com/openziti/sdk-golang/issues/992) - Read deadline on ReadAdapter permanently closes the peer's send buffer
+
+
 # Release notes 1.8.0
 
 ## Issues Fixed and Dependency Updates
