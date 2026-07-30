@@ -31,6 +31,37 @@ import (
 // goroutine when the deadline fires, so no persistent deadline goroutine is
 // needed while the timer is pending.
 type deadlineControl struct {
+	state *deadlineState
+}
+
+func (dc *deadlineControl) init() {
+	state := &deadlineState{}
+	state.doneNotify.Store(make(chan struct{}))
+	dc.state = state
+}
+
+// Done returns a channel that is closed when the current deadline expires.
+func (dc *deadlineControl) Done() <-chan struct{} {
+	return dc.state.doneNotify.Load()
+}
+
+// SetDeadline sets the deadline to t. A zero value clears the deadline.
+func (dc *deadlineControl) SetDeadline(t time.Time) error {
+	return dc.state.setDeadline(t)
+}
+
+// currentDeadline returns the deadline in effect, or the zero time if none is set.
+func (dc *deadlineControl) currentDeadline() time.Time {
+	return dc.state.deadline.Load()
+}
+
+// deadlineState holds the mutable half of a deadline. It is a separate allocation so
+// that a pending timer callback retains only this, rather than the adapter embedding
+// deadlineControl and, through it, the whole Xgress. A pending timer is reachable from
+// the runtime timer heap until it fires, so anything its callback captures would
+// otherwise stay live for the full duration of the deadline even after the xgress is
+// closed and dropped.
+type deadlineState struct {
 	deadline         concurrenz.AtomicValue[time.Time]
 	doneNotify       concurrenz.AtomicValue[chan struct{}]
 	doneNotifyClosed bool
@@ -38,32 +69,22 @@ type deadlineControl struct {
 	lock             sync.Mutex
 }
 
-func (dc *deadlineControl) init() {
-	dc.doneNotify.Store(make(chan struct{}))
-}
+func (st *deadlineState) setDeadline(t time.Time) error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
 
-// Done returns a channel that is closed when the current deadline expires.
-func (dc *deadlineControl) Done() <-chan struct{} {
-	return dc.doneNotify.Load()
-}
-
-// SetDeadline sets the deadline to t. A zero value clears the deadline.
-func (dc *deadlineControl) SetDeadline(t time.Time) error {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
-
-	dc.deadline.Store(t)
+	st.deadline.Store(t)
 
 	// Stop any existing timer
-	if dc.timer != nil {
-		dc.timer.Stop()
-		dc.timer = nil
+	if st.timer != nil {
+		st.timer.Stop()
+		st.timer = nil
 	}
 
 	if t.IsZero() {
-		if dc.doneNotifyClosed {
-			dc.doneNotify.Store(make(chan struct{}))
-			dc.doneNotifyClosed = false
+		if st.doneNotifyClosed {
+			st.doneNotify.Store(make(chan struct{}))
+			st.doneNotifyClosed = false
 		}
 		return nil
 	}
@@ -71,31 +92,31 @@ func (dc *deadlineControl) SetDeadline(t time.Time) error {
 	d := time.Until(t)
 	if d <= 0 {
 		// Already expired — close immediately
-		if !dc.doneNotifyClosed {
-			close(dc.doneNotify.Load())
-			dc.doneNotifyClosed = true
+		if !st.doneNotifyClosed {
+			close(st.doneNotify.Load())
+			st.doneNotifyClosed = true
 		}
 		return nil
 	}
 
 	// Future deadline — reopen channel if needed
-	if dc.doneNotifyClosed {
-		dc.doneNotify.Store(make(chan struct{}))
-		dc.doneNotifyClosed = false
+	if st.doneNotifyClosed {
+		st.doneNotify.Store(make(chan struct{}))
+		st.doneNotifyClosed = false
 	}
 
-	dc.timer = time.AfterFunc(d, func() { dc.fireDeadline(t) })
+	st.timer = time.AfterFunc(d, func() { st.fireDeadline(t) })
 
 	return nil
 }
 
 // fireDeadline closes the Done channel if the deadline hasn't changed since the
 // timer was created.
-func (dc *deadlineControl) fireDeadline(expectedDeadline time.Time) {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
-	if dc.deadline.Load().Equal(expectedDeadline) && !dc.doneNotifyClosed {
-		close(dc.doneNotify.Load())
-		dc.doneNotifyClosed = true
+func (st *deadlineState) fireDeadline(expectedDeadline time.Time) {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+	if st.deadline.Load().Equal(expectedDeadline) && !st.doneNotifyClosed {
+		close(st.doneNotify.Load())
+		st.doneNotifyClosed = true
 	}
 }

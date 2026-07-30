@@ -310,3 +310,135 @@ func TestReadAdapterEOFOnClose(t *testing.T) {
 	_, _, err := ra.ReadPayload()
 	req.ErrorIs(err, io.EOF)
 }
+
+// TestReadAdapterDeadlineDoesNotDisturbStream verifies that a read deadline expiring
+// with nothing queued neither consumes nor reorders subsequently delivered payloads.
+func TestReadAdapterDeadlineDoesNotDisturbStream(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	ra := x.NewReadAdapter()
+
+	// The send buffer loop must be running: a ReadPayload error runs txCleanup, which
+	// buffers a write-failed payload and would otherwise block on newlyBuffered.
+	go x.payloadBuffer.run()
+	defer x.Close()
+
+	req.NoError(ra.SetReadDeadline(time.Now().Add(50 * time.Millisecond)))
+
+	_, _, err := ra.ReadPayload()
+	var readTimeout *ReadTimeout
+	req.True(errors.As(err, &readTimeout), "expected *ReadTimeout, got %T", err)
+
+	// Done() stays closed after firing, so the deadline must be cleared before the
+	// stream is readable again.
+	req.NoError(ra.SetReadDeadline(time.Time{}))
+
+	const payloadCount = 3
+	for i := 0; i < payloadCount; i++ {
+		data := make([]byte, 8)
+		binary.LittleEndian.PutUint64(data, uint64(i))
+		req.NoError(x.SendPayload(&Payload{
+			CircuitId: "test",
+			Flags:     SetOriginatorFlag(0, Terminator),
+			Sequence:  int32(i),
+			Data:      data,
+		}, 0, PayloadTypeXg))
+	}
+
+	for i := 0; i < payloadCount; i++ {
+		data, _, err := ra.ReadPayload()
+		req.NoError(err)
+		req.Equal(uint64(i), binary.LittleEndian.Uint64(data), "payload %v out of order", i)
+	}
+}
+
+// TestReadAdapterDeadlineConcurrent covers deadlines set and cleared from another
+// goroutine, mirroring the concurrent cases in TestWriteTimeout.
+func TestReadAdapterDeadlineConcurrent(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	ra := x.NewReadAdapter()
+	go x.payloadBuffer.run()
+	defer x.Close()
+
+	// deadline set asynchronously
+	start := time.Now()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		req.NoError(ra.SetReadDeadline(time.Now().Add(200 * time.Millisecond)))
+	}()
+
+	select {
+	case <-ra.Done():
+		passed := time.Since(start)
+		req.True(passed >= 300*time.Millisecond, "expected at least 300ms, got %s", passed)
+	case <-time.After(2 * time.Second):
+		req.Fail("timeout didn't fire")
+	}
+
+	// pending deadline cleared asynchronously
+	req.NoError(ra.SetReadDeadline(time.Time{}))
+	req.NoError(ra.SetReadDeadline(time.Now().Add(250 * time.Millisecond)))
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		req.NoError(ra.SetReadDeadline(time.Time{}))
+	}()
+
+	select {
+	case <-ra.Done():
+		req.Fail("timeout should not have fired after the deadline was cleared")
+	case <-time.After(500 * time.Millisecond):
+		// expected
+	}
+
+	// deadline set and cleared, both asynchronously
+	go func() {
+		req.NoError(ra.SetReadDeadline(time.Now().Add(250 * time.Millisecond)))
+		time.Sleep(100 * time.Millisecond)
+		req.NoError(ra.SetReadDeadline(time.Time{}))
+	}()
+
+	select {
+	case <-ra.Done():
+		req.Fail("timeout should not have fired after the deadline was cleared")
+	case <-time.After(500 * time.Millisecond):
+		// expected
+	}
+
+	// deadline moved into the past asynchronously
+	start = time.Now()
+	req.NoError(ra.SetReadDeadline(time.Now().Add(time.Hour)))
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		req.NoError(ra.SetReadDeadline(time.Now().Add(-250 * time.Millisecond)))
+	}()
+
+	select {
+	case <-ra.Done():
+	case <-time.After(2 * time.Second):
+		req.Fail("timeout didn't fire")
+	}
+	req.True(time.Since(start) < time.Second, "past deadline should fire promptly")
+}

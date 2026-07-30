@@ -32,7 +32,7 @@ type WriteAdapter struct {
 }
 
 func (self *WriteAdapter) Deadline() (deadline time.Time, ok bool) {
-	deadline = self.deadline.Load()
+	deadline = self.currentDeadline()
 	return deadline, !deadline.IsZero()
 }
 
