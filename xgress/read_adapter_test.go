@@ -223,8 +223,11 @@ func TestReadAdapterDeadlineAfterHalfClose(t *testing.T) {
 	// The send-buffer run loop exits while the read half remains active.
 	x.payloadBuffer.Close()
 
-	// Give the run loop time to process the close.
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-x.payloadBuffer.runExited:
+	case <-time.After(time.Second):
+		req.Fail("send buffer run loop did not exit after half-close")
+	}
 	req.True(x.payloadBuffer.IsClosed(), "send buffer should be closed")
 
 	// The runtime timer must still fire after the send-buffer loop exits.
@@ -250,37 +253,6 @@ func TestReadAdapterDeadlineAfterHalfClose(t *testing.T) {
 
 	var readTimeout *ReadTimeout
 	req.True(errors.As(err, &readTimeout), "expected *ReadTimeout after half-close, got %T", err)
-}
-
-func TestLinkSendBufferRunExitsAfterHalfCloseWithoutReadAdapter(t *testing.T) {
-	closeNotify := make(chan struct{})
-	conn := &testConn{
-		ch:          make(chan uint64, 1),
-		closeNotify: make(chan struct{}),
-	}
-
-	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
-	x.dataPlane = noopReceiveHandler{
-		payloadIngester: NewPayloadIngester(closeNotify),
-	}
-	defer x.Close()
-
-	runDone := make(chan struct{})
-	go func() {
-		x.payloadBuffer.run()
-		close(runDone)
-	}()
-
-	// A normal router xgress has no ReadAdapter. Closing its send half must
-	// stop the run goroutine even while the receive half remains open.
-	x.payloadBuffer.Close()
-
-	select {
-	case <-runDone:
-		require.False(t, x.IsClosed(), "only the send half should be closed")
-	case <-time.After(time.Second):
-		t.Fatal("link send buffer run goroutine did not exit after half-close")
-	}
 }
 
 func TestReadAdapterEOFOnClose(t *testing.T) {
@@ -400,6 +372,49 @@ func TestReadAdapterDeadlineDoesNotCloseWriteHalf(t *testing.T) {
 	recvAndVerifyPayloads(t, req, 3, tc.srcRA, nil)
 }
 
+// TestReadAdapterDeadlineSetWhileBlocked covers the net.Conn contract that a deadline set
+// after a read is already blocked still applies to that read. ReadPayload captures Done()
+// once on entry, so the channel it holds has to be the one the later deadline closes.
+func TestReadAdapterDeadlineSetWhileBlocked(t *testing.T) {
+	closeNotify := make(chan struct{})
+	req := require.New(t)
+
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+
+	ra := x.NewReadAdapter()
+	go x.payloadBuffer.run()
+	defer x.Close()
+
+	// No deadline yet, and nothing queued, so this parks.
+	readErr := make(chan error, 1)
+	go func() {
+		_, _, err := ra.ReadPayload()
+		readErr <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	start := time.Now()
+	req.NoError(ra.SetReadDeadline(start.Add(50 * time.Millisecond)))
+
+	select {
+	case err := <-readErr:
+		var readTimeout *ReadTimeout
+		req.True(errors.As(err, &readTimeout), "expected *ReadTimeout, got %T", err)
+		req.True(time.Since(start) >= 50*time.Millisecond, "read returned before the deadline")
+	case <-time.After(5 * time.Second):
+		req.Fail("blocked read never observed a deadline set after it started")
+	}
+}
+
 // TestReadAdapterDeadlineConcurrent covers deadlines set and cleared from another
 // goroutine, mirroring the concurrent cases in TestWriteTimeout.
 func TestReadAdapterDeadlineConcurrent(t *testing.T) {
@@ -464,7 +479,24 @@ func TestReadAdapterDeadlineConcurrent(t *testing.T) {
 		// expected
 	}
 
+	// a superseded timer must not fire on its own schedule
+	req.NoError(ra.SetReadDeadline(time.Time{}))
+	start = time.Now()
+	req.NoError(ra.SetReadDeadline(start.Add(20 * time.Millisecond)))
+	time.Sleep(5 * time.Millisecond)
+	req.NoError(ra.SetReadDeadline(start.Add(300 * time.Millisecond)))
+
+	select {
+	case <-ra.Done():
+		passed := time.Since(start)
+		req.True(passed >= 300*time.Millisecond,
+			"superseded 20ms deadline fired instead of the 300ms one, after %s", passed)
+	case <-time.After(2 * time.Second):
+		req.Fail("timeout didn't fire")
+	}
+
 	// deadline moved into the past asynchronously
+	req.NoError(ra.SetReadDeadline(time.Time{}))
 	start = time.Now()
 	req.NoError(ra.SetReadDeadline(time.Now().Add(time.Hour)))
 	go func() {

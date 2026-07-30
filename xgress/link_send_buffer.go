@@ -58,6 +58,7 @@ type LinkSendBuffer struct {
 	lastRetransmitTime    int64
 	closeWhenEmpty        atomic.Bool
 	inspectRequests       chan *sendBufferInspectEvent
+	runExited             chan struct{}
 	blockedSince          time.Time
 	closeStart            time.Time
 }
@@ -118,6 +119,7 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		retxThreshold:     x.Options.RetxStartMs,
 		retxScale:         x.Options.RetxScale,
 		inspectRequests:   make(chan *sendBufferInspectEvent, 1),
+		runExited:         make(chan struct{}),
 	}
 
 	return buffer
@@ -228,6 +230,9 @@ func (buffer *LinkSendBuffer) isBlocked() bool {
 
 func (buffer *LinkSendBuffer) run() {
 	log := pfxlog.ContextLogger(buffer.x.Label())
+	// Registered first so it runs last: once this closes, no goroutine mutates the
+	// fields Inspect reads.
+	defer close(buffer.runExited)
 	defer log.Debugf("[%p] exited", buffer)
 	log.Debugf("[%p] started", buffer)
 
@@ -543,7 +548,19 @@ func (buffer *LinkSendBuffer) inspect() *SendBufferDetail {
 	return result
 }
 
+// Inspect returns a snapshot of the send buffer's state. It normally hands the request to
+// the run loop so the fields are read from the goroutine that owns them. Once the run loop
+// has exited there is nobody to service that request and nobody left to mutate the fields,
+// so the snapshot is taken directly.
 func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
+	select {
+	case <-buffer.runExited:
+		result := buffer.inspect()
+		result.AcquiredSafely = true
+		return result
+	default:
+	}
+
 	timeout := time.After(100 * time.Millisecond)
 	inspectEvent := &sendBufferInspectEvent{
 		notifyComplete: make(chan *SendBufferDetail, 1),
@@ -559,6 +576,10 @@ func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
 		}
 	case <-timeout:
 	}
+
+	// The run loop is alive but didn't answer in time, so the snapshot below is read
+	// without synchronization and may be inconsistent.
+	pfxlog.ContextLogger(buffer.x.Label()).Debug("send buffer inspect timed out, reporting unsynchronized state")
 
 	result := buffer.inspect()
 	result.AcquiredSafely = false
