@@ -220,14 +220,14 @@ func TestReadAdapterDeadlineAfterHalfClose(t *testing.T) {
 	req := require.New(t)
 
 	// Close the send buffer (half-close: write side done, read side still active).
-	// The run loop transitions to drainDeadlines.
+	// The send-buffer run loop exits while the read half remains active.
 	x.payloadBuffer.Close()
 
-	// Give the run loop time to process the close and enter drainDeadlines
+	// Give the run loop time to process the close.
 	time.Sleep(10 * time.Millisecond)
 	req.True(x.payloadBuffer.IsClosed(), "send buffer should be closed")
 
-	// Setting a future read deadline should still fire via drainDeadlines
+	// The runtime timer must still fire after the send-buffer loop exits.
 	start := time.Now()
 	err := ra.SetReadDeadline(start.Add(250 * time.Millisecond))
 	req.NoError(err)
@@ -250,6 +250,37 @@ func TestReadAdapterDeadlineAfterHalfClose(t *testing.T) {
 
 	var readTimeout *ReadTimeout
 	req.True(errors.As(err, &readTimeout), "expected *ReadTimeout after half-close, got %T", err)
+}
+
+func TestLinkSendBufferRunExitsAfterHalfCloseWithoutReadAdapter(t *testing.T) {
+	closeNotify := make(chan struct{})
+	conn := &testConn{
+		ch:          make(chan uint64, 1),
+		closeNotify: make(chan struct{}),
+	}
+
+	x := NewXgress("test", "ctrl", "test", conn, Initiator, DefaultOptions(), nil)
+	x.dataPlane = noopReceiveHandler{
+		payloadIngester: NewPayloadIngester(closeNotify),
+	}
+	defer x.Close()
+
+	runDone := make(chan struct{})
+	go func() {
+		x.payloadBuffer.run()
+		close(runDone)
+	}()
+
+	// A normal router xgress has no ReadAdapter. Closing its send half must
+	// stop the run goroutine even while the receive half remains open.
+	x.payloadBuffer.Close()
+
+	select {
+	case <-runDone:
+		require.False(t, x.IsClosed(), "only the send half should be closed")
+	case <-time.After(time.Second):
+		t.Fatal("link send buffer run goroutine did not exit after half-close")
+	}
 }
 
 func TestReadAdapterEOFOnClose(t *testing.T) {

@@ -18,40 +18,28 @@ package xgress
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/openziti/foundation/v2/concurrenz"
 )
 
-// deadlineCallback holds a timer channel and the function to call when it fires.
-// It is stored in an atomic slot on the LinkSendBuffer so that the run loop can
-// include the timer channel in its select without spawning extra goroutines.
-type deadlineCallback struct {
-	C    <-chan time.Time
-	fire func()
-}
-
 // deadlineControl manages a deadline with notification channel semantics.
 // When the deadline expires (or is set in the past), the Done channel is closed.
 // Clearing the deadline (zero time) resets the channel to a fresh open one.
 //
-// Future deadlines register a timer channel in the slot for processing by the
-// LinkSendBuffer run loop and send a wake event so the loop picks it up.
+// Future deadlines use the runtime timer heap. time.AfterFunc only starts a
+// goroutine when the deadline fires, so no persistent deadline goroutine is
+// needed while the timer is pending.
 type deadlineControl struct {
 	deadline         concurrenz.AtomicValue[time.Time]
 	doneNotify       concurrenz.AtomicValue[chan struct{}]
 	doneNotifyClosed bool
 	timer            *time.Timer
-	slot             *atomic.Pointer[deadlineCallback]
-	events           chan sendBufferEvent
 	lock             sync.Mutex
 }
 
-func (dc *deadlineControl) init(slot *atomic.Pointer[deadlineCallback], events chan sendBufferEvent) {
+func (dc *deadlineControl) init() {
 	dc.doneNotify.Store(make(chan struct{}))
-	dc.slot = slot
-	dc.events = events
 }
 
 // Done returns a channel that is closed when the current deadline expires.
@@ -71,7 +59,6 @@ func (dc *deadlineControl) SetDeadline(t time.Time) error {
 		dc.timer.Stop()
 		dc.timer = nil
 	}
-	dc.slot.Store(nil)
 
 	if t.IsZero() {
 		if dc.doneNotifyClosed {
@@ -97,16 +84,7 @@ func (dc *deadlineControl) SetDeadline(t time.Time) error {
 		dc.doneNotifyClosed = false
 	}
 
-	dc.timer = time.NewTimer(d)
-	dc.slot.Store(&deadlineCallback{
-		C:    dc.timer.C,
-		fire: func() { dc.fireDeadline(t) },
-	})
-	// Wake the run loop so it re-evaluates with the new timer channel
-	select {
-	case dc.events <- deadlineWakeEvent{}:
-	default:
-	}
+	dc.timer = time.AfterFunc(d, func() { dc.fireDeadline(t) })
 
 	return nil
 }

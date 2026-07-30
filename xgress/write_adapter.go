@@ -22,7 +22,7 @@ func NewWriteAdapter(x *Xgress) *WriteAdapter {
 	result := &WriteAdapter{
 		x: x,
 	}
-	result.init(&x.payloadBuffer.writeDeadlineCb, x.payloadBuffer.events)
+	result.init()
 	return result
 }
 
