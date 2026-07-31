@@ -59,6 +59,28 @@ type RouterChannelPath struct {
 	lossCount atomic.Uint64 // payloads retransmitted away from this path
 }
 
+// newRouterChannelPath builds a path over the given router channel for a conn,
+// binding the router-assigned wire connId, xgress address and controller id. It
+// does not register the path in the mux; the caller does that (replacing a
+// pending placeholder on a dial, or on a reroute takeover) before the path is
+// used. Shared by the initial dial and by reroute takeover so both build the
+// path identically.
+func newRouterChannelPath(conn *edgeConnXgress, ch edge.SdkChannel, mux edge.ConnMux[any], connId uint32, ctrlId string, addr xgress.Address) *RouterChannelPath {
+	msgCh := edge.NewEdgeMsgChannel(ch, connId)
+	return &RouterChannelPath{
+		conn:          conn,
+		sender:        newRouterSender(*msgCh),
+		connId:        connId,
+		mux:           mux,
+		ctrlSender:    ch.GetControlSender(),
+		defaultSender: msgCh.GetDefaultSender(),
+		routerId:      ch.GetChannel().Id(),
+		channelLabel:  ch.GetChannel().LogicalName(),
+		xgressAddress: addr,
+		xgressCtrlId:  ctrlId,
+	}
+}
+
 // register adds this path to its router's conn mux under its wire connId. It
 // must be called before the conn's xgress starts, so inbound messages have a
 // sink the moment terminator-side data is released.

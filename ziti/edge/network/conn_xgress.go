@@ -65,6 +65,16 @@ type edgeConnXgress struct {
 	writeAdapter *xgress.WriteAdapter
 	readAdapter  *xgress.ReadAdapter
 	localId      uint32
+
+	// reroute recovery state. serviceId and owner are set once at dial time;
+	// rerouteToken is refreshed on each successful takeover. owner is the conn's
+	// back-reference to the owning ziti Context (as the capability the recovery
+	// loop needs from it), shared by every conn, not a per-conn strategy. A conn
+	// is reroutable iff it holds a non-empty reroute token. See conn_reroute.go.
+	serviceId    string
+	rerouteToken atomic.Pointer[string]
+	owner        RerouteCandidateProvider
+	recovering   atomic.Bool
 }
 
 // --- edgeConnOps implementation ---
@@ -324,13 +334,23 @@ func (conn *edgeConnXgress) SetReadDeadline(t time.Time) error {
 // survive: it lives on if other paths remain, or is held open if the conn is
 // recoverable; otherwise it tears down, preserving today's close-on-transport-
 // loss behavior for an ordinary single-path conn.
+//
+// Being held open and being able to reroute are separate properties: the hold is
+// a transport-level capability any recoverable conn has, while a reroute attempt
+// additionally needs a token and a candidate provider. A conn that is held but
+// not reroutable has nothing to drive recovery, so it simply waits out the hold.
 func (conn *edgeConnXgress) onPathClosed(path Path) {
 	logger := pfxlog.Logger().WithField("connId", conn.Id()).WithField("circuitId", conn.circuitId).WithField("routerId", path.ID())
 	switch conn.adapter.RemovePath(path) {
 	case pathsRemain:
 		logger.Debug("path lost, other paths remain")
 	case holdingForRecovery:
-		logger.Info("last path lost, holding xgress open for recovery")
+		if conn.isReroutable() {
+			logger.Info("last path lost, attempting circuit recovery via reroute")
+			go conn.recoverCircuit()
+		} else {
+			logger.Info("last path lost, holding xgress open until the hold expires")
+		}
 	case closeXgress:
 		logger.Debug("last path lost, closing xgress")
 		conn.closeOnPathless()
@@ -543,20 +563,7 @@ func (conn *edgeConnXgress) setupXgressFlowControl(msg *channel.Message, origina
 		return fmt.Errorf("xgress address header not found for circuit %s", conn.circuitId)
 	}
 
-	msgCh := edge.NewEdgeMsgChannel(ch, connId)
-	sender := newRouterSender(*msgCh)
-	path := &RouterChannelPath{
-		conn:          conn,
-		sender:        sender,
-		connId:        connId,
-		mux:           mux,
-		ctrlSender:    ch.GetControlSender(),
-		defaultSender: msgCh.GetDefaultSender(),
-		routerId:      ch.GetChannel().Id(),
-		channelLabel:  ch.GetChannel().LogicalName(),
-		xgressAddress: xgress.Address(addr),
-		xgressCtrlId:  ctrlId,
-	}
+	path := newRouterChannelPath(conn, ch, mux, connId, ctrlId, xgress.Address(addr))
 
 	adapter := NewMultiPathAdapter(conn.circuitId, envF(), SinglePathSelector{}, path)
 	adapter.conn = conn

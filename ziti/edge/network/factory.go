@@ -33,7 +33,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// RouterConnOwner is what a routerConn needs from its owning ziti Context: the
+// close-lifecycle callback, and the reroute candidate provider a reroutable
+// conn uses to find another router to reattach its circuit through.
 type RouterConnOwner interface {
+	RerouteCandidateProvider
 	OnClose(factory edge.RouterConn)
 }
 
@@ -301,6 +305,13 @@ func (conn *routerConn) SupportsConnectV2() bool {
 	return conn.IsRouterCapable(edge.RouterCapabilityConnectV2)
 }
 
+// SupportsSDKReroute returns true if the router advertises SDK-reroute takeover
+// support in its hello headers, meaning it can both host a reroutable circuit's
+// ingress and accept a TakeoverCircuit request.
+func (conn *routerConn) SupportsSDKReroute() bool {
+	return conn.IsRouterCapable(edge.RouterCapabilitySDKReroute)
+}
+
 // ConnectV2 performs a sessionless dial via the V2 protocol. The router
 // authorizes locally via RDM, so no service session token is required. The
 // resulting connection always uses xgress flow control.
@@ -336,6 +347,13 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 	// so the router picks the xgEdgeForwarder handler and returns xgress headers.
 	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, true)
 	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, marker)
+
+	// Ask the controller to make this circuit reroutable when the ingress router
+	// can support SDK reroute; if it can't, the reply carries no token and the
+	// conn is simply non-reroutable (fail-closed).
+	if conn.SupportsSDKReroute() {
+		connectRequest.PutBoolHeader(edge.RequestReroutableHeader, true)
+	}
 
 	// Register a buffering sink before the dial goes out: the hosting side may
 	// send (e.g. its e2e crypto header) the moment the circuit is established,
@@ -391,8 +409,94 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 		}
 	}
 
+	// If the controller made the circuit reroutable it returns a signed reroute
+	// token; hold onto it and opt into the recoverable hold so a later loss of
+	// this ingress can be recovered by reattaching the circuit via another router.
+	if token, ok := replyMsg.GetStringHeader(edge.RerouteTokenHeader); ok && token != "" {
+		ec.serviceId = *service.ID
+		ec.markReroutable(token, conn.owner)
+		logger.Debug("circuit is reroutable")
+	}
+
 	logger.Debug("connected via v2")
 	return ec, nil
+}
+
+// takeoverCircuit asks this router to take over ec's reroutable circuit, using
+// the controller-signed reroute token. On success the router (via its owning
+// controller) re-splices the circuit's ingress to this router and replies with
+// the new xgress address and a fresh token; this method then attaches the new
+// path to the conn's xgress so buffered and future traffic flows over it, and
+// stores the refreshed token for a subsequent reroute. On any non-success reply
+// or transport failure it discards the speculative conn-id registration and
+// returns the mapped outcome so the recovery loop can try another router or give
+// up.
+func (conn *routerConn) takeoverCircuit(ec *edgeConnXgress, token string) takeoverOutcome {
+	connId := conn.mux.GetNextId()
+	logger := pfxlog.Logger().
+		WithField("circuitId", ec.circuitId).
+		WithField("routerId", conn.ch.GetChannel().Id()).
+		WithField("connId", connId)
+
+	// Register a buffering sink before the request goes out: once the controller
+	// commits the new routes, terminator-side payloads can arrive on this router
+	// before this goroutine resumes from SendForReply, and would otherwise drop.
+	pending := newPendingMsgSink(connId)
+	if err := conn.mux.Add(pending); err != nil {
+		logger.WithError(err).Debug("unable to register pending sink for takeover")
+		return takeoverRetryable
+	}
+
+	msg := channel.NewMessage(edge.ContentTypeTakeoverCircuit, nil)
+	msg.PutUint32Header(edge.ConnIdHeader, connId)
+	msg.PutStringHeader(edge.RerouteTokenHeader, token)
+
+	reply, err := msg.WithTimeout(takeoverRequestTimeout).SendForReply(conn.ch.GetControlSender())
+	if err != nil {
+		conn.mux.RemoveByConnId(connId)
+		logger.WithError(err).Debug("takeover request failed")
+		return takeoverRetryable
+	}
+
+	code, _ := reply.GetUint32Header(edge.TakeoverResultCodeHeader)
+	if outcome := takeoverOutcomeForResult(code); outcome != takeoverSucceeded {
+		conn.mux.RemoveByConnId(connId)
+		logger.WithField("resultCode", code).Debug("takeover not successful")
+		return outcome
+	}
+
+	addr, ok := reply.GetStringHeader(edge.XgressAddressHeader)
+	if !ok {
+		conn.mux.RemoveByConnId(connId)
+		logger.Error("takeover succeeded but reply carried no xgress address")
+		return takeoverFatal
+	}
+	ctrlId, _ := reply.GetStringHeader(edge.XgressCtrlIdHeader)
+
+	// Register the new path's receive sink (replacing the pending placeholder)
+	// before adding it to the xgress, so inbound traffic has somewhere to land
+	// before outbound dispatch can select it. AddPath cancels the recoverable
+	// hold and flushes the buffered send window over the new path.
+	path := newRouterChannelPath(ec, conn.ch, conn.mux, connId, ctrlId, xgress.Address(addr))
+	pending.delegateTo(path)
+	if err := conn.mux.Replace(path); err != nil {
+		logger.WithError(err).Warn("error registering recovered path sink")
+	}
+
+	// The takeover succeeded on the router, but the xgress finished tearing down
+	// while it was in flight, so there is nothing left to attach the path to.
+	// AddPath has discarded it. No other candidate can help.
+	if !ec.adapter.AddPath(path) {
+		logger.Info("takeover completed after the xgress closed, discarding the recovered path")
+		return takeoverFatal
+	}
+
+	if freshToken, ok := reply.GetStringHeader(edge.RerouteTokenHeader); ok && freshToken != "" {
+		ec.setRerouteToken(freshToken)
+	}
+
+	logger.Info("circuit taken over via reroute")
+	return takeoverSucceeded
 }
 
 // Connect performs a V1 dial. Depending on what the router grants in its

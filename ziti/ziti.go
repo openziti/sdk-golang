@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -776,6 +777,89 @@ func (context *ContextImpl) OnClose(routerConn edge.RouterConn) {
 			context.setPushSubscriptionActive(false)
 		}
 	}
+}
+
+// GetRerouteCandidates returns edge router connections that can take over a
+// reroutable circuit for the given service, best-first by measured latency and
+// filtered to those advertising SDK-reroute support. The reroute recovery loop
+// uses these as takeover targets when a reroutable conn loses its ingress.
+//
+// Candidacy is confirmed by the numeric hello-header capability on a live router
+// connection (the same authoritative check used for ConnectV2), not the REST
+// capability string, which the controller does not yet populate. Routers not
+// already connected are connected on demand; a router that fails to connect or
+// lacks the capability is skipped. The dead ingress needs no special handling:
+// it is either reconnectable (a valid same-router takeover target) or fails to
+// connect and is skipped.
+func (context *ContextImpl) GetRerouteCandidates(serviceId string) []edge.RouterConn {
+	if ers, ok := context.serviceEdgeRouters.Get(serviceId); ok && len(ers) > 0 {
+		if candidates := context.selectRerouteCandidates(ers); len(candidates) > 0 {
+			return candidates
+		}
+	}
+
+	// Either there is no cached ER list, or none of the cached ERs yielded a
+	// usable candidate: the list may be stale (e.g. its only entry is the ingress
+	// we just lost, while other capable routers exist). Re-fetch from the
+	// controller and try once more, so a genuinely-available alternate router is
+	// not missed just because it was absent from the cache.
+	refreshed, err := context.fetchServiceEdgeRouters(serviceId)
+	if err != nil {
+		pfxlog.Logger().WithError(err).WithField("serviceId", serviceId).
+			Debug("unable to fetch edge routers for reroute candidate selection")
+		return nil
+	}
+	return context.selectRerouteCandidates(refreshed)
+}
+
+// selectRerouteCandidates resolves the given edge routers to live, SDK-reroute-
+// capable router connections, best-first by measured latency. It reuses an
+// already-connected router or connects on demand, and skips any that fail to
+// connect, are closed, or lack the capability. Candidacy is confirmed by the
+// numeric hello-header capability on a live connection, the same authoritative
+// check used for ConnectV2. Deduped by router name.
+func (context *ContextImpl) selectRerouteCandidates(ers []*rest_model.SessionEdgeRouter) []edge.RouterConn {
+	type candidate struct {
+		conn    edge.RouterConn
+		latency time.Duration
+	}
+	var candidates []candidate
+	seen := map[string]struct{}{}
+
+	for _, er := range ers {
+		latency, _ := context.measuredLatency(er)
+		for _, addr := range er.SupportedProtocols {
+			if !context.options.isEdgeRouterUrlAccepted(addr) {
+				continue
+			}
+			conn, found := context.routerConnections.Get(addr)
+			if !found {
+				result := context.connectEdgeRouter(*er.Name, addr)
+				if result.err != nil || result.routerConnection == nil {
+					continue
+				}
+				conn = result.routerConnection
+			}
+			if conn.IsClosed() || !conn.IsRouterCapable(edge.RouterCapabilitySDKReroute) {
+				continue
+			}
+			if _, dup := seen[conn.GetRouterName()]; dup {
+				continue
+			}
+			seen[conn.GetRouterName()] = struct{}{}
+			candidates = append(candidates, candidate{conn: conn, latency: latency})
+		}
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].latency < candidates[j].latency
+	})
+
+	result := make([]edge.RouterConn, len(candidates))
+	for i, c := range candidates {
+		result[i] = c.conn
+	}
+	return result
 }
 
 func (context *ContextImpl) processServiceUpdates(services []*rest_model.ServiceDetail) {
