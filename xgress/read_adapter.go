@@ -17,6 +17,7 @@
 package xgress
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 )
@@ -34,7 +35,7 @@ func NewReadAdapter(x *Xgress) *ReadAdapter {
 	result := &ReadAdapter{
 		x: x,
 	}
-	result.init(&x.payloadBuffer.readDeadlineCb, x.payloadBuffer.events)
+	result.init()
 	return result
 }
 
@@ -52,6 +53,7 @@ func (self *ReadAdapter) SetReadDeadline(t time.Time) error {
 	return self.SetDeadline(t)
 }
 
+// cleanup runs the tx-side teardown once, when the fabric-to-app half is finished.
 func (self *ReadAdapter) cleanup() {
 	if self.cleanedUp.CompareAndSwap(false, true) {
 		self.x.txCleanup()
@@ -64,7 +66,13 @@ func (self *ReadAdapter) cleanup() {
 func (self *ReadAdapter) ReadPayload() ([]byte, map[uint8][]byte, error) {
 	data, headers, err := self.x.nextTxPayload(self.Done())
 	if err != nil {
-		self.cleanup()
+		// A deadline is recoverable and the caller may read again, so it must not run
+		// the tx-side teardown. Doing so tells the peer this half is finished, which
+		// closes the peer's send buffer for good and wedges the circuit.
+		var readTimeout *ReadTimeout
+		if !errors.As(err, &readTimeout) {
+			self.cleanup()
+		}
 		return nil, nil, err
 	}
 	return data, headers, nil

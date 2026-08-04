@@ -57,9 +57,8 @@ type LinkSendBuffer struct {
 	lastRtt               uint16
 	lastRetransmitTime    int64
 	closeWhenEmpty        atomic.Bool
-	events                chan sendBufferEvent
-	readDeadlineCb        atomic.Pointer[deadlineCallback]
-	writeDeadlineCb       atomic.Pointer[deadlineCallback]
+	inspectRequests       chan *sendBufferInspectEvent
+	runExited             chan struct{}
 	blockedSince          time.Time
 	closeStart            time.Time
 }
@@ -119,7 +118,8 @@ func NewLinkSendBuffer(x *Xgress) *LinkSendBuffer {
 		windowsSize:       x.Options.TxPortalStartSize,
 		retxThreshold:     x.Options.RetxStartMs,
 		retxScale:         x.Options.RetxScale,
-		events:            make(chan sendBufferEvent, 1),
+		inspectRequests:   make(chan *sendBufferInspectEvent, 1),
+		runExited:         make(chan struct{}),
 	}
 
 	return buffer
@@ -230,8 +230,10 @@ func (buffer *LinkSendBuffer) isBlocked() bool {
 
 func (buffer *LinkSendBuffer) run() {
 	log := pfxlog.ContextLogger(buffer.x.Label())
+	// Registered first so it runs last: once this closes, no goroutine mutates the
+	// fields Inspect reads.
+	defer close(buffer.runExited)
 	defer log.Debugf("[%p] exited", buffer)
-	defer buffer.drainDeadlines()
 	log.Debugf("[%p] started", buffer)
 
 	go buffer.retransmitSender()
@@ -274,21 +276,9 @@ func (buffer *LinkSendBuffer) run() {
 			}
 		}
 
-		rdCb := buffer.readDeadlineCb.Load()
-		wrCb := buffer.writeDeadlineCb.Load()
-
-		var rdTimer <-chan time.Time
-		var wrTimer <-chan time.Time
-		if rdCb != nil {
-			rdTimer = rdCb.C
-		}
-		if wrCb != nil {
-			wrTimer = wrCb.C
-		}
-
 		select {
-		case event := <-buffer.events:
-			event.handle(buffer)
+		case inspectEvent := <-buffer.inspectRequests:
+			inspectEvent.handle(buffer)
 
 		case ack := <-buffer.newlyReceivedAcks:
 			buffer.receiveAcknowledgement(ack)
@@ -307,12 +297,6 @@ func (buffer *LinkSendBuffer) run() {
 			buffer.retransmit()
 			buffer.checkForClose()
 
-		case <-rdTimer:
-			rdCb.fire()
-
-		case <-wrTimer:
-			wrCb.fire()
-
 		case <-buffer.closeNotify:
 			buffer.cleanupMetrics()
 			if len(buffer.buffer) > 0 {
@@ -326,36 +310,6 @@ func (buffer *LinkSendBuffer) run() {
 					log.WithField("payloadCount", len(buffer.buffer)).Warn("closing while buffer contains unacked payloads")
 				}
 			}
-			return
-		}
-	}
-}
-
-// drainDeadlines processes deadline timer callbacks after the send buffer has
-// closed but while the xgress is still alive. This handles the half-close case
-// where the write path is done but the read adapter still needs deadlines.
-func (buffer *LinkSendBuffer) drainDeadlines() {
-	for {
-		rdCb := buffer.readDeadlineCb.Load()
-		wrCb := buffer.writeDeadlineCb.Load()
-
-		var rdTimer <-chan time.Time
-		var wrTimer <-chan time.Time
-		if rdCb != nil {
-			rdTimer = rdCb.C
-		}
-		if wrCb != nil {
-			wrTimer = wrCb.C
-		}
-
-		select {
-		case <-rdTimer:
-			rdCb.fire()
-		case <-wrTimer:
-			wrCb.fire()
-		case event := <-buffer.events:
-			event.handle(buffer)
-		case <-buffer.x.closeNotify:
 			return
 		}
 	}
@@ -594,14 +548,26 @@ func (buffer *LinkSendBuffer) inspect() *SendBufferDetail {
 	return result
 }
 
+// Inspect returns a snapshot of the send buffer's state. It normally hands the request to
+// the run loop so the fields are read from the goroutine that owns them. Once the run loop
+// has exited there is nobody to service that request and nobody left to mutate the fields,
+// so the snapshot is taken directly.
 func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
+	select {
+	case <-buffer.runExited:
+		result := buffer.inspect()
+		result.AcquiredSafely = true
+		return result
+	default:
+	}
+
 	timeout := time.After(100 * time.Millisecond)
 	inspectEvent := &sendBufferInspectEvent{
 		notifyComplete: make(chan *SendBufferDetail, 1),
 	}
 
 	select {
-	case buffer.events <- inspectEvent:
+	case buffer.inspectRequests <- inspectEvent:
 		select {
 		case result := <-inspectEvent.notifyComplete:
 			result.AcquiredSafely = true
@@ -611,15 +577,13 @@ func (buffer *LinkSendBuffer) Inspect() *SendBufferDetail {
 	case <-timeout:
 	}
 
+	// The run loop is alive but didn't answer in time, so the snapshot below is read
+	// without synchronization and may be inconsistent.
+	pfxlog.ContextLogger(buffer.x.Label()).Debug("send buffer inspect timed out, reporting unsynchronized state")
+
 	result := buffer.inspect()
 	result.AcquiredSafely = false
 	return result
-}
-
-// sendBufferEvent is processed by the LinkSendBuffer run loop. Implementations
-// include inspect requests and deadline wake signals.
-type sendBufferEvent interface {
-	handle(buffer *LinkSendBuffer)
 }
 
 type sendBufferInspectEvent struct {
@@ -630,9 +594,3 @@ func (self *sendBufferInspectEvent) handle(buffer *LinkSendBuffer) {
 	result := buffer.inspect()
 	self.notifyComplete <- result
 }
-
-// deadlineWakeEvent is a no-op event that forces the run loop's select to
-// re-evaluate, picking up a newly registered deadline timer channel.
-type deadlineWakeEvent struct{}
-
-func (deadlineWakeEvent) handle(*LinkSendBuffer) {}
