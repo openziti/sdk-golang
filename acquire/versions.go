@@ -14,11 +14,13 @@
 	limitations under the License.
 */
 
-// Package acquire resolves a ZITI_ACCEPTANCE_VERSION selector to a concrete,
-// immutable ziti version, classifying it into a release download or a source build.
-// Phase 1 covers loading versions.yaml, classifying selectors, and resolving labels
-// and release versions to a concrete release tag; downloading and source-building
-// arrive in later phases.
+// Package acquire resolves a version selector to a concrete ziti binary. A
+// selector is a release version, a label pointing at one, or a git ref (branch,
+// tag, or SHA); release selectors download the published artifact, while git-ref
+// selectors resolve to a commit and build from source. Results are cached on the
+// resolved immutable id (tag or SHA), so a moved selector rebuilds rather than
+// serving a stale binary. Callers supply their own source repository and cache
+// directory, so any consumer (not just the SDK acceptance suite) can use it.
 package acquire
 
 import (

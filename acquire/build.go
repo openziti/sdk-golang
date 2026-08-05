@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"golang.org/x/mod/modfile"
 )
 
 // BuildWithLocalSdkEnv when "true", makes source builds replace the ziti ref's
@@ -69,6 +71,31 @@ func localSdkFingerprint(ctx context.Context, sdkRoot string) (head string, dirt
 
 var fullShaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+// cacheKeyUnsafeRe matches characters not safe to embed in a cache filename.
+var cacheKeyUnsafeRe = regexp.MustCompile(`[^A-Za-z0-9._+-]`)
+
+// versionCacheSuffix returns a filename-safe cache-key suffix for a stamped version, so binaries
+// built from the same commit but stamped with different versions cache separately.
+func versionCacheSuffix(version string) string {
+	return "-ver-" + cacheKeyUnsafeRe.ReplaceAllString(version, "_")
+}
+
+// versionLdflags builds the -ldflags value that stamps the ziti common/version package. The version
+// package lives at <module>/common/version, so the linker path is derived from the checked-out
+// go.mod (which differs between the v1 and v2 module lines).
+func versionLdflags(srcDir, version, sha string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(srcDir, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("reading go.mod to stamp version: %w", err)
+	}
+	modPath := modfile.ModulePath(data)
+	if modPath == "" {
+		return "", fmt.Errorf("could not determine module path from go.mod to stamp version")
+	}
+	verPkg := modPath + "/common/version"
+	return fmt.Sprintf("-X %s.Version=%s -X %s.Revision=%s", verPkg, version, verPkg, sha[:12]), nil
+}
+
 // resolveRefToSha resolves a git ref (branch or tag) on the source repository to
 // its full commit SHA via git ls-remote, so mutable refs become immutable ids
 // before any cache interaction. A full SHA passes through unchanged.
@@ -103,9 +130,11 @@ func resolveRefToSha(ctx context.Context, src Source, ref string) (string, error
 // branch moving between resolution and fetch cannot change what's built), builds
 // the ziti binary, and installs it into the cache under cacheKey. In
 // co-development mode (sdkReplace non-empty) the ref's pinned sdk-golang is
-// replaced with that local tree before building. The source checkout is
+// replaced with that local tree before building. When stampVersion is non-empty the
+// binary's common/version Version and Revision are stamped via -ldflags, so it
+// reports that version instead of the unstamped dev default. The source checkout is
 // temporary; Go's module cache keeps rebuilds reasonably fast.
-func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKey, sdkReplace string) (string, error) {
+func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKey, sdkReplace, stampVersion string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating cache dir: %w", err)
 	}
@@ -139,7 +168,18 @@ func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKe
 
 	builtPath := filepath.Join(cacheDir, "build-"+sha[:12]+".tmp")
 	defer func() { _ = os.Remove(builtPath) }()
-	if _, err := runCmd(ctx, srcDir, "go", "build", "-o", builtPath, "./ziti"); err != nil {
+
+	buildArgs := []string{"build"}
+	if stampVersion != "" {
+		ldflags, err := versionLdflags(srcDir, stampVersion, sha)
+		if err != nil {
+			return "", err
+		}
+		buildArgs = append(buildArgs, "-ldflags", ldflags)
+	}
+	buildArgs = append(buildArgs, "-o", builtPath, "./ziti")
+
+	if _, err := runCmd(ctx, srcDir, "go", buildArgs...); err != nil {
 		err = fmt.Errorf("building ziti at %s: %w", sha[:12], err)
 		if sdkReplace == "" {
 			err = fmt.Errorf("%w\n(if this ref co-develops with the SDK, set %s=true to build it against the local SDK tree)",

@@ -74,14 +74,3 @@ func TestLoadVersionsMissingFile(t *testing.T) {
 	_, err := LoadVersions(filepath.Join(t.TempDir(), "nope.yaml"))
 	require.Error(t, err)
 }
-
-// TestRepoVersionsYAML loads the committed versions.yaml so a malformed checked-in
-// file fails the suite directly.
-func TestRepoVersionsYAML(t *testing.T) {
-	v, err := LoadVersions(filepath.Join("..", "..", "versions.yaml"))
-	require.NoError(t, err)
-	require.Contains(t, v.Labels, "active-lts")
-	require.Contains(t, v.Labels, "maint-lts")
-	require.Equal(t, "openziti", v.Source.Org)
-	require.Equal(t, "ziti", v.Source.Repo)
-}

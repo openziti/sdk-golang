@@ -36,7 +36,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/openziti/sdk-golang/acceptance/internal/acquire"
+	"github.com/openziti/sdk-golang/acquire"
 )
 
 func main() {
