@@ -40,6 +40,11 @@
   carrying the negotiated protocol (`connect-v1` vs `connect-v2` as `edge.DialProtocol`), the
   target router, whether V1 was forced, timing, the circuit id, and the error on failure. Router
   connections additionally report ConnectV2 capability in `Context.Inspect()`.
+* Circuit inspect reports `acquiredSafely: true` for the send buffer of a half-closed circuit.
+  The send buffer's state used to be read by handing a request to its run loop, which is gone
+  once the send half closes, so inspecting a half-closed circuit waited out a 100ms timeout and
+  then reported an unsynchronized snapshot. Such a buffer is no longer being mutated, so its
+  state is now read directly.
 
 ## Issues Fixed and Dependency Updates
 
@@ -47,6 +52,8 @@
     * [Issue #936](https://github.com/openziti/sdk-golang/issues/936) - Implement Connect-V2
     * [Issue #951](https://github.com/openziti/sdk-golang/issues/951) - Add an SDK acceptance-test framework
     * [Issue #952](https://github.com/openziti/sdk-golang/issues/952) - xgress client half-close not delivered to legacy edge hosts
+    * [Issue #987](https://github.com/openziti/sdk-golang/issues/987) - LinkSendBuffer leaks goroutines after send-half close
+    * [Issue #991](https://github.com/openziti/sdk-golang/issues/991) - Read deadline on ReadAdapter permanently closes the peer's send buffer
 
 
 # Release notes 1.9.0
