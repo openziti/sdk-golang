@@ -38,22 +38,29 @@ func DefaultCacheDir() (string, error) {
 	return filepath.Join(base, "ziti-acceptance", "bin"), nil
 }
 
+// platformName renders a target platform the way cache entries name it.
+func platformName(goos, goarch string) string {
+	return goos + "-" + goarch
+}
+
 // cachedBinaryPath is the cache location for the binary of an immutable id (a
-// concrete release tag or a commit SHA). The cache is keyed only on immutable ids,
-// never on a mutable selector, so a moved selector misses rather than serving a
-// stale binary.
-func cachedBinaryPath(cacheDir, id string) string {
-	return filepath.Join(cacheDir, "ziti-"+id)
+// concrete release tag or a commit SHA) built for platform ("<goos>-<goarch>").
+// The cache is keyed only on immutable ids, never on a mutable selector, so a
+// moved selector misses rather than serving a stale binary. Every entry names the
+// platform it was produced for, so a binary is never served to a platform it
+// cannot run on.
+func cachedBinaryPath(cacheDir, id, platform string) string {
+	return filepath.Join(cacheDir, "ziti-"+id+"-"+platform)
 }
 
 // installIntoCache atomically installs the file at srcPath as the cached binary for
-// id: a rename within the cache directory, so a concurrent or interrupted run never
-// observes a partial binary.
-func installIntoCache(cacheDir, id, srcPath string) (string, error) {
+// id on platform: a rename within the cache directory, so a concurrent or
+// interrupted run never observes a partial binary.
+func installIntoCache(cacheDir, id, platform, srcPath string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating cache dir: %w", err)
 	}
-	dst := cachedBinaryPath(cacheDir, id)
+	dst := cachedBinaryPath(cacheDir, id, platform)
 	if err := os.Rename(srcPath, dst); err != nil {
 		return "", fmt.Errorf("installing into cache: %w", err)
 	}

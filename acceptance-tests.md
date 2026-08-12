@@ -97,9 +97,10 @@ ever served under a stable key like `ziti-connect-v2`. The resolution is a light
 remote call (GH API / `git ls-remote`); only the download or build is skipped on a cache
 hit. The selector -> resolved-id mapping is logged each run for version attribution.
 
-Cache resolved binaries under e.g. `~/.cache/ziti-acceptance/bin/ziti-<immutable-id>`
-(concrete tag or commit SHA) so repeated local runs are instant and CI can cache the
-directory.
+Cache resolved binaries under e.g.
+`~/.cache/ziti-acceptance/bin/ziti-<immutable-id>-<goos>-<goarch>` (concrete tag or
+commit SHA, plus the platform the binary was produced for) so repeated local runs are
+instant and CI can cache the directory.
 
 ### Layer 2: bootstrap
 
@@ -526,12 +527,14 @@ source:
   (`/releases/tags/<tag>`) rather than constructing it.
 - **acquire/build.go**: `git` fetch of the ref + `go build` of the `ziti` binary for
   any non-release ref (branch/tag/SHA). Needs the Go toolchain (present in CI and
-  locally).
+  locally). Cross-builds when the requested platform is not the one the build runs on,
+  which also disables cgo so no C toolchain for the target is needed.
 - **acquire/cache.go**: cache keyed by the *immutable* resolved id (concrete tag or
-  commit SHA, never a mutable selector) under `~/.cache/ziti-acceptance/bin/ziti-<id>`;
-  CI caches the dir. Selectors are resolved to that id before lookup. If CI ever runs
-  multiple platforms, include `runner.os`/`GOOS`/`GOARCH` in the CI cache key so a
-  binary built for one platform isn't reused on another.
+  commit SHA, never a mutable selector) and the target platform, under
+  `~/.cache/ziti-acceptance/bin/ziti-<id>-<goos>-<goarch>`; CI caches the dir. Selectors
+  are resolved to that id before lookup. The platform is part of the entry name, so a
+  binary produced for one platform is never reused on another, and a CI cache shared
+  across runners is safe without adding `runner.os` to the CI cache key.
 - **ziticli/ziticli.go**: exec wrapper that runs the acquired binary with a
   per-harness env (isolated CLI login/config dir so parallel harnesses and the dev's
   own ziti CLI don't collide) and the `ZITI_*` vars the config generators read.
