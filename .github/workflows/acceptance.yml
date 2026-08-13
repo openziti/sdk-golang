@@ -38,11 +38,11 @@ jobs:
       # authenticated release/clone API access avoids the 60/hr anonymous limit
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
           cache-dependency-path: acceptance/go.sum
@@ -51,7 +51,7 @@ jobs:
       # binary's filename, so a moved selector misses rather than serving stale.
       # versions.yaml is in the key so editing the matrix invalidates downloads.
       - name: Cache ziti binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.ziti-acceptance-cache
           key: ziti-acceptance-${{ runner.os }}-${{ matrix.version }}-${{ hashFiles('acceptance/versions.yaml') }}
@@ -92,11 +92,11 @@ jobs:
       ZITI_ACCEPTANCE_CACHE: ${{ github.workspace }}/.ziti-acceptance-cache
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
           cache-dependency-path: acceptance/go.sum
@@ -105,7 +105,7 @@ jobs:
       # it caches per (connect-v2 HEAD, SDK commit) pair. A clean CI checkout is
       # never dirty, so the build is cacheable; a new SDK commit rebuilds ziti.
       - name: Cache ziti binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.ziti-acceptance-cache
           key: ziti-acceptance-${{ runner.os }}-connect-v2-${{ github.sha }}
