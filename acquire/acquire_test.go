@@ -34,6 +34,19 @@ import (
 
 const fakeBinaryContent = "#!/bin/sh\necho fake ziti\n"
 
+const (
+	testGoos   = "linux"
+	testGoarch = "amd64"
+	// testPlatformName is how testGoos/testGoarch appear in cache entry names.
+	testPlatformName = testGoos + "-" + testGoarch
+)
+
+// testPlatform pins acquisition to a fixed platform, so tests assert the same cache paths and select
+// the same release assets whatever machine they run on.
+func testPlatform() []Option {
+	return []Option{WithPlatform(testGoos, testGoarch)}
+}
+
 // makeTarGz builds a tar.gz containing the named entries.
 func makeTarGz(t *testing.T, entries map[string]string) []byte {
 	t.Helper()
@@ -102,10 +115,10 @@ func TestAcquireDownloadsExtractsAndCaches(t *testing.T) {
 	cfg := testCfg()
 
 	// latest -> v2.0.8 -> download, extract, install
-	path, id, err := acquireFor(ctx, "latest", cfg, rs.source(), cacheDir, "linux", "amd64")
+	path, id, err := acquireFor(ctx, "latest", cfg, rs.source(), cacheDir, testPlatform()...)
 	require.NoError(t, err)
 	require.Equal(t, "v2.0.8", id.Tag)
-	require.Equal(t, cachedBinaryPath(cacheDir, "v2.0.8"), path)
+	require.Equal(t, cachedBinaryPath(cacheDir, "v2.0.8", testPlatformName), path)
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -122,7 +135,7 @@ func TestAcquireDownloadsExtractsAndCaches(t *testing.T) {
 	require.Len(t, entries, 1)
 
 	// second acquire hits the cache: same path, no new download
-	path2, _, err := acquireFor(ctx, "latest", cfg, rs.source(), cacheDir, "linux", "amd64")
+	path2, _, err := acquireFor(ctx, "latest", cfg, rs.source(), cacheDir, testPlatform()...)
 	require.NoError(t, err)
 	require.Equal(t, path, path2)
 	require.Equal(t, int32(1), rs.downloads.Load(), "cache hit must not re-download")
@@ -135,13 +148,13 @@ func TestAcquireGitRefShaCached(t *testing.T) {
 	req := require.New(t)
 	cacheDir := t.TempDir()
 	sha := "a1b2c3d4e5f60718293a4b5c6d7e8f9001122334"
-	req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, sha), []byte(fakeBinaryContent), 0o755))
+	req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, sha, testPlatformName), []byte(fakeBinaryContent), 0o755))
 
-	path, id, err := acquireFor(context.Background(), sha, testCfg(), erroringSource{}, cacheDir, "linux", "amd64")
+	path, id, err := acquireFor(context.Background(), sha, testCfg(), erroringSource{}, cacheDir, testPlatform()...)
 	req.NoError(err)
 	req.True(id.SourceBuilt)
 	req.Equal(sha, id.Tag)
-	req.Equal(cachedBinaryPath(cacheDir, sha), path)
+	req.Equal(cachedBinaryPath(cacheDir, sha, testPlatformName), path)
 }
 
 // erroringSource fails every API operation, proving a code path makes no API
@@ -170,29 +183,29 @@ func TestAcquirePinnedCachedSkipsAPI(t *testing.T) {
 
 	// pre-place cached binaries for the pinned tags
 	for _, tag := range []string{"v1.6.17", "v2.0.7"} {
-		req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, tag), []byte(fakeBinaryContent), 0o755))
+		req.NoError(os.WriteFile(cachedBinaryPath(cacheDir, tag, testPlatformName), []byte(fakeBinaryContent), 0o755))
 	}
 
 	// explicit version: cache hit, no API
-	path, id, err := acquireFor(ctx, "v2.0.7", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	path, id, err := acquireFor(ctx, "v2.0.7", cfg, erroringSource{}, cacheDir, testPlatform()...)
 	req.NoError(err)
 	req.Equal("v2.0.7", id.Tag)
-	req.Equal(cachedBinaryPath(cacheDir, "v2.0.7"), path)
+	req.Equal(cachedBinaryPath(cacheDir, "v2.0.7", testPlatformName), path)
 
 	// pinned label (maint-lts -> v1.6.17): cache hit, no API
-	path, id, err = acquireFor(ctx, "maint-lts", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	path, id, err = acquireFor(ctx, "maint-lts", cfg, erroringSource{}, cacheDir, testPlatform()...)
 	req.NoError(err)
 	req.Equal("v1.6.17", id.Tag)
-	req.Equal(cachedBinaryPath(cacheDir, "v1.6.17"), path)
+	req.Equal(cachedBinaryPath(cacheDir, "v1.6.17", testPlatformName), path)
 
 	// moving selectors must still resolve, even with a full cache
-	_, _, err = acquireFor(ctx, "latest", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	_, _, err = acquireFor(ctx, "latest", cfg, erroringSource{}, cacheDir, testPlatform()...)
 	req.ErrorContains(err, "unexpected API call")
-	_, _, err = acquireFor(ctx, "active-lts", cfg, erroringSource{}, cacheDir, "linux", "amd64") // v2.0.x wildcard
+	_, _, err = acquireFor(ctx, "active-lts", cfg, erroringSource{}, cacheDir, testPlatform()...) // v2.0.x wildcard
 	req.ErrorContains(err, "unexpected API call")
 
 	// a pinned tag with a cold cache must verify via the API
-	_, _, err = acquireFor(ctx, "v9.9.9", cfg, erroringSource{}, cacheDir, "linux", "amd64")
+	_, _, err = acquireFor(ctx, "v9.9.9", cfg, erroringSource{}, cacheDir, testPlatform()...)
 	req.ErrorContains(err, "unexpected API call")
 }
 

@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"golang.org/x/mod/modfile"
@@ -132,9 +133,10 @@ func resolveRefToSha(ctx context.Context, src Source, ref string) (string, error
 // co-development mode (sdkReplace non-empty) the ref's pinned sdk-golang is
 // replaced with that local tree before building. When stampVersion is non-empty the
 // binary's common/version Version and Revision are stamped via -ldflags, so it
-// reports that version instead of the unstamped dev default. The source checkout is
-// temporary; Go's module cache keeps rebuilds reasonably fast.
-func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKey, sdkReplace, stampVersion string) (string, error) {
+// reports that version instead of the unstamped dev default. The build targets
+// goos/goarch, cross-compiling when they differ from this process's platform. The
+// source checkout is temporary; Go's module cache keeps rebuilds reasonably fast.
+func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKey, sdkReplace, stampVersion, goos, goarch string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating cache dir: %w", err)
 	}
@@ -156,17 +158,26 @@ func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKe
 		}
 	}
 
+	goEnv := goBuildEnv(goos, goarch)
+
 	if sdkReplace != "" {
-		if _, err := runCmd(ctx, srcDir, "go", "mod", "edit",
+		if _, err := runCmdEnv(ctx, srcDir, goEnv, "go", "mod", "edit",
 			"-replace", "github.com/openziti/sdk-golang/v2="+sdkReplace); err != nil {
 			return "", fmt.Errorf("replacing sdk-golang with local tree: %w", err)
 		}
-		if _, err := runCmd(ctx, srcDir, "go", "mod", "tidy"); err != nil {
+		if _, err := runCmdEnv(ctx, srcDir, goEnv, "go", "mod", "tidy"); err != nil {
 			return "", fmt.Errorf("tidying after sdk replace: %w", err)
 		}
 	}
 
-	builtPath := filepath.Join(cacheDir, "build-"+sha[:12]+".tmp")
+	// The output file is unique per build: the same commit can be built concurrently for different
+	// platforms or stamped versions, and a shared temp name would have them overwrite each other.
+	built, err := os.CreateTemp(cacheDir, "build-"+sha[:12]+"-*")
+	if err != nil {
+		return "", fmt.Errorf("creating build temp file: %w", err)
+	}
+	builtPath := built.Name()
+	_ = built.Close()
 	defer func() { _ = os.Remove(builtPath) }()
 
 	buildArgs := []string{"build"}
@@ -179,7 +190,7 @@ func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKe
 	}
 	buildArgs = append(buildArgs, "-o", builtPath, "./ziti")
 
-	if _, err := runCmd(ctx, srcDir, "go", buildArgs...); err != nil {
+	if _, err := runCmdEnv(ctx, srcDir, goEnv, "go", buildArgs...); err != nil {
 		err = fmt.Errorf("building ziti at %s: %w", sha[:12], err)
 		if sdkReplace == "" {
 			err = fmt.Errorf("%w\n(if this ref co-develops with the SDK, set %s=true to build it against the local SDK tree)",
@@ -188,7 +199,7 @@ func buildZitiFromSource(ctx context.Context, src Source, sha, cacheDir, cacheKe
 		return "", err
 	}
 
-	return installIntoCache(cacheDir, cacheKey, builtPath)
+	return installIntoCache(cacheDir, cacheKey, platformName(goos, goarch), builtPath)
 }
 
 // gitURL is the https clone URL for the source repository.
@@ -196,10 +207,35 @@ func gitURL(src Source) string {
 	return fmt.Sprintf("https://github.com/%s/%s.git", src.Org, src.Repo)
 }
 
-// runCmd runs a command, returning stdout and folding stderr into the error.
+// goBuildEnv is the environment for the go commands that produce the binary, targeting goos/goarch.
+//
+// The target is always set explicitly, including when it matches the platform this process runs on.
+// Leaving it to the ambient environment would let an exported GOOS or GOARCH decide what gets built
+// while the result is cached under the name of the platform that was asked for, which is exactly the
+// mismatch the platform-keyed cache exists to prevent.
+//
+// Only cgo is left to the ambient environment for a native build. A cross-build disables it, since it
+// would otherwise want a C toolchain for the target; ziti is pure Go, so nothing is lost.
+func goBuildEnv(goos, goarch string) []string {
+	env := append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch)
+	if goos != runtime.GOOS || goarch != runtime.GOARCH {
+		env = append(env, "CGO_ENABLED=0")
+	}
+	return env
+}
+
+// runCmd runs a command with the ambient environment, returning stdout and folding stderr into the
+// error.
 func runCmd(ctx context.Context, dir, name string, args ...string) (string, error) {
+	return runCmdEnv(ctx, dir, nil, name, args...)
+}
+
+// runCmdEnv is runCmd with an explicit environment; a nil env inherits this process's. Only the go
+// commands take an env: the git steps must not be told to target another platform.
+func runCmdEnv(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	cmd.Env = env
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

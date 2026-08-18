@@ -71,9 +71,16 @@ latest       PASS  (1m03s)
 ## Binary cache
 
 Downloaded (and, later, source-built) ziti binaries land in
-`<user cache dir>/ziti-acceptance/bin/ziti-<version>`, keyed by the concrete
-resolved version. Override the location with `ZITI_ACCEPTANCE_CACHE`. Deleting the
-directory is always safe; the next run re-downloads.
+`<user cache dir>/ziti-acceptance/bin/ziti-<version>-<goos>-<goarch>`, keyed by the
+concrete resolved version and the platform the binary was produced for. Override the
+location with `ZITI_ACCEPTANCE_CACHE`. Deleting the directory is always safe; the next
+run re-downloads.
+
+Binaries target the platform the harness runs on unless a caller passes
+`acquire.WithPlatform`, which release selectors honor when picking an asset and git-ref
+selectors honor by cross-building. Since the platform is part of the entry name, one
+version can be cached for several platforms at once and a binary is never handed to a
+platform that cannot run it.
 
 `GITHUB_TOKEN`, if set, is used for GitHub API calls. Without it, GitHub's
 unauthenticated limit (60 requests/hour per IP) can bite after a few matrix runs;

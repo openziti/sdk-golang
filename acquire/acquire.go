@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -31,15 +32,49 @@ type Option func(*buildOptions)
 // buildOptions holds the resolved acquire options.
 type buildOptions struct {
 	stampVersion string
+	goos         string
+	goarch       string
 }
 
-// newBuildOptions applies opts and returns the resolved options.
+// newBuildOptions applies opts and returns the resolved options, defaulting the
+// target platform to the one this process runs on.
 func newBuildOptions(opts []Option) buildOptions {
-	var bo buildOptions
+	bo := buildOptions{
+		goos:   runtime.GOOS,
+		goarch: runtime.GOARCH,
+	}
 	for _, opt := range opts {
 		opt(&bo)
 	}
 	return bo
+}
+
+// platform is the target platform as it appears in cache entry names.
+func (bo buildOptions) platform() string {
+	return platformName(bo.goos, bo.goarch)
+}
+
+// validate rejects a target platform that cannot describe a real binary. It is a
+// structural check, not a list of known platforms: an empty value matches every
+// release asset, since asset selection is a substring match, and would otherwise
+// download an arbitrary one and cache it under a nameless platform. A value
+// carrying a path separator would escape the cache directory.
+func (bo buildOptions) validate() error {
+	if err := validPlatformPart("GOOS", bo.goos); err != nil {
+		return err
+	}
+	return validPlatformPart("GOARCH", bo.goarch)
+}
+
+// validPlatformPart checks one half of a target platform.
+func validPlatformPart(name, value string) error {
+	if value == "" {
+		return fmt.Errorf("%s must not be empty", name)
+	}
+	if value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
+		return fmt.Errorf("%s %q must not name a path", name, value)
+	}
+	return nil
 }
 
 // WithVersion stamps the built binary's common/version Version (and Revision) when a git-ref
@@ -50,14 +85,30 @@ func WithVersion(version string) Option {
 	return func(o *buildOptions) { o.stampVersion = version }
 }
 
+// WithPlatform targets goos/goarch instead of the platform this process runs on.
+// Release selectors then download that platform's asset, and git-ref selectors
+// cross-build for it. Use it when the binary runs somewhere other than the
+// machine acquiring it, for example a test harness on a mac provisioning
+// linux/amd64 hosts. Cache entries record the platform they were produced for, so
+// the same commit acquired for two platforms caches separately.
+func WithPlatform(goos, goarch string) Option {
+	return func(o *buildOptions) {
+		o.goos = goos
+		o.goarch = goarch
+	}
+}
+
 // Ziti resolves selector to an immutable id and returns the path to a ziti
 // binary for it: release selectors download the release artifact on a cache
 // miss, and git-ref selectors (a branch, non-release tag, or SHA) resolve to a
 // commit and build from source. The cache is keyed on the immutable id (tag or
-// SHA), so a moved mutable selector misses the cache rather than serving a
-// stale binary.
+// SHA) and the target platform, so a moved mutable selector misses the cache
+// rather than serving a stale binary, and a binary is never served to a platform
+// it was not produced for.
+//
+// The binary targets this process's platform unless WithPlatform selects another.
 func Ziti(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string, opts ...Option) (string, ResolvedID, error) {
-	return acquireFor(ctx, selector, cfg, src, cacheDir, runtime.GOOS, runtime.GOARCH, opts...)
+	return acquireFor(ctx, selector, cfg, src, cacheDir, opts...)
 }
 
 // acquireMemo caches successful Ziti results per selector for the life of the
@@ -90,11 +141,12 @@ func ZitiMemoized(ctx context.Context, selector string, cfg Versions, src Releas
 	acquireMemo.Lock()
 	defer acquireMemo.Unlock()
 
-	// A stamped version produces a distinct binary, so it must key the memo separately from an
-	// unstamped acquire of the same selector.
-	memoKey := selector
-	if v := newBuildOptions(opts).stampVersion; v != "" {
-		memoKey = selector + "\x00" + v
+	// A stamped version and a target platform each produce a distinct binary, so both must key the
+	// memo separately from a plain acquire of the same selector.
+	bo := newBuildOptions(opts)
+	memoKey := selector + "\x00" + bo.platform()
+	if bo.stampVersion != "" {
+		memoKey += "\x00" + bo.stampVersion
 	}
 
 	if entry, ok := acquireMemo.bySelector[memoKey]; ok {
@@ -108,9 +160,16 @@ func ZitiMemoized(ctx context.Context, selector string, cfg Versions, src Releas
 	return binPath, id, nil
 }
 
-// acquireFor is Ziti with the platform injected, so tests can pin it.
-func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir, goos, goarch string, opts ...Option) (string, ResolvedID, error) {
+// acquireFor is Ziti with the options already resolved, including the target
+// platform, which defaults to this process's but may be pinned via WithPlatform.
+func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseSource, cacheDir string, opts ...Option) (string, ResolvedID, error) {
 	bo := newBuildOptions(opts)
+	// Validate before any cache lookup or asset selection, both of which would otherwise accept a
+	// meaningless platform and produce a binary that cannot be attributed to one.
+	if err := bo.validate(); err != nil {
+		return "", ResolvedID{}, err
+	}
+
 	spec, err := ParseSpec(selector, cfg)
 	if err != nil {
 		return "", ResolvedID{}, err
@@ -151,12 +210,12 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 		}
 
 		if useCache {
-			binPath := cachedBinaryPath(cacheDir, cacheKey)
+			binPath := cachedBinaryPath(cacheDir, cacheKey, bo.platform())
 			if _, statErr := os.Stat(binPath); statErr == nil {
 				return binPath, id, nil
 			}
 		}
-		path, err := buildZitiFromSource(ctx, cfg.Source, sha, cacheDir, cacheKey, sdkReplace, bo.stampVersion)
+		path, err := buildZitiFromSource(ctx, cfg.Source, sha, cacheDir, cacheKey, sdkReplace, bo.stampVersion, bo.goos, bo.goarch)
 		if err != nil {
 			return "", ResolvedID{}, err
 		}
@@ -167,7 +226,7 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 	// binary is already cached: the cache entry is proof the release exists.
 	// Moving selectors (latest, wildcards) must still resolve.
 	if tag, pinned := pinnedTag(spec, cfg); pinned {
-		binPath := cachedBinaryPath(cacheDir, tag)
+		binPath := cachedBinaryPath(cacheDir, tag, bo.platform())
 		if _, statErr := os.Stat(binPath); statErr == nil {
 			return binPath, ResolvedID{Tag: tag}, nil
 		}
@@ -178,7 +237,7 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 		return "", ResolvedID{}, err
 	}
 
-	binPath := cachedBinaryPath(cacheDir, id.Tag)
+	binPath := cachedBinaryPath(cacheDir, id.Tag, bo.platform())
 	if _, statErr := os.Stat(binPath); statErr == nil {
 		return binPath, id, nil
 	}
@@ -187,12 +246,12 @@ func acquireFor(ctx context.Context, selector string, cfg Versions, src ReleaseS
 	if err != nil {
 		return "", ResolvedID{}, err
 	}
-	asset, err := selectAsset(detail.Assets, goos, goarch)
+	asset, err := selectAsset(detail.Assets, bo.goos, bo.goarch)
 	if err != nil {
 		return "", ResolvedID{}, fmt.Errorf("release %s: %w", id.Tag, err)
 	}
 
-	path, err := downloadAndInstall(ctx, src, asset, cacheDir, id.Tag)
+	path, err := downloadAndInstall(ctx, src, asset, cacheDir, id.Tag, bo.platform())
 	if err != nil {
 		return "", ResolvedID{}, err
 	}
@@ -223,7 +282,7 @@ func pinnedTag(spec Spec, cfg Versions) (string, bool) {
 // downloadAndInstall downloads asset, extracts the ziti binary, and installs it
 // into the cache. All temp files live in the cache dir so the final rename is
 // same-filesystem and atomic.
-func downloadAndInstall(ctx context.Context, src ReleaseSource, asset Asset, cacheDir, id string) (string, error) {
+func downloadAndInstall(ctx context.Context, src ReleaseSource, asset Asset, cacheDir, id, platform string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating cache dir: %w", err)
 	}
@@ -255,13 +314,42 @@ func downloadAndInstall(ctx context.Context, src ReleaseSource, asset Asset, cac
 	if err := extractZitiBinary(archive, extractedName); err != nil {
 		return "", fmt.Errorf("extracting %s: %w", asset.Name, err)
 	}
-	return installIntoCache(cacheDir, id, extractedName)
+	return installIntoCache(cacheDir, id, platform, extractedName)
 }
 
 // archAliases maps a GOARCH to the names release assets use for it.
 var archAliases = map[string][]string{
 	"amd64": {"amd64", "x86_64"},
 	"arm64": {"arm64", "aarch64"},
+}
+
+// assetNameTokens splits an asset name into the tokens platform matching compares
+// against: runs of letters, digits and underscores, so "ziti-linux-x86_64-2.0.8.tar.gz"
+// yields "linux" and "x86_64" among others. The underscore stays inside a token
+// because arch names such as x86_64 contain one.
+func assetNameTokens(name string) []string {
+	return strings.FieldsFunc(name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_'
+	})
+}
+
+// matchesPlatform reports whether tokens name goos immediately followed by one of
+// arches, as the "<goos>-<arch>" segment of a release asset name does.
+//
+// Both halves must be whole tokens, and they must be adjacent in that order. Whole
+// tokens stop a partial name passing for a real one, where "lin"/"md64" would select
+// the linux/amd64 asset. Adjacency ties the two halves to the same segment: tested
+// independently, an arch could match an unrelated token elsewhere in the name, so
+// "linux"/"64" would match ziti-linux-amd64-2.0.64.tar.gz through its version. Either
+// way the binary would be cached under a platform nothing was built for, instead of
+// reaching the "no asset found" error an unknown platform should get.
+func matchesPlatform(tokens []string, goos string, arches []string) bool {
+	for i := 0; i+1 < len(tokens); i++ {
+		if tokens[i] == goos && slices.Contains(arches, tokens[i+1]) {
+			return true
+		}
+	}
+	return false
 }
 
 // selectAsset picks the release asset for goos/goarch. Only tar.gz archives are
@@ -276,17 +364,7 @@ func selectAsset(assets []Asset, goos, goarch string) (Asset, error) {
 	var zipMatch string
 	for _, a := range assets {
 		name := strings.ToLower(a.Name)
-		if !strings.Contains(name, goos) {
-			continue
-		}
-		archMatch := false
-		for _, arch := range arches {
-			if strings.Contains(name, arch) {
-				archMatch = true
-				break
-			}
-		}
-		if !archMatch {
+		if !matchesPlatform(assetNameTokens(name), goos, arches) {
 			continue
 		}
 		if strings.HasSuffix(name, ".tar.gz") {
