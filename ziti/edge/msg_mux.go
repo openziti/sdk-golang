@@ -387,9 +387,35 @@ func (mux *ConnMuxImpl[T]) HandleReceive(msg *channel.Message, ch channel.Channe
 		mux.handlePayloadWithNoSink(msg, ch)
 	} else if msg.ContentType == ContentTypeStateClosed {
 		// ignore, as conn is already closed
+	} else if msg.ContentType == ContentTypeDial {
+		go mux.handleDialWithNoSink(connId, msg, ch)
 	} else {
 		pfxlog.Logger().WithField("connId", connId).WithField("contentType", msg.ContentType).
 			Info("unable to dispatch msg received for unknown edge conn id")
+	}
+}
+
+// handleDialWithNoSink refuses a dial addressed to a conn this mux does not have.
+//
+// The router keeps forwarding dials for a hosted conn until its terminator is removed,
+// which happens after the conn is gone from here, so this arrives whenever a listener
+// closes while dials are in flight. The router waits for a reply under a route timeout
+// longer than the dialing client's connect timeout, so dropping it silently costs the
+// client its whole timeout; refusing it lets the router fail over to another terminator.
+func (mux *ConnMuxImpl[T]) handleDialWithNoSink(connId uint32, msg *channel.Message, ch channel.Channel) {
+	pfxlog.Logger().WithField("connId", int(connId)).
+		Info("refusing dial for unknown edge conn id")
+
+	var sender channel.Sender = ch
+	if sdkChan, ok := ch.GetSenders().(SdkChannel); ok {
+		sender = sdkChan.GetControlSender()
+	}
+
+	reply := NewDialFailedMsg(connId, fmt.Sprintf("no listener for conn id [%v]", connId))
+	reply.ReplyTo(msg)
+	if err := reply.WithTimeout(5 * time.Second).Send(sender); err != nil {
+		pfxlog.Logger().WithFields(GetLoggerFields(msg)).WithError(err).
+			Error("failed to refuse dial for unknown edge conn id")
 	}
 }
 
