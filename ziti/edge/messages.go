@@ -223,7 +223,9 @@ const (
 
 // Router capabilities advertised via RouterCapabilitiesHeader bitmask. The bit
 // positions form a single namespace shared with the control channel; the SDK
-// acts on the bits it recognizes and ignores the rest.
+// acts on the bits it recognizes and ignores the rest. New capabilities are
+// added here (and on the router side, using the same bit index) and read
+// through RouterConn.IsRouterCapable, not a dedicated method each.
 const (
 	RouterCapabilityMultiChannel = int(edge_client_pb.RouterCapability_MultiChannel)
 	RouterCapabilityConnectV2    = int(edge_client_pb.RouterCapability_ConnectV2)
