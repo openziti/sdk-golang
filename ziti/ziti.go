@@ -46,8 +46,8 @@ import (
 	"github.com/openziti/foundation/v2/stringz"
 	apis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/openziti/sdk-golang/v2/inspect"
+	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/xgress"
-	"github.com/openziti/secretstream/kx"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"github.com/cenkalti/backoff/v4"

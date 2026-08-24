@@ -30,9 +30,9 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/sdk-golang/v2/inspect"
+	"github.com/openziti/sdk-golang/v2/secretstream"
+	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
-	"github.com/openziti/secretstream"
-	"github.com/openziti/secretstream/kx"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
