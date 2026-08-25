@@ -1,3 +1,11 @@
+# Release notes 1.8.2
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.1 -> v1.8.2](https://github.com/openziti/sdk-golang/compare/v1.8.1...v1.8.2)
+    * [Issue #1007](https://github.com/openziti/sdk-golang/issues/1007) - [Backport-1.8] Dial for an unknown edge conn id is dropped silently, costing the client its full connect timeout
+
+
 # Release notes 1.8.1
 
 ## Issues Fixed and Dependency Updates
