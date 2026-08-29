@@ -186,11 +186,11 @@ func (self *testIntermediary) GetMetrics() Metrics {
 	return noopMetrics{}
 }
 
-func (self *testIntermediary) ForwardAcknowledgement(ack *Acknowledgement, address Address) {
+func (self *testIntermediary) ForwardAcknowledgement(ack *Acknowledgement, address Address, _ Path) {
 	self.acker.SendAck(ack, address)
 }
 
-func (self *testIntermediary) ForwardPayload(payload *Payload, x *Xgress, ctx context.Context) {
+func (self *testIntermediary) ForwardPayload(payload *Payload, x *Xgress, ctx context.Context) Path {
 	m := payload.Marshall()
 	self.payloadTransformer.Tx(m, nil)
 	b, err := self.msgs.GetMarshaller()(m)
@@ -221,11 +221,12 @@ func (self *testIntermediary) ForwardPayload(payload *Payload, x *Xgress, ctx co
 		panic(err)
 	}
 	//fmt.Printf("transmitted payload %d from %s -> %s\n", payload.Sequence, x.address, self.dest.address)
+	return testPath("test")
 }
 
-func (self *testIntermediary) RetransmitPayload(srcAddr Address, payload *Payload) error {
+func (self *testIntermediary) RetransmitPayload(previous Path, srcAddr Address, payload *Payload) (Path, error) {
 	//self.ForwardPayload(payload, nil)
-	return nil
+	return testPath("test"), nil
 }
 
 func (self *testIntermediary) validateMessage(m *channel.Message) error {
