@@ -6,6 +6,19 @@
   versioning, a v2 release must carry the major version in its path, so consumers update
   their imports to the `/v2` form (e.g. `github.com/openziti/sdk-golang/v2/ziti`).
 
+* **`secretstream` now lives in this module.** `github.com/openziti/secretstream` has moved
+  here as `github.com/openziti/sdk-golang/v2/secretstream` (and `.../secretstream/kx`), so the
+  crypto and the SDK that depends on it share one version and can no longer drift apart. The
+  standalone module is no longer required.
+
+  This is source-breaking for anyone naming those types directly. `edge.ListenOptions.KeyPair`
+  is a `*kx.KeyPair`, and the old and new `kx.KeyPair` are distinct types to the compiler even
+  though the code is identical; because the struct's fields are unexported, there is no
+  conversion between them. Update the import to the `sdk-golang/v2/secretstream/kx` form.
+
+  `NewDecryptor` now validates its key and header lengths instead of panicking on a short
+  header, and the `secretstream` tests now run against libsodium in CI.
+
 * **Supported controller versions are the current LTS releases: 1.6.x and 2.0.0.** The dial path
   was reworked to fetch the per-service edge router list via the sessionless
   `GET /edge/client/v1/services/{id}/edge-routers` endpoint on the client API when the controller

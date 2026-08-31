@@ -37,6 +37,18 @@ jobs:
           go test -C example ./...
           go install ./...
 
+      # The secretstream package is a Go reimplementation of libsodium's
+      # crypto_secretstream_xchacha20poly1305, so its wire format is only as good as a test
+      # against libsodium itself. Those tests need cgo and the library, so they sit behind a
+      # build tag and do not run under `go test ./...`; run them explicitly here, or the one
+      # thing that can catch a divergence never runs.
+      - name: Test secretstream against libsodium
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsodium-dev
+          go test -count=1 -tags compat_test ./secretstream/...
+
       - name: Check license
         if: matrix.os == 'ubuntu-latest'
         run: |

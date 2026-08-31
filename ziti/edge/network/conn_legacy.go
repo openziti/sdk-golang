@@ -27,9 +27,9 @@ import (
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/v2/inspect"
+	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/xgress"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
-	"github.com/openziti/secretstream/kx"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )

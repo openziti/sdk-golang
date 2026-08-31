@@ -29,9 +29,9 @@ import (
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/pb/edge_client_pb"
+	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/xgress"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
-	"github.com/openziti/secretstream/kx"
 	"github.com/sirupsen/logrus"
 )
 
