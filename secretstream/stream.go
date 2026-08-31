@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/chacha20poly1305"
 	// nolint:staticcheck
@@ -214,12 +213,21 @@ func (s *encryptor) Push(plain []byte, tag byte) ([]byte, error) {
 }
 
 func NewDecryptor(key, header []byte) (Decryptor, error) {
+	// Both lengths are checked up front because the header arrives from the peer. A short
+	// one used to panic on the slice below, and one of 16 to 23 bytes was worse: it built a
+	// decryptor whose nonce was part zero, which fails later and somewhere else.
+	if len(key) != StreamKeyBytes {
+		return nil, errInvalidKey
+	}
+	if len(header) != StreamHeaderBytes {
+		return nil, errInvalidInput
+	}
+
 	stream := &decryptor{}
 
 	//crypto_core_hchacha20(state->k, in, k, NULL);
 	k, err := chacha20.HChaCha20(key, header[:16])
 	if err != nil {
-		fmt.Printf("error: %v", err)
 		return nil, err
 	}
 	copy(stream.k[:], k)

@@ -91,7 +91,6 @@ require (
 	github.com/openziti/go-term-markdown v1.0.1 // indirect
 	github.com/openziti/identity v1.0.133 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect
-	github.com/openziti/secretstream v0.1.51 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/parallaxsecond/parsec-client-go v0.0.0-20221025095442-f0a77d263cf9 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
