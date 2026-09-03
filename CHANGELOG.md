@@ -19,6 +19,20 @@
   `NewDecryptor` now validates its key and header lengths instead of panicking on a short
   header, and the `secretstream` tests now run against libsodium in CI.
 
+* **`secretstream` now performs the rekey libsodium specifies.** Neither trigger fired before:
+  a tag carrying `TagRekey`, which `TagFinal` also carries, and the implicit rekey when a
+  stream's message counter wraps after 2^32 messages. `TagRekey` and `TagFinal` were exported
+  but had no effect.
+
+  The implicit trigger is the one that mattered. Nothing opts into it and nothing on the wire
+  marks it, so a peer built on libsodium rekeyed at the wrap while this implementation did not,
+  and every message after that failed to authenticate with no other signal. `ziti-sdk-c` links
+  libsodium, so C and Go peers were exposed to this in both directions.
+
+  There is a version-skew consequence worth planning for. A peer that rekeys and a peer that
+  does not will desynchronize at that same 2^32 boundary, so fixing one side does not fix a
+  pair: both ends of a long-lived, high-volume connection want a version carrying this change.
+
 * **Supported controller versions are the current LTS releases: 1.6.x and 2.0.0.** The dial path
   was reworked to fetch the per-service edge router list via the sessionless
   `GET /edge/client/v1/services/{id}/edge-routers` endpoint on the client API when the controller
@@ -53,6 +67,13 @@
   carrying the negotiated protocol (`connect-v1` vs `connect-v2` as `edge.DialProtocol`), the
   target router, whether V1 was forced, timing, the circuit id, and the error on failure. Router
   connections additionally report ConnectV2 capability in `Context.Inspect()`.
+* A dial arriving for an edge conn id the mux has no sink for is refused with `DialFailed`
+  rather than logged and dropped. A hosted listener can close while its terminator is still
+  selectable at the controller, so these arrive whenever a listener closes with dials in
+  flight. The router's route timeout outlasts the client's connect timeout, so the silence
+  surfaced to the dialing client as a connect timeout; the router now learns the terminator is
+  unusable and fails over instead.
+
 * Circuit inspect reports `acquiredSafely: true` for the send buffer of a half-closed circuit.
   The send buffer's state used to be read by handing a request to its run loop, which is gone
   once the send half closes, so inspecting a half-closed circuit waited out a 100ms timeout and

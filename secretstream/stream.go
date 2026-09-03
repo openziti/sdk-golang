@@ -25,7 +25,7 @@ const (
 
 const crypto_core_hchacha20_INPUTBYTES = 16
 
-/* const crypto_secretstream_xchacha20poly1305_INONCEBYTES = 8 */
+const crypto_secretstream_xchacha20poly1305_INONCEBYTES = 8
 const crypto_secretstream_xchacha20poly1305_COUNTERBYTES = 4
 
 var pad0 [16]byte
@@ -44,7 +44,64 @@ func (s *streamState) reset() {
 	for i := range s.nonce {
 		s.nonce[i] = 0
 	}
+	s.resetCounter()
+}
+
+// resetCounter sets the message counter back to one, leaving the inonce alone.
+//
+// Distinct from reset, which zeroes the whole nonce and is only correct during init, where
+// the inonce is written afterwards. Rekeying derives a new inonce and must keep it.
+func (s *streamState) resetCounter() {
+	for i := 0; i < crypto_secretstream_xchacha20poly1305_COUNTERBYTES; i++ {
+		s.nonce[i] = 0
+	}
 	s.nonce[0] = 1
+}
+
+// counterIsZero reports whether the message counter has wrapped back to zero.
+func (s *streamState) counterIsZero() bool {
+	var zero [crypto_secretstream_xchacha20poly1305_COUNTERBYTES]byte
+	return subtle.ConstantTimeCompare(
+		s.nonce[:crypto_secretstream_xchacha20poly1305_COUNTERBYTES], zero[:]) == 1
+}
+
+// rekey derives a new key and inonce from the current state and resets the counter.
+//
+// Both sides do this at the same points without announcing it, so an implementation that
+// skips it desynchronizes from one that does not, and every later message fails to
+// authenticate. See rekeyIfNeeded for when it fires.
+func (s *streamState) rekey() error {
+	var newKeyAndInonce [StreamKeyBytes + crypto_secretstream_xchacha20poly1305_INONCEBYTES]byte
+	copy(newKeyAndInonce[:StreamKeyBytes], s.k[:])
+	copy(newKeyAndInonce[StreamKeyBytes:],
+		s.nonce[crypto_secretstream_xchacha20poly1305_COUNTERBYTES:])
+
+	chacha, err := chacha20.NewUnauthenticatedCipher(s.k[:], s.nonce[:])
+	if err != nil {
+		return err
+	}
+	chacha.XORKeyStream(newKeyAndInonce[:], newKeyAndInonce[:])
+
+	copy(s.k[:], newKeyAndInonce[:StreamKeyBytes])
+	copy(s.nonce[crypto_secretstream_xchacha20poly1305_COUNTERBYTES:],
+		newKeyAndInonce[StreamKeyBytes:])
+	memzero(newKeyAndInonce[:])
+
+	s.resetCounter()
+	return nil
+}
+
+// rekeyIfNeeded rekeys on either of the two triggers, having just sent or received a message
+// tagged tag.
+//
+// The explicit trigger is a rekey tag, which TagFinal also carries. The implicit one is the
+// counter wrapping after 2^32 messages on a stream, and it is the one that matters, because
+// nothing opts into it and nothing on the wire marks it.
+func (s *streamState) rekeyIfNeeded(tag byte) error {
+	if tag&TagRekey != 0 || s.counterIsZero() {
+		return s.rekey()
+	}
+	return nil
 }
 
 type Encryptor interface {
@@ -73,22 +130,36 @@ func NewStreamKey() ([]byte, error) {
 }
 
 func NewEncryptor(key []byte) (Encryptor, []byte, error) {
-	if len(key) != StreamKeyBytes {
-		return nil, nil, errInvalidKey
+	header := make([]byte, StreamHeaderBytes)
+	if _, err := rand.Read(header); err != nil {
+		return nil, nil, err
 	}
 
-	header := make([]byte, StreamHeaderBytes)
-	_, err := rand.Read(header)
+	stream, err := newEncryptorWithHeader(key, header)
 	if err != nil {
 		return nil, nil, err
+	}
+	return stream, header, nil
+}
+
+// newEncryptorWithHeader initializes a send stream over a caller-supplied header.
+//
+// Unexported because a header must be unpredictable for the stream to be safe, which is why
+// NewEncryptor generates its own. This exists so tests can pin one and get reproducible
+// ciphertext.
+func newEncryptorWithHeader(key, header []byte) (Encryptor, error) {
+	if len(key) != StreamKeyBytes {
+		return nil, errInvalidKey
+	}
+	if len(header) != StreamHeaderBytes {
+		return nil, errInvalidInput
 	}
 
 	stream := &encryptor{}
 
-	k, err := chacha20.HChaCha20(key[:], header[:16])
+	k, err := chacha20.HChaCha20(key, header[:crypto_core_hchacha20_INPUTBYTES])
 	if err != nil {
-		//fmt.Printf("error: %v", err)
-		return nil, nil, err
+		return nil, err
 	}
 	copy(stream.k[:], k)
 	stream.reset()
@@ -97,12 +168,10 @@ func NewEncryptor(key []byte) (Encryptor, []byte, error) {
 		stream.pad[i] = 0
 	}
 
-	for i, b := range header[crypto_core_hchacha20_INPUTBYTES:] {
-		stream.nonce[i+crypto_secretstream_xchacha20poly1305_COUNTERBYTES] = b
-	}
-	// fmt.Printf("stream: %+v\n", stream.streamState)
+	copy(stream.nonce[crypto_secretstream_xchacha20poly1305_COUNTERBYTES:],
+		header[crypto_core_hchacha20_INPUTBYTES:])
 
-	return stream, header, nil
+	return stream, nil
 }
 
 func (s *encryptor) Push(plain []byte, tag byte) ([]byte, error) {
@@ -197,12 +266,9 @@ func (s *encryptor) Push(plain []byte, tag byte) ([]byte, error) {
 	xor_buf(s.nonce[crypto_secretstream_xchacha20poly1305_COUNTERBYTES:], mac)
 	buf_inc(s.nonce[:crypto_secretstream_xchacha20poly1305_COUNTERBYTES])
 
-	// TODO
-	//if ((tag & crypto_secretstream_xchacha20poly1305_TAG_REKEY) != 0 ||
-	//sodium_is_zero(STATE_COUNTER(state),
-	//crypto_secretstream_xchacha20poly1305_COUNTERBYTES)) {
-	//crypto_secretstream_xchacha20poly1305_rekey(state);
-	//}
+	if err = s.rekeyIfNeeded(tag); err != nil {
+		return nil, err
+	}
 
 	//if (outlen_p != NULL) {
 	//*outlen_p = crypto_secretstream_xchacha20poly1305_ABYTES + mlen;
@@ -372,12 +438,9 @@ func (s *decryptor) Pull(in []byte) ([]byte, byte, error) {
 	xor_buf(s.nonce[crypto_secretstream_xchacha20poly1305_COUNTERBYTES:], mac)
 	buf_inc(s.nonce[:crypto_secretstream_xchacha20poly1305_COUNTERBYTES])
 
-	// TODO
-	//if ((tag & crypto_secretstream_xchacha20poly1305_TAG_REKEY) != 0 ||
-	//sodium_is_zero(STATE_COUNTER(state),
-	//crypto_secretstream_xchacha20poly1305_COUNTERBYTES)) {
-	//crypto_secretstream_xchacha20poly1305_rekey(state);
-	//}
+	if err = s.rekeyIfNeeded(tag); err != nil {
+		return nil, 0, err
+	}
 
 	//if (mlen_p != NULL) {
 	//*mlen_p = mlen;
