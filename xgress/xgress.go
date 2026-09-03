@@ -1171,14 +1171,86 @@ func (self *Xgress) addGoroutineIfRelated(buf *bytes.Buffer, xgressRelated bool,
 	return result
 }
 
+// magicV2 is the four-byte prefix of a V2 frame. The channel package keeps its own copy
+// unexported; the value is fixed by the wire format, so duplicating it carries no drift risk.
+var magicV2 = []byte{0x03, 0x06, 0x09, 0x0c}
+
+// v2DatagramPrefixLen is the fixed head of a V2 frame: magic, content type, sequence, and
+// the two length fields.
+const v2DatagramPrefixLen = 20
+
+// validateV2Datagram checks a V2 frame's declared lengths against the bytes present. A
+// datagram carries exactly one whole message, so the declared sizes must account for it
+// exactly. A stream reader cannot make this check because it can wait for more bytes; a
+// packet producer can, and must, since it is handed arbitrary peer bytes and owes its caller
+// an error rather than whatever the frame reader does with an impossible length.
+//
+// Lengths are summed as uint64 so a pair that wraps a uint32 is rejected here rather than
+// reaching a reader that may trust the wrapped total.
+func validateV2Datagram(buf []byte) error {
+	// Only a V2 frame carries the length fields checked below. Anything else with bit 0 set,
+	// a version-negotiation response included, reaches the frame reader unexamined: it classifies
+	// by magic and returns the typed errors that drive version negotiation, and a length
+	// complaint raised here would mask them.
+	if len(buf) < len(magicV2) || !bytes.Equal(buf[:len(magicV2)], magicV2) {
+		return nil
+	}
+	if len(buf) < v2DatagramPrefixLen {
+		// the magic is right but the frame is short; the frame reader reports the truncation
+		return nil
+	}
+	headersLen := uint64(binary.LittleEndian.Uint32(buf[12:16]))
+	bodyLen := uint64(binary.LittleEndian.Uint32(buf[16:20]))
+	if declared := v2DatagramPrefixLen + headersLen + bodyLen; declared != uint64(len(buf)) {
+		return fmt.Errorf("v2 datagram declares %d bytes but carries %d", declared, len(buf))
+	}
+	return validateV2Headers(buf[v2DatagramPrefixLen : v2DatagramPrefixLen+headersLen])
+}
+
+// validateV2Headers walks a V2 header block and checks each entry's declared value length
+// against the bytes remaining in the block. The outer lengths agreeing with the datagram says
+// nothing about the entries inside it, which carry their own widths.
+//
+// Lengths are compared at uint64 width. A reader that narrows one to int first reads a
+// declared width above MaxInt32 as negative where int is 32 bits, admits it, and then slices
+// with a high bound below its low bound. That is architecture-dependent, so it is invisible to
+// an amd64 test run and to amd64 fuzzing.
+func validateV2Headers(block []byte) error {
+	for offset := 0; offset < len(block); {
+		if offset+8 > len(block) {
+			return fmt.Errorf("v2 header at offset %d is truncated", offset)
+		}
+		valueLen := uint64(binary.LittleEndian.Uint32(block[offset+4 : offset+8]))
+		end := uint64(offset) + 8 + valueLen
+		if end > uint64(len(block)) {
+			return fmt.Errorf("v2 header at offset %d declares a %d byte value, exceeding the %d remaining",
+				offset, valueLen, len(block)-offset-8)
+		}
+		offset = int(end) // safe: end is bounded by len(block) above
+	}
+	return nil
+}
+
+// UnmarshallPacketPayload decodes one datagram into a message. buf is peer-supplied and
+// arbitrary; every malformed input yields an error rather than a panic. Callers get a message
+// that borrows buf, so buf must not be reused until the message is done with.
 func UnmarshallPacketPayload(buf []byte) (*channel.Message, error) {
+	if len(buf) < 1 {
+		return nil, errors.New("payload is empty, no flags byte")
+	}
 	flagsField := buf[0]
 	if flagsField&1 != 0 {
+		if err := validateV2Datagram(buf); err != nil {
+			return nil, err
+		}
 		return channel.ReadV2(bytes.NewBuffer(buf))
 	}
 	version := (flagsField & VersionMask) >> 1
 	if version != PayloadProtocolV1 {
 		return nil, fmt.Errorf("unsupported version: %d", version)
+	}
+	if len(buf) < 2 {
+		return nil, errors.New("payload is truncated, no sizes byte")
 	}
 	sizeField := buf[1]
 	circuitIdSize := CircuitIdSizeMask & sizeField
@@ -1186,6 +1258,9 @@ func UnmarshallPacketPayload(buf []byte) (*channel.Message, error) {
 
 	var rtt *uint16
 	if flagsField&RttFlagMask != 0 {
+		if len(rest) < 2 {
+			return nil, errors.New("payload is truncated, rtt flag is set but no rtt follows")
+		}
 		b0 := rest[0]
 		b1 := rest[1]
 		rest = rest[2:]
@@ -1195,14 +1270,23 @@ func UnmarshallPacketPayload(buf []byte) (*channel.Message, error) {
 
 	var heartbeat *uint64
 	if flagsField&HeartbeatFlagMask != 0 {
+		if len(rest) < 8 {
+			return nil, errors.New("payload is truncated, heartbeat flag is set but no heartbeat follows")
+		}
 		val := binary.BigEndian.Uint64(rest[len(rest)-8:])
 		heartbeat = &val
 		rest = rest[:len(rest)-8]
 	}
 
+	if len(rest) < int(circuitIdSize) {
+		return nil, fmt.Errorf("payload is truncated, circuit id of %d bytes exceeds the %d remaining", circuitIdSize, len(rest))
+	}
 	circuitId := string(rest[:circuitIdSize])
 	rest = rest[circuitIdSize:]
 	seq, read := binary.Uvarint(rest)
+	if read < 1 {
+		return nil, errors.New("payload sequence is truncated or overflows a uint64")
+	}
 	rest = rest[read:]
 
 	var headers map[uint8][]byte
@@ -1287,7 +1371,9 @@ func readU8ToBytesMap(buf []byte) (map[uint8][]byte, []byte, error) {
 			return nil, nil, fmt.Errorf("payload header error, ran out of space reading header %d", i)
 		}
 		buf = buf[read+1:]
-		if len(buf) < int(valSize) {
+		// compared as uint64: int(valSize) is negative above MaxInt64, which would pass
+		// this check and then panic on the slice
+		if valSize > uint64(len(buf)) {
 			return nil, nil, fmt.Errorf("payload header error, ran out of space reading header %d", i)
 		}
 		result[k] = buf[:valSize]
