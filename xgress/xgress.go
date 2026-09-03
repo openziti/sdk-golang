@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -155,10 +156,9 @@ type Xgress struct {
 	lastBufferSizeSent   uint32
 
 	// chunk reassembly state for the tx path (used by nextTxPayload)
-	txChunkStarted     bool
-	txChunkPayload     *Payload
-	txChunkSize        uint64
-	txChunkWriteOffset int
+	txChunkStarted bool
+	txChunkPayload *Payload
+	txChunkSize    uint64
 }
 
 func (self *Xgress) GetDestinationType() string {
@@ -594,6 +594,30 @@ func (self *Xgress) processTxPayload(payload *Payload) ([]byte, map[uint8][]byte
 	return payload.Data, payload.Headers, nil
 }
 
+// initialChunkBufferCap bounds the first allocation made for a reassembled payload, so the size
+// a peer declares never decides how much is allocated up front. The buffer grows as chunks land.
+const initialChunkBufferCap = 256 * 1024
+
+// maxChunkedPayloadSize bounds the reassembly total a peer may declare, so the value stays
+// exact as an int on 32-bit platforms. It is a representability limit; a policy limit on payload
+// size belongs with the channel max message size work.
+const maxChunkedPayloadSize = math.MaxInt32
+
+// parseChunkedPayloadSize reads the reassembly total leading a chunked payload, returning it with
+// the number of bytes it occupied. The total is peer-supplied and becomes an allocation size, so
+// it is validated before any caller can act on it. Kept separate from the reassembly loop so the
+// bound can be tested at its edges without a test having to reach the allocation it guards.
+func parseChunkedPayloadSize(data []byte) (uint64, int, error) {
+	size, read := binary.Uvarint(data)
+	if read < 1 {
+		return 0, 0, errors.New("chunked payload size is truncated or overflows a uint64")
+	}
+	if size > maxChunkedPayloadSize {
+		return 0, 0, fmt.Errorf("chunked payload of %d bytes exceeds the maximum of %d", size, int64(maxChunkedPayloadSize))
+	}
+	return size, read, nil
+}
+
 // nextTxPayload reads the next complete payload from the receive buffer, handling chunk
 // reassembly and control payloads internally. Returns payload data and headers on success.
 // Returns io.EOF when the circuit ends or the xgress closes.
@@ -631,7 +655,14 @@ func (self *Xgress) nextTxPayload(deadlineNotify <-chan struct{}) ([]byte, map[u
 		// Chunked payload reassembly
 		var payloadReadOffset int
 		if !self.txChunkStarted {
-			self.txChunkSize, payloadReadOffset = binary.Uvarint(payloadChunk.Data)
+			self.txChunkSize = 0
+			if len(payloadChunk.Data) > 0 {
+				size, read, err := parseChunkedPayloadSize(payloadChunk.Data)
+				if err != nil {
+					return nil, nil, err
+				}
+				self.txChunkSize, payloadReadOffset = size, read
+			}
 
 			if len(payloadChunk.Data) == 0 || self.txChunkSize+uint64(payloadReadOffset) == uint64(len(payloadChunk.Data)) {
 				payloadChunk.Data = payloadChunk.Data[payloadReadOffset:]
@@ -654,19 +685,28 @@ func (self *Xgress) nextTxPayload(deadlineNotify <-chan struct{}) ([]byte, map[u
 				RTT:       payloadChunk.RTT,
 				Sequence:  payloadChunk.Sequence,
 				Headers:   payloadChunk.Headers,
-				Data:      make([]byte, self.txChunkSize),
+				// The declared total is an expectation to check against, not an instruction
+				// to allocate: capacity is bounded independently of it, and the buffer grows as
+				// chunks land. A peer that declares a huge total and then sends a few bytes
+				// therefore costs the bytes it actually sent. Appending reassembles correctly
+				// because the link receive buffer releases payloads in sequence order.
+				Data: make([]byte, 0, min(self.txChunkSize, initialChunkBufferCap)),
 			}
 			self.txChunkStarted = true
 		}
 
 		chunkData := payloadChunk.Data[payloadReadOffset:]
-		copy(self.txChunkPayload.Data[self.txChunkWriteOffset:], chunkData)
-		self.txChunkWriteOffset += len(chunkData)
-		payloadComplete := uint64(self.txChunkWriteOffset) == self.txChunkSize
+		// a peer may send more than it declared, which must be refused rather than accumulated:
+		// silently taking it would leave a payload that can never match its declared total
+		if uint64(len(self.txChunkPayload.Data))+uint64(len(chunkData)) > self.txChunkSize {
+			return nil, nil, fmt.Errorf("chunked payload overruns its declared size of %d bytes", self.txChunkSize)
+		}
+		self.txChunkPayload.Data = append(self.txChunkPayload.Data, chunkData...)
+		payloadComplete := uint64(len(self.txChunkPayload.Data)) == self.txChunkSize
 
 		payloadLogger := log.WithFields(self.txChunkPayload.GetLoggerFields())
 		payloadLogger.Debugf("received payload chunk. seq: %d, first: %v, complete: %v, chunk size: %d, payload size: %d, writeOffset: %d",
-			payloadChunk.Sequence, len(self.txChunkPayload.Data) == 0 || payloadReadOffset > 0, payloadComplete, len(payloadChunk.Data), self.txChunkSize, self.txChunkWriteOffset)
+			payloadChunk.Sequence, payloadReadOffset > 0, payloadComplete, len(payloadChunk.Data), self.txChunkSize, len(self.txChunkPayload.Data))
 
 		if !payloadComplete {
 			self.releasePayloadChunk(payloadChunk)
@@ -674,7 +714,6 @@ func (self *Xgress) nextTxPayload(deadlineNotify <-chan struct{}) ([]byte, map[u
 		}
 
 		self.txChunkStarted = false
-		self.txChunkWriteOffset = 0
 
 		data, headers, err := self.processTxPayload(self.txChunkPayload)
 		if err == nil {
