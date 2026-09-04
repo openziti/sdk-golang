@@ -6,6 +6,9 @@
   versioning, a v2 release must carry the major version in its path, so consumers update
   their imports to the `/v2` form (e.g. `github.com/openziti/sdk-golang/v2/ziti`).
 
+* **The minimum Go version is now 1.26**, in line with Go's supported version policy: with
+  1.27 released, 1.25 is out of support and 1.26 is the oldest release still supported.
+
 * **`secretstream` now lives in this module.** `github.com/openziti/secretstream` has moved
   here as `github.com/openziti/sdk-golang/v2/secretstream` (and `.../secretstream/kx`), so the
   crypto and the SDK that depends on it share one version and can no longer drift apart. The
@@ -82,13 +85,94 @@
 
 ## Issues Fixed and Dependency Updates
 
-* github.com/openziti/sdk-golang: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
-    * [Issue #936](https://github.com/openziti/sdk-golang/issues/936) - Implement Connect-V2
+* github.com/openziti/sdk-golang/v2: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
+    * [Issue #1004](https://github.com/openziti/sdk-golang/issues/1004) - UnmarshallPacketPayload indexes the buffer without bounds checks
+    * [Issue #1006](https://github.com/openziti/sdk-golang/issues/1006) - Chunked payload reassembly trusts the peer's declared size
+    * [Issue #1011](https://github.com/openziti/sdk-golang/issues/1011) - secretstream: rekey is not implemented, so streams diverge from libsodium peers
+    * [Issue #1002](https://github.com/openziti/sdk-golang/issues/1002) - Bring the secretstream library into this repo
+    * [Issue #999](https://github.com/openziti/sdk-golang/issues/999) - Dial for an unknown edge conn id is dropped silently, costing the client its full connect timeout
+    * [Issue #991](https://github.com/openziti/sdk-golang/issues/991) - Read deadline on ReadAdapter permanently closes the peer's send buffer
+    * [Issue #987](https://github.com/openziti/sdk-golang/issues/987) - LinkSendBuffer leaks goroutines after send-half close
+    * [Issue #958](https://github.com/openziti/sdk-golang/issues/958) - ConnectV2 xgress client conn not marked closed on router-initiated teardown
+    * [Issue #967](https://github.com/openziti/sdk-golang/issues/967) - Move RouterCapabilityConnectV2 constant into edge_client.proto
     * [Issue #951](https://github.com/openziti/sdk-golang/issues/951) - Add an SDK acceptance-test framework
     * [Issue #952](https://github.com/openziti/sdk-golang/issues/952) - xgress client half-close not delivered to legacy edge hosts
-    * [Issue #987](https://github.com/openziti/sdk-golang/issues/987) - LinkSendBuffer leaks goroutines after send-half close
-    * [Issue #991](https://github.com/openziti/sdk-golang/issues/991) - Read deadline on ReadAdapter permanently closes the peer's send buffer
+    * [Issue #936](https://github.com/openziti/sdk-golang/issues/936) - Implement Connect-V2: sessionless SDK dial
 
+* github.com/go-openapi/runtime: v0.32.3 -> v0.33.2
+* github.com/go-openapi/strfmt: v0.26.3 -> v0.27.2
+* github.com/openziti/channel/v5: [v5.0.10 -> v5.0.29](https://github.com/openziti/channel/compare/v5.0.10...v5.0.29)
+    * [Issue #301](https://github.com/openziti/channel/issues/301) - ReplyFor header with a length other than 4 causes a nil pointer dereference on the rx path
+    * [Issue #303](https://github.com/openziti/channel/issues/303) - Crafted frame lengths panic the decoder: int truncation on 32-bit, uint32 wrap everywhere
+    * [Issue #283](https://github.com/openziti/channel/issues/283) - Convert internal logging from pfxlog/logrus to slog
+    * [Issue #288](https://github.com/openziti/channel/issues/288) - Remove unused reconnecting and memory implementations
+    * [Issue #285](https://github.com/openziti/channel/issues/285) - Version negotiation responses are never recognized, so the protocol version can never be renegotiated
+    * [Issue #287](https://github.com/openziti/channel/issues/287) - Dialer retries a hello when the retry cannot change the outcome
+    * [Issue #280](https://github.com/openziti/channel/issues/280) - MultiListener: no way to decline a grouped channel without stranding the dialer
+    * [Issue #275](https://github.com/openziti/channel/issues/275) - Multi-listener attaches reconnecting underlays to a closing channel under churn
+    * [Issue #271](https://github.com/openziti/channel/issues/271) - Treat MinTotalUnderlays as a first-class multi-underlay signal
+    * [Issue #274](https://github.com/openziti/channel/issues/274) - Add configurable reconnect jitter to BackoffDialPolicy
+    * [Issue #258](https://github.com/openziti/channel/issues/258) - Add a hook to inject hello headers derived from the peer's certificate
+    * [Issue #267](https://github.com/openziti/channel/issues/267) - NewSingleChannelWithUnderlay panics on underlays with nil headers (e.g. websocket)
+    * [Issue #269](https://github.com/openziti/channel/issues/269) - Make channel logging pluggable via injectable slog.Logger
+    * [Issue #264](https://github.com/openziti/channel/issues/264) - Multi-underlay group reconnect can reject-storm under load
+    * [Issue #265](https://github.com/openziti/channel/issues/265) - Support reconfiguring heartbeat intervals on a running channel
+
+* github.com/openziti/edge-api: [v0.32.0 -> v0.36.0](https://github.com/openziti/edge-api/compare/v0.32.0...v0.36.0)
+    * [Issue #198](https://github.com/openziti/edge-api/issues/198) - Advertise edge router capabilities in the service edge-router list
+
+* github.com/openziti/foundation/v2: [v2.0.95 -> v2.0.100](https://github.com/openziti/foundation/compare/v2.0.95...v2.0.100)
+    * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
+    * [Issue #489](https://github.com/openziti/foundation/issues/489) - Add graceful shutdown and idle-wait support to goroutines.Pool
+    * [Issue #488](https://github.com/openziti/foundation/issues/488) - Add package-level Fatal and SyncEmit helpers to logging
+    * [Issue #484](https://github.com/openziti/foundation/issues/484) - Add slog logging core (foundation/v2/logging) for upstream libraries
+
+* github.com/openziti/identity: [v1.0.133 -> v1.0.140](https://github.com/openziti/identity/compare/v1.0.133...v1.0.140)
+    * [Issue #72](https://github.com/openziti/identity/issues/72) - Convert logging from pfxlog/logrus to foundation slog logging
+    * [Issue #74](https://github.com/openziti/identity/issues/74) - golangci-lint CI fails on go 1.25 module (action installs golangci-lint v1.x)
+
+* github.com/openziti/transport/v2: [v2.0.216 -> v2.0.221](https://github.com/openziti/transport/compare/v2.0.216...v2.0.221)
+    * [Issue #176](https://github.com/openziti/transport/issues/176) - tcp.Connection hides CloseWrite, so callers cannot half-close a TCP transport connection
+    * [Issue #173](https://github.com/openziti/transport/issues/173) - Convert logging from pfxlog/logrus to foundation slog logging
+
+* github.com/shirou/gopsutil/v4: v4.26.5 -> v4.26.8
+* github.com/sirupsen/logrus: v1.9.4 -> v1.10.2
+* github.com/stretchr/testify: v1.11.1 -> v1.12.1
+* github.com/zitadel/oidc/v3: v3.47.5 -> v3.49.5
+* go.mozilla.org/pkcs7: v0.9.0 -> v0.10.0
+* golang.org/x/crypto: v0.53.0 -> v0.56.0
+* golang.org/x/sys: v0.46.0 -> v0.47.0
+* google.golang.org/protobuf: v1.36.11 -> v1.36.12
+* github.com/ebitengine/purego: v0.10.1 -> v0.10.2
+* github.com/go-logr/logr: v1.4.3 -> v1.4.4
+* github.com/go-openapi/analysis: v0.25.2 -> v1.0.0
+* github.com/go-openapi/jsonpointer: v0.23.1 -> v1.0.0
+* github.com/go-openapi/jsonreference: v0.21.6 -> v1.0.1
+* github.com/go-openapi/loads: v0.24.0 -> v0.25.2
+* github.com/go-openapi/runtime/server-middleware: v0.32.3 -> v0.33.2
+* github.com/go-openapi/spec: v0.22.5 -> v1.0.0
+* github.com/go-openapi/swag: v0.26.1 -> v0.27.3
+* github.com/go-openapi/swag/cmdutils: v0.26.1 -> v0.27.3
+* github.com/go-openapi/swag/conv: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/fileutils: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/jsonutils: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/loading: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/mangling: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/netutils: v0.26.1 -> v0.27.3
+* github.com/go-openapi/swag/pools: v0.29.1 (new)
+* github.com/go-openapi/swag/stringutils: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/typeutils: v0.26.1 -> v0.29.1
+* github.com/go-openapi/swag/yamlutils: v0.26.1 -> v0.29.1
+* github.com/go-openapi/validate: v0.26.0 -> v1.0.0
+* github.com/oklog/ulid/v2: v2.1.1 -> v2.1.2
+* go.opentelemetry.io/otel: v1.44.0 -> v1.46.0
+* go.opentelemetry.io/otel/metric: v1.44.0 -> v1.46.0
+* go.opentelemetry.io/otel/trace: v1.44.0 -> v1.46.0
+* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
+* golang.org/x/net: v0.56.0 -> v0.58.0
+* golang.org/x/sync: v0.21.0 -> v0.22.0
+* golang.org/x/term: v0.44.0 -> v0.45.0
+* golang.org/x/text: v0.38.0 -> v0.41.0
 
 # Release notes 1.9.0
 
