@@ -3,7 +3,20 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.1 -> v1.8.2](https://github.com/openziti/sdk-golang/compare/v1.8.1...v1.8.2)
+    * [Issue #1019](https://github.com/openziti/sdk-golang/issues/1019) - [Backport-1.8] Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1007](https://github.com/openziti/sdk-golang/issues/1007) - [Backport-1.8] Dial for an unknown edge conn id is dropped silently, costing the client its full connect timeout
+
+* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.102](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.102)
+    * [Issue #499](https://github.com/openziti/foundation/issues/499) - AtomicBitSet has no set-and-return-previous operation
+    * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
+    * [Issue #489](https://github.com/openziti/foundation/issues/489) - Add graceful shutdown and idle-wait support to goroutines.Pool
+    * [Issue #488](https://github.com/openziti/foundation/issues/488) - Add package-level Fatal and SyncEmit helpers to logging
+    * [Issue #484](https://github.com/openziti/foundation/issues/484) - Add slog logging core (foundation/v2/logging) for upstream libraries
+
+* github.com/stretchr/testify: v1.11.1 -> v1.12.1
+* golang.org/x/sys: v0.45.0 -> v0.48.0
+* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
+* golang.org/x/term: v0.43.0 -> v0.45.0
 
 
 # Release notes 1.8.1
