@@ -17,6 +17,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v5"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
@@ -47,7 +49,17 @@ type edgeConnLegacy struct {
 	msgCh edge.MsgChannel
 	mux   edge.ConnMux[any]
 	readQ *noopSeq[*channel.Message]
+
+	// closeFlags coordinates the two events that together end a legacy conn: the read side
+	// reaching EOF and the router's StateClosed. Each side records its bit and closes if the
+	// other's is already present, so whichever comes second performs the close.
+	closeFlags concurrenz.AtomicBitSet
 }
+
+const (
+	closeFlagFinRead = iota
+	closeFlagStateClosedReceived
+)
 
 // --- edgeConnOps implementation ---
 
@@ -159,6 +171,19 @@ func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
 
 func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 	return conn.writeTo(data, &conn.msgCh)
+}
+
+// Read reads from the conn. Once the read side has reached EOF it closes the conn if the
+// router's StateClosed has already arrived; reads stop draining the queue at the FIN, so a
+// StateClosed behind or after it is never dequeued and is applied from here instead.
+func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
+	n, err := conn.edgeConnBase.Read(p)
+	if err != nil && errors.Is(err, io.EOF) {
+		if conn.closeFlags.SetAndGetPrevious(closeFlagFinRead).IsSet(closeFlagStateClosedReceived) {
+			conn.close(false)
+		}
+	}
+	return n, err
 }
 
 func (conn *edgeConnLegacy) Close() error {
@@ -325,6 +350,11 @@ func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 			return
 		}
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+
+		if conn.closeFlags.SetAndGetPrevious(closeFlagStateClosedReceived).IsSet(closeFlagFinRead) {
+			conn.close(false)
+			return
+		}
 
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg, ch)
