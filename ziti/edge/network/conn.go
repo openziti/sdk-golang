@@ -34,6 +34,7 @@ import (
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/inspect"
 	"github.com/openziti/sdk-golang/xgress"
@@ -111,6 +112,11 @@ type edgeConn struct {
 	// sentFIN indicates that this side has finished sending data.
 	// When true, no more data can be sent to the client.
 	sentFIN atomic.Bool
+
+	// closeFlags coordinates the two events that together end a legacy conn: the read side
+	// reaching EOF and the router's StateClosed. Each side records its bit and closes if the
+	// other's is already present, so whichever comes second performs the close.
+	closeFlags concurrenz.AtomicBitSet
 
 	// serviceName is the name of the service this connection is accessing.
 	// Used for logging and debugging purposes.
@@ -359,6 +365,11 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 			go conn.xgCircuit.xg.CloseSendBuffer()
 		}
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+
+		if conn.xgCircuit == nil && conn.closeFlags.SetAndGetPrevious(closeFlagStateClosedReceived).IsSet(closeFlagFinRead) {
+			conn.close(false)
+			return
+		}
 
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg)
@@ -716,6 +727,21 @@ func (conn *edgeConn) establishServerCrypto(keypair *kx.KeyPair, peerKey []byte,
 	return txHeader, nil
 }
 
+const (
+	closeFlagFinRead = iota
+	closeFlagStateClosedReceived
+)
+
+// finEOF is the Read result once the read stream has ended. On a legacy conn it also closes
+// the conn if the router's StateClosed has already arrived; reads stop draining the queue at
+// the FIN, so a StateClosed behind or after it is never dequeued and is applied from here.
+func (conn *edgeConn) finEOF() (int, error) {
+	if conn.xgCircuit == nil && conn.closeFlags.SetAndGetPrevious(closeFlagFinRead).IsSet(closeFlagStateClosedReceived) {
+		conn.close(false)
+	}
+	return 0, io.EOF
+}
+
 func (conn *edgeConn) Read(p []byte) (int, error) {
 	log := pfxlog.Logger().WithField("connId", conn.Id()).
 		WithField("marker", conn.marker).
@@ -743,14 +769,14 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 	for {
 		if conn.readFIN.Load() {
 			log.Tracef("readFIN true, returning EOF")
-			return 0, io.EOF
+			return conn.finEOF()
 		}
 
 		msg, err := conn.readQ.GetNext()
 		if errors.Is(err, ErrClosed) {
 			log.Debug("sequencer closed, marking readFIN")
 			conn.readFIN.Store(true)
-			return 0, io.EOF
+			return conn.finEOF()
 		} else if err != nil {
 			log.WithError(err).Debug("unexpected sequencer err")
 			return 0, err
@@ -784,7 +810,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			d := msg.Body
 			log.Tracef("got buffer from sequencer %d bytes", len(d))
 			if len(d) == 0 && conn.readFIN.Load() {
-				return 0, io.EOF
+				return conn.finEOF()
 			}
 
 			multipart := (flags & edge.MULTIPART_MSG) != 0
