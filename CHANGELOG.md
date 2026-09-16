@@ -121,7 +121,8 @@
 * github.com/openziti/edge-api: [v0.32.0 -> v0.36.0](https://github.com/openziti/edge-api/compare/v0.32.0...v0.36.0)
     * [Issue #198](https://github.com/openziti/edge-api/issues/198) - Advertise edge router capabilities in the service edge-router list
 
-* github.com/openziti/foundation/v2: [v2.0.95 -> v2.0.100](https://github.com/openziti/foundation/compare/v2.0.95...v2.0.100)
+* github.com/openziti/foundation/v2: [v2.0.95 -> v2.0.102-0.20260911201209-ee0af61de2d7](https://github.com/openziti/foundation/compare/v2.0.95...v2.0.102-0.20260911201209-ee0af61de2d7)
+    * [Issue #499](https://github.com/openziti/foundation/issues/499) - AtomicBitSet has no set-and-return-previous operation
     * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
     * [Issue #489](https://github.com/openziti/foundation/issues/489) - Add graceful shutdown and idle-wait support to goroutines.Pool
     * [Issue #488](https://github.com/openziti/foundation/issues/488) - Add package-level Fatal and SyncEmit helpers to logging
@@ -138,10 +139,11 @@
 * github.com/shirou/gopsutil/v4: v4.26.5 -> v4.26.8
 * github.com/sirupsen/logrus: v1.9.4 -> v1.10.2
 * github.com/stretchr/testify: v1.11.1 -> v1.12.1
-* github.com/zitadel/oidc/v3: v3.47.5 -> v3.49.5
+* github.com/zitadel/oidc/v3: v3.47.5 -> v3.49.6
 * go.mozilla.org/pkcs7: v0.9.0 -> v0.10.0
 * golang.org/x/crypto: v0.53.0 -> v0.56.0
-* golang.org/x/sys: v0.46.0 -> v0.47.0
+* golang.org/x/oauth2: v0.36.0 -> v0.37.0
+* golang.org/x/sys: v0.46.0 -> v0.48.0
 * google.golang.org/protobuf: v1.36.11 -> v1.36.12
 * github.com/ebitengine/purego: v0.10.1 -> v0.10.2
 * github.com/go-logr/logr: v1.4.3 -> v1.4.4
@@ -205,6 +207,7 @@ the control underlay when one is available.
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.0 -> v1.9.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v1.9.0)
+    * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #945](https://github.com/openziti/sdk-golang/issues/945) - Migrate to channel/v5
     * [Issue #941](https://github.com/openziti/sdk-golang/issues/941) - Prep for channel v5: explicit receive handler registration, drop send priorities
 

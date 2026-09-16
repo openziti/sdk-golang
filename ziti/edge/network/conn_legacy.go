@@ -17,6 +17,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -102,7 +103,7 @@ func (conn *edgeConnLegacy) RemoteAddr() net.Addr {
 }
 
 func (conn *edgeConnLegacy) CloseWrite() error {
-	if conn.sentFIN.CompareAndSwap(false, true) {
+	if !conn.flags.SetAndGetPrevious(flagSentFIN).IsSet(flagSentFIN) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.msgCh.WriteTraced(nil, nil, headers)
@@ -159,6 +160,19 @@ func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
 
 func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 	return conn.writeTo(data, &conn.msgCh)
+}
+
+// Read reads from the conn. Once the read side has reached EOF it closes the conn if the
+// router's StateClosed has already arrived; reads stop draining the queue at the FIN, so a
+// StateClosed behind or after it is never dequeued and is applied from here instead.
+func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
+	n, err := conn.edgeConnBase.Read(p)
+	if err != nil && errors.Is(err, io.EOF) {
+		if conn.flags.SetAndGetPrevious(flagFinRead).IsSet(flagStateClosedReceived) {
+			conn.close(false)
+		}
+	}
+	return n, err
 }
 
 func (conn *edgeConnLegacy) Close() error {
@@ -324,7 +338,13 @@ func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		if conn.IsClosed() {
 			return
 		}
-		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
+
+		// whichever of the FIN read and the StateClosed comes second performs the close
+		if conn.flags.SetAndGetPrevious(flagStateClosedReceived).IsSet(flagFinRead) {
+			conn.close(false)
+			return
+		}
 
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg, ch)
