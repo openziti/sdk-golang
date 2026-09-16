@@ -26,7 +26,6 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v5"
-	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
@@ -49,17 +48,7 @@ type edgeConnLegacy struct {
 	msgCh edge.MsgChannel
 	mux   edge.ConnMux[any]
 	readQ *noopSeq[*channel.Message]
-
-	// closeFlags coordinates the two events that together end a legacy conn: the read side
-	// reaching EOF and the router's StateClosed. Each side records its bit and closes if the
-	// other's is already present, so whichever comes second performs the close.
-	closeFlags concurrenz.AtomicBitSet
 }
-
-const (
-	closeFlagFinRead = iota
-	closeFlagStateClosedReceived
-)
 
 // --- edgeConnOps implementation ---
 
@@ -114,7 +103,7 @@ func (conn *edgeConnLegacy) RemoteAddr() net.Addr {
 }
 
 func (conn *edgeConnLegacy) CloseWrite() error {
-	if conn.sentFIN.CompareAndSwap(false, true) {
+	if !conn.flags.SetAndGetPrevious(flagSentFIN).IsSet(flagSentFIN) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.msgCh.WriteTraced(nil, nil, headers)
@@ -179,7 +168,7 @@ func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
 	n, err := conn.edgeConnBase.Read(p)
 	if err != nil && errors.Is(err, io.EOF) {
-		if conn.closeFlags.SetAndGetPrevious(closeFlagFinRead).IsSet(closeFlagStateClosedReceived) {
+		if conn.flags.SetAndGetPrevious(flagFinRead).IsSet(flagStateClosedReceived) {
 			conn.close(false)
 		}
 	}
@@ -349,9 +338,10 @@ func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		if conn.IsClosed() {
 			return
 		}
-		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
 
-		if conn.closeFlags.SetAndGetPrevious(closeFlagStateClosedReceived).IsSet(closeFlagFinRead) {
+		// whichever of the FIN read and the StateClosed comes second performs the close
+		if conn.flags.SetAndGetPrevious(flagStateClosedReceived).IsSet(flagFinRead) {
 			conn.close(false)
 			return
 		}

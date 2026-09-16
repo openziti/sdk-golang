@@ -118,7 +118,7 @@ func (conn *edgeConnXgress) close(_ bool) {
 }
 
 func (conn *edgeConnXgress) CloseWrite() error {
-	if conn.sentFIN.CompareAndSwap(false, true) {
+	if !conn.flags.SetAndGetPrevious(flagSentFIN).IsSet(flagSentFIN) {
 		if conn.xg.PeerSupportsEOF() {
 			conn.xg.CloseRxTimeout()
 		} else {
@@ -387,7 +387,7 @@ func (conn *edgeConnXgress) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		// routing is not accepting more data, so we need to close the send buffer
 		go conn.xg.CloseSendBuffer()
 		conn.xg.CloseXgToClient()
-		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
 
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg, ch)
