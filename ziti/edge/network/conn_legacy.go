@@ -103,7 +103,7 @@ func (conn *edgeConnLegacy) RemoteAddr() net.Addr {
 }
 
 func (conn *edgeConnLegacy) CloseWrite() error {
-	if !conn.flags.SetAndGetPrevious(flagSentFIN).IsSet(flagSentFIN) {
+	if !conn.flags.GetAndSet(flagSentFIN).IsSet(flagSentFIN) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.msgCh.WriteTraced(nil, nil, headers)
@@ -168,7 +168,7 @@ func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
 	n, err := conn.edgeConnBase.Read(p)
 	if err != nil && errors.Is(err, io.EOF) {
-		if conn.flags.SetAndGetPrevious(flagFinRead).IsSet(flagStateClosedReceived) {
+		if conn.flags.GetAndSet(flagFinRead).IsSet(flagStateClosedReceived) {
 			conn.close(false)
 		}
 	}
@@ -341,7 +341,7 @@ func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
 
 		// whichever of the FIN read and the StateClosed comes second performs the close
-		if conn.flags.SetAndGetPrevious(flagStateClosedReceived).IsSet(flagFinRead) {
+		if conn.flags.GetAndSet(flagStateClosedReceived).IsSet(flagFinRead) {
 			conn.close(false)
 			return
 		}

@@ -118,7 +118,7 @@ func (conn *edgeConnXgress) close(_ bool) {
 }
 
 func (conn *edgeConnXgress) CloseWrite() error {
-	if !conn.flags.SetAndGetPrevious(flagSentFIN).IsSet(flagSentFIN) {
+	if !conn.flags.GetAndSet(flagSentFIN).IsSet(flagSentFIN) {
 		if conn.xg.PeerSupportsEOF() {
 			conn.xg.CloseRxTimeout()
 		} else {

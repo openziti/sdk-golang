@@ -332,7 +332,7 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 // the end-of-stream signal to readers and writers. Type-specific close logic
 // runs after a true return.
 func (base *edgeConnBase) beginClose() bool {
-	if base.flags.SetAndGetPrevious(flagClosed).IsSet(flagClosed) {
+	if base.flags.GetAndSet(flagClosed).IsSet(flagClosed) {
 		return false
 	}
 	close(base.closeNotify)
