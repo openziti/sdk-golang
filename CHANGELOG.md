@@ -121,7 +121,7 @@
 * github.com/openziti/edge-api: [v0.32.0 -> v0.36.0](https://github.com/openziti/edge-api/compare/v0.32.0...v0.36.0)
     * [Issue #198](https://github.com/openziti/edge-api/issues/198) - Advertise edge router capabilities in the service edge-router list
 
-* github.com/openziti/foundation/v2: [v2.0.95 -> v2.0.102-0.20260916190224-e0b6c34ff058](https://github.com/openziti/foundation/compare/v2.0.95...v2.0.102-0.20260916190224-e0b6c34ff058)
+* github.com/openziti/foundation/v2: [v2.0.95 -> v2.0.102](https://github.com/openziti/foundation/compare/v2.0.95...v2.0.102)
     * [Issue #499](https://github.com/openziti/foundation/issues/499) - AtomicBitSet has no set-and-return-previous operation
     * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
     * [Issue #489](https://github.com/openziti/foundation/issues/489) - Add graceful shutdown and idle-wait support to goroutines.Pool

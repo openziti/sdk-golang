@@ -62,7 +62,7 @@ require (
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.2 // indirect
 	github.com/openziti/channel/v5 v5.0.29 // indirect
-	github.com/openziti/foundation/v2 v2.0.102-0.20260916190224-e0b6c34ff058 // indirect
+	github.com/openziti/foundation/v2 v2.0.102 // indirect
 	github.com/openziti/identity v1.0.140 // indirect
 	github.com/openziti/metrics v1.4.5 // indirect
 	github.com/openziti/sdk-golang/acquire v0.0.0
