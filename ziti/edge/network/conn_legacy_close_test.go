@@ -18,6 +18,7 @@ package network
 
 import (
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/openziti/channel/v5"
@@ -109,4 +110,38 @@ func Test_LegacyConn_StateClosedBeforeFinDeliversDataFirst(t *testing.T) {
 	req.ErrorIs(err, io.EOF)
 	req.True(conn.IsClosed())
 	requireMuxHasConn(t, mux, conn.Id(), false)
+}
+
+// The two events race on their real goroutines: the StateClosed arrives on the channel's
+// receive path while the application's Read is reaching the FIN. Whichever lands second must
+// close the conn, every time. Run under -race.
+func Test_LegacyConn_StateClosedRacesFinRead(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		conn, mux, ch := newLegacyCloseTestConn(t)
+		conn.AcceptMessage(finMsg(conn.Id()), ch)
+
+		var start, done sync.WaitGroup
+		start.Add(1)
+		done.Add(2)
+		go func() {
+			defer done.Done()
+			start.Wait()
+			conn.AcceptMessage(edge.NewStateClosedMsg(conn.Id(), "test"), ch)
+		}()
+		go func() {
+			defer done.Done()
+			start.Wait()
+			buf := make([]byte, 16)
+			for {
+				if _, err := conn.Read(buf); err != nil {
+					return
+				}
+			}
+		}()
+		start.Done()
+		done.Wait()
+
+		require.True(t, conn.IsClosed(), "iteration %d: conn not closed", i)
+		requireMuxHasConn(t, mux, conn.Id(), false)
+	}
 }
