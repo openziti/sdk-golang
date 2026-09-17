@@ -6,18 +6,75 @@
     * [Issue #1019](https://github.com/openziti/sdk-golang/issues/1019) - [Backport-1.8] Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1007](https://github.com/openziti/sdk-golang/issues/1007) - [Backport-1.8] Dial for an unknown edge conn id is dropped silently, costing the client its full connect timeout
 
-* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.102](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.102)
+* github.com/go-openapi/runtime: v0.32.2 -> v0.33.2
+* github.com/go-openapi/strfmt: v0.26.2 -> v0.27.2
+* github.com/openziti/channel/v4: [v4.3.11 -> v4.3.13](https://github.com/openziti/channel/compare/v4.3.11...v4.3.13)
+    * [Issue #302](https://github.com/openziti/channel/issues/302) - [Backport-4.x] ReplyFor header with a length other than 4 causes a nil pointer dereference on the rx path
+    * [Issue #304](https://github.com/openziti/channel/issues/304) - [Backport-4.x] Crafted frame lengths panic the decoder: int truncation on 32-bit, uint32 wrap everywhere
+    * [Issue #295](https://github.com/openziti/channel/issues/295) - closeUnresponsiveTimeout is loaded into checkInterval on the v4 line
+
+* github.com/openziti/edge-api: [v0.31.0 -> v0.36.1](https://github.com/openziti/edge-api/compare/v0.31.0...v0.36.1)
+    * [Issue #198](https://github.com/openziti/edge-api/issues/198) - Advertise edge router capabilities in the service edge-router list
+
+* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.104](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.104)
+    * [Issue #502](https://github.com/openziti/foundation/issues/502) - logging registry forwards records its root handler would decline
     * [Issue #499](https://github.com/openziti/foundation/issues/499) - AtomicBitSet has no set-and-return-previous operation
     * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
     * [Issue #489](https://github.com/openziti/foundation/issues/489) - Add graceful shutdown and idle-wait support to goroutines.Pool
     * [Issue #488](https://github.com/openziti/foundation/issues/488) - Add package-level Fatal and SyncEmit helpers to logging
     * [Issue #484](https://github.com/openziti/foundation/issues/484) - Add slog logging core (foundation/v2/logging) for upstream libraries
 
-* github.com/stretchr/testify: v1.11.1 -> v1.12.1
-* golang.org/x/sys: v0.45.0 -> v0.48.0
-* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
-* golang.org/x/term: v0.43.0 -> v0.45.0
+* github.com/openziti/identity: [v1.0.129 -> v1.0.143](https://github.com/openziti/identity/compare/v1.0.129...v1.0.143)
+    * [Issue #72](https://github.com/openziti/identity/issues/72) - Convert logging from pfxlog/logrus to foundation slog logging
+    * [Issue #74](https://github.com/openziti/identity/issues/74) - golangci-lint CI fails on go 1.25 module (action installs golangci-lint v1.x)
 
+* github.com/openziti/secretstream: [v0.1.49 -> v0.1.53](https://github.com/openziti/secretstream/compare/v0.1.49...v0.1.53)
+* github.com/openziti/transport/v2: [v2.0.215 -> v2.0.225](https://github.com/openziti/transport/compare/v2.0.215...v2.0.225)
+    * [Issue #176](https://github.com/openziti/transport/issues/176) - tcp.Connection hides CloseWrite, so callers cannot half-close a TCP transport connection
+    * [Issue #173](https://github.com/openziti/transport/issues/173) - Convert logging from pfxlog/logrus to foundation slog logging
+
+* github.com/shirou/gopsutil/v4: v4.26.4 -> v4.26.8
+* github.com/sirupsen/logrus: v1.9.4 -> v1.10.2
+* github.com/stretchr/testify: v1.11.1 -> v1.12.1
+* github.com/zitadel/oidc/v3: v3.47.5 -> v3.51.1
+* go.mozilla.org/pkcs7: v0.9.0 -> v0.10.0
+* golang.org/x/oauth2: v0.36.0 -> v0.37.0
+* golang.org/x/sys: v0.45.0 -> v0.48.0
+* google.golang.org/protobuf: v1.36.11 -> v1.36.12
+* github.com/ebitengine/purego: v0.10.0 -> v0.10.2
+* github.com/go-logr/logr: v1.4.3 -> v1.4.4
+* github.com/go-openapi/analysis: v0.25.0 -> v1.0.0
+* github.com/go-openapi/errors: v0.22.7 -> v0.22.8
+* github.com/go-openapi/jsonpointer: v0.23.1 -> v1.0.0
+* github.com/go-openapi/jsonreference: v0.21.5 -> v1.0.1
+* github.com/go-openapi/loads: v0.23.3 -> v0.25.2
+* github.com/go-openapi/runtime/server-middleware: v0.30.0 -> v0.33.2
+* github.com/go-openapi/spec: v0.22.4 -> v1.0.0
+* github.com/go-openapi/swag: v0.25.5 -> v0.29.1
+* github.com/go-openapi/swag/cmdutils: v0.25.5 -> v0.29.1
+* github.com/go-openapi/swag/conv: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/fileutils: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/jsonutils: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/loading: v0.26.0 -> v0.29.1
+* github.com/go-openapi/swag/mangling: v0.26.0 -> v0.29.1
+* github.com/go-openapi/swag/netutils: v0.25.5 -> v0.29.1
+* github.com/go-openapi/swag/pools: v0.29.2 (new)
+* github.com/go-openapi/swag/stringutils: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/typeutils: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/yamlutils: v0.26.0 -> v0.29.1
+* github.com/go-openapi/validate: v0.25.2 -> v1.0.0
+* github.com/mattn/go-colorable: v0.1.14 -> v0.1.15
+* github.com/mattn/go-isatty: v0.0.22 -> v0.0.24
+* github.com/oklog/ulid/v2: v2.1.1 -> v2.1.2
+* go.opentelemetry.io/otel: v1.43.0 -> v1.46.0
+* go.opentelemetry.io/otel/metric: v1.43.0 -> v1.46.0
+* go.opentelemetry.io/otel/trace: v1.43.0 -> v1.46.0
+* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
+* golang.org/x/crypto: v0.52.0 -> v0.57.0
+* golang.org/x/net: v0.55.0 -> v0.59.0
+* golang.org/x/sync: v0.20.0 -> v0.23.0
+* golang.org/x/term: v0.43.0 -> v0.46.0
+* golang.org/x/text: v0.37.0 -> v0.42.0
 
 # Release notes 1.8.1
 
