@@ -17,6 +17,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -66,7 +67,7 @@ func (conn *edgeConnLegacy) readSource() ([]byte, uint32, error) {
 
 		switch msg.ContentType {
 		case edge.ContentTypeStateClosed:
-			conn.handleStateClosedInRead()
+			conn.closeOnStateClosed("received ConnState_CLOSED message, closing connection")
 			continue
 		case edge.ContentTypeData:
 			return msg.Body, flags, nil
@@ -102,7 +103,7 @@ func (conn *edgeConnLegacy) RemoteAddr() net.Addr {
 }
 
 func (conn *edgeConnLegacy) CloseWrite() error {
-	if conn.sentFIN.CompareAndSwap(false, true) {
+	if !conn.flags.GetAndSet(flagSentFIN).IsSet(flagSentFIN) {
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.msgCh.WriteTraced(nil, nil, headers)
@@ -120,11 +121,14 @@ func (conn *edgeConnLegacy) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (conn *edgeConnLegacy) handleStateClosedInRead() {
+// closeOnStateClosed closes the conn in response to the router's StateClosed, logging which of
+// the three paths got there: the message dequeued in order, the message arriving after the FIN
+// was read, or the read reaching EOF with the message already received.
+func (conn *edgeConnLegacy) closeOnStateClosed(reason string) {
 	pfxlog.Logger().WithField("connId", conn.Id()).
 		WithField("marker", conn.marker).
 		WithField("circuitId", conn.circuitId).
-		Debug("received ConnState_CLOSED message, closing connection")
+		Debug(reason)
 	conn.close(false)
 }
 
@@ -159,6 +163,19 @@ func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
 
 func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 	return conn.writeTo(data, &conn.msgCh)
+}
+
+// Read reads from the conn. Once the read side has reached EOF it closes the conn if the
+// router's StateClosed has already arrived; reads stop draining the queue at the FIN, so a
+// StateClosed behind or after it is never dequeued and is applied from here instead.
+func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
+	n, err := conn.edgeConnBase.Read(p)
+	if err != nil && errors.Is(err, io.EOF) {
+		if conn.flags.GetAndSet(flagFinRead).IsSet(flagStateClosedReceived) {
+			conn.closeOnStateClosed("read reached EOF with ConnState_CLOSED already received, closing connection")
+		}
+	}
+	return n, err
 }
 
 func (conn *edgeConnLegacy) Close() error {
@@ -324,7 +341,13 @@ func (conn *edgeConnLegacy) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		if conn.IsClosed() {
 			return
 		}
-		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
+		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
+
+		// whichever of the FIN read and the StateClosed comes second performs the close
+		if conn.flags.GetAndSet(flagStateClosedReceived).IsSet(flagFinRead) {
+			conn.closeOnStateClosed("received ConnState_CLOSED message after the FIN was read, closing connection")
+			return
+		}
 
 	case edge.ContentTypeInspectRequest:
 		go conn.HandleInspect(msg, ch)

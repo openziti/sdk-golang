@@ -29,6 +29,7 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v5"
+	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/secretstream"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
@@ -77,10 +78,19 @@ func (s *routerSenderImpl) IsClosed() bool {
 
 // edgeConnBase contains the shared fields and delegate-free methods for edge connections.
 // Both edgeConnLegacy and edgeConnXgress embed this type.
+// Bits of edgeConnBase.flags. The first two are shared by both conn types; the last two are
+// used only by edgeConnLegacy to close on whichever of "read side reached EOF" and "StateClosed
+// received" comes second.
+const (
+	flagClosed = iota
+	flagSentFIN
+	flagFinRead
+	flagStateClosedReceived
+)
+
 type edgeConnBase struct {
-	closed                atomic.Bool
+	flags                 concurrenz.AtomicBitSet
 	closeNotify           chan struct{}
-	sentFIN               atomic.Bool
 	serviceName           string
 	sourceIdentity        string
 	acceptCompleteHandler *newConnHandler
@@ -108,7 +118,7 @@ func (base *edgeConnBase) SetData(data any) {
 
 // IsClosed returns true if this connection has been closed.
 func (base *edgeConnBase) IsClosed() bool {
-	return base.closed.Load()
+	return base.flags.IsSet(flagClosed)
 }
 
 // Network returns the service name for this connection.
@@ -165,11 +175,11 @@ func (base *edgeConnBase) setAcceptCompleteHandler(h *newConnHandler) {
 func (base *edgeConnBase) baseState() map[string]any {
 	return map[string]any{
 		"serviceName":        base.serviceName,
-		"closed":             base.closed.Load(),
+		"closed":             base.flags.IsSet(flagClosed),
 		"encryptionRequired": base.crypto,
 		"encrypted":          base.chunkReader.IsEncrypted(),
 		"readFIN":            base.chunkReader.ReadFIN(),
-		"sentFIN":            base.sentFIN.Load(),
+		"sentFIN":            base.flags.IsSet(flagSentFIN),
 		"marker":             base.marker,
 		"circuitId":          base.circuitId,
 	}
@@ -181,7 +191,7 @@ func (base *edgeConnBase) InspectSink(connId uint32) *inspect.VirtualConnDetail 
 		ConnId:      connId,
 		SinkType:    "dial",
 		ServiceName: base.serviceName,
-		Closed:      base.closed.Load(),
+		Closed:      base.flags.IsSet(flagClosed),
 		CircuitId:   base.circuitId,
 	}
 }
@@ -282,7 +292,7 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 // connections. The reader handles buffering, decryption, and multipart
 // splitting.
 func (base *edgeConnBase) Read(p []byte) (int, error) {
-	if base.closed.Load() {
+	if base.flags.IsSet(flagClosed) {
 		return 0, io.EOF
 	}
 	return base.chunkReader.Read(p)
@@ -292,7 +302,7 @@ func (base *edgeConnBase) Read(p []byte) (int, error) {
 // base.sender when configured. Mode-specific conn types pass their own writer
 // (msgCh for legacy, xgress writeAdapter for xgress).
 func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
-	if base.sentFIN.Load() {
+	if base.flags.IsSet(flagSentFIN) {
 		if base.IsClosed() {
 			return 0, errors.New("connection closed")
 		}
@@ -322,12 +332,12 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 // the end-of-stream signal to readers and writers. Type-specific close logic
 // runs after a true return.
 func (base *edgeConnBase) beginClose() bool {
-	if !base.closed.CompareAndSwap(false, true) {
+	if base.flags.GetAndSet(flagClosed).IsSet(flagClosed) {
 		return false
 	}
 	close(base.closeNotify)
 	base.chunkReader.MarkFIN()
-	base.sentFIN.Store(true)
+	base.flags.Set(flagSentFIN, true)
 	return true
 }
 
