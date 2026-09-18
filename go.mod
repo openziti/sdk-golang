@@ -2,6 +2,12 @@ module github.com/openziti/sdk-golang
 
 go 1.25.0
 
+// Published from main before the module moved to github.com/openziti/sdk-golang/v2; the supported v1 line is 1.8.x.
+retract (
+	v1.9.0
+	v1.9.1
+)
+
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/cenkalti/backoff/v4 v4.3.0
