@@ -1,3 +1,13 @@
+# Release notes 1.9.1
+
+This release retracts v1.9.0 and itself. v1.9.0 was published from main while the channel/v5
+migration was still landing, and main has since moved to the `github.com/openziti/sdk-golang/v2`
+module path. Consumers of the v1 module path should stay on the 1.8.x line, which continues to
+receive fixes. With the retraction in place, `go get github.com/openziti/sdk-golang@latest` and
+`go get -u` resolve to the latest 1.8.x release instead of 1.9.0.
+
+No code changes.
+
 # Release notes 1.9.0
 
 ## What's New
