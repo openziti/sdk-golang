@@ -100,3 +100,28 @@ func TestConnRefusalError_ReadsStructuredError(t *testing.T) {
 	req.False(errors.Is(err, ErrPostureFailed))
 	req.Contains(err.Error(), "boom")
 }
+
+// TestConnRefusalError_E2eeCodes locks in the mapping for the two DirectE2EE rejections: each
+// wire code yields its own cause and matches only its own sentinel.
+func TestConnRefusalError_E2eeCodes(t *testing.T) {
+	req := require.New(t)
+
+	noCommon := Error{Message: "no common e2ee mode", Code: ErrorCodeE2eeNoCommonMode}
+	noCommonReply := NewStateClosedMsg(1, noCommon.Message)
+	noCommon.ApplyToMsg(noCommonReply)
+
+	directRequired := Error{Message: "direct e2ee required", Code: ErrorCodeE2eeDirectRequired}
+	directRequiredReply := NewStateClosedMsg(1, directRequired.Message)
+	directRequired.ApplyToMsg(directRequiredReply)
+
+	noCommonErr := ConnRefusalError(noCommonReply, "ssh", "svc-1", "er-east", "r-1")
+	directRequiredErr := ConnRefusalError(directRequiredReply, "ssh", "svc-1", "er-east", "r-1")
+
+	req.True(errors.Is(noCommonErr, ErrE2eeNoCommonMode))
+	req.False(errors.Is(noCommonErr, ErrE2eeDirectRequired))
+	req.Contains(noCommonErr.Error(), "no common e2ee mode")
+
+	req.True(errors.Is(directRequiredErr, ErrE2eeDirectRequired))
+	req.False(errors.Is(directRequiredErr, ErrE2eeNoCommonMode))
+	req.Contains(directRequiredErr.Error(), "direct e2ee required")
+}
