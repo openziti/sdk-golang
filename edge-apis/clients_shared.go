@@ -488,7 +488,7 @@ func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 		return nil, fmt.Errorf("failed to exchange authorization code: %w", err)
 	}
 
-	if result.Tokens.IDTokenClaims.Nonce != verificationParams.Nonce {
+	if result.IDTokenClaims.Nonce != verificationParams.Nonce {
 		return nil, errors.New("authentication failed, nonce mismatch")
 	}
 
