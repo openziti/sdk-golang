@@ -1057,6 +1057,23 @@ func tokenRefreshTime(expiresAt time.Time) time.Time {
 	return time.Now().Add(delay)
 }
 
+const (
+	svcRefreshRetryMin = 5 * time.Second
+	svcRefreshRetryMax = 2 * time.Minute
+)
+
+// svcRefreshRetryDelay returns how long to wait before re-checking for service
+// updates after the controller reported itself unavailable. The delay is drawn
+// from [svcRefreshRetryMin, min(svcRefreshRetryMax, refreshInterval/2)); when
+// that window is empty, the regular jittered refreshInterval is returned instead.
+func svcRefreshRetryDelay(refreshInterval time.Duration, jitter float64) time.Duration {
+	span := min(svcRefreshRetryMax, refreshInterval/2) - svcRefreshRetryMin
+	if span <= 0 {
+		return jitteredDuration(refreshInterval, jitter)
+	}
+	return svcRefreshRetryMin + time.Duration(rand.Int63n(int64(span)))
+}
+
 func (context *ContextImpl) runRefreshes() {
 	log := pfxlog.Logger()
 	svcRefreshInterval := context.options.RefreshInterval
@@ -1152,9 +1169,7 @@ func (context *ContextImpl) runRefreshes() {
 			log.Debug("refreshing services")
 			if err := context.refreshServices(false, false); err != nil {
 				if errors.Is(err, ErrControllerUnavailable) {
-					retryMax := min(2*time.Minute, svcRefreshInterval/2)
-					retryDelay := 5*time.Second + time.Duration(rand.Int63n(int64(retryMax-5*time.Second)))
-					svcRefreshTimer = time.After(retryDelay)
+					svcRefreshTimer = time.After(svcRefreshRetryDelay(svcRefreshInterval, jitter))
 					continue
 				}
 				log.WithError(err).Error("failed to load service updates")
