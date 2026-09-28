@@ -187,6 +187,44 @@ func Test_tokenRefreshTime(t *testing.T) {
 	})
 }
 
+func Test_svcRefreshRetryDelay(t *testing.T) {
+	const jitter = 0.1
+
+	t.Run("short intervals fall back to the jittered refresh interval", func(t *testing.T) {
+		for _, interval := range []time.Duration{time.Second, 5 * time.Second, 10 * time.Second} {
+			delta := time.Duration(float64(interval) * jitter)
+			minExpected := interval - delta
+			maxExpected := interval + delta
+
+			for i := 0; i < 1000; i++ {
+				result := svcRefreshRetryDelay(interval, jitter)
+				assert.GreaterOrEqual(t, result, minExpected, "interval %v iter %d: result %v below min %v", interval, i, result, minExpected)
+				assert.LessOrEqual(t, result, maxExpected, "interval %v iter %d: result %v above max %v", interval, i, result, maxExpected)
+			}
+		}
+	})
+
+	t.Run("longer intervals retry in [5s, min(2m, interval/2))", func(t *testing.T) {
+		for _, interval := range []time.Duration{11 * time.Second, time.Minute, 5 * time.Minute, time.Hour} {
+			maxExpected := min(2*time.Minute, interval/2)
+
+			for i := 0; i < 1000; i++ {
+				result := svcRefreshRetryDelay(interval, jitter)
+				assert.GreaterOrEqual(t, result, 5*time.Second, "interval %v iter %d: result %v below 5s", interval, i, result)
+				assert.Less(t, result, maxExpected, "interval %v iter %d: result %v not less than max %v", interval, i, result, maxExpected)
+			}
+		}
+	})
+
+	t.Run("results vary across calls", func(t *testing.T) {
+		seen := map[time.Duration]bool{}
+		for i := 0; i < 100; i++ {
+			seen[svcRefreshRetryDelay(5*time.Minute, jitter)] = true
+		}
+		assert.Greater(t, len(seen), 1, "expected multiple distinct values")
+	})
+}
+
 func Test_AddressMatch(t *testing.T) {
 
 	http := edge.PortRange{Low: 80, High: 80}
