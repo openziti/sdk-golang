@@ -86,6 +86,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang/v2: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
+    * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1054](https://github.com/openziti/sdk-golang/issues/1054) - Xgress conn closed locally ignores the router's StateClosed and retransmits forever
     * [Issue #977](https://github.com/openziti/sdk-golang/issues/977) - Add DirectE2EE header constants and error enum values
     * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
