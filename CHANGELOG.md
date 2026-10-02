@@ -10,10 +10,37 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.2 -> v1.8.3](https://github.com/openziti/sdk-golang/compare/v1.8.2...v1.8.3)
+    * [Issue #1037](https://github.com/openziti/sdk-golang/issues/1037) - [Backport-1.8] Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
+    * [Issue #1043](https://github.com/openziti/sdk-golang/issues/1043) - [Backport-1.8] Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1032](https://github.com/openziti/sdk-golang/issues/1032) - [Backport-1.8] Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1056](https://github.com/openziti/sdk-golang/issues/1056) - [Backport-1.8] Xgress conn closed locally ignores the router's StateClosed and retransmits forever
-    * [Issue #1043](https://github.com/openziti/sdk-golang/issues/1043) - [Backport-1.8] Cost and precedence updates on a hosted service are lost when its listener rebinds
 
+* github.com/go-openapi/runtime: v0.33.2 -> v0.33.3
+* github.com/go-openapi/strfmt: v0.27.2 -> v0.27.4
+* github.com/openziti/channel/v4: [v4.3.13 -> v4.3.14](https://github.com/openziti/channel/compare/v4.3.13...v4.3.14)
+    * [Issue #313](https://github.com/openziti/channel/issues/313) - [Backport-v4] A queued message can be discarded unwritten after Send reports success
+
+* github.com/openziti/foundation/v2: [v2.0.104 -> v2.0.105](https://github.com/openziti/foundation/compare/v2.0.104...v2.0.105)
+* github.com/openziti/identity: [v1.0.143 -> v1.0.144](https://github.com/openziti/identity/compare/v1.0.143...v1.0.144)
+* github.com/openziti/transport/v2: [v2.0.225 -> v2.0.226](https://github.com/openziti/transport/compare/v2.0.225...v2.0.226)
+* github.com/shirou/gopsutil/v4: v4.26.8 -> v4.26.9
+* github.com/zitadel/oidc/v3: v3.51.1 -> v3.51.16
+* golang.org/x/sys: v0.48.0 -> v0.49.0
+* github.com/ebitengine/purego: v0.10.2 -> v0.11.1
+* github.com/go-openapi/errors: v0.22.8 -> v0.22.9
+* github.com/go-openapi/jsonpointer: v1.0.0 -> v1.0.1
+* github.com/go-openapi/jsonreference: v1.0.1 -> v1.0.2
+* github.com/go-openapi/loads: v0.25.2 -> v0.25.3
+* github.com/go-openapi/runtime/server-middleware: v0.33.2 -> v0.33.3
+* github.com/go-openapi/spec: v1.0.0 -> v1.0.1
+* github.com/power-devops/perfstat: v0.0.0-20240221224432-82ca36839d55 -> v0.0.0-20260805114148-88456608a4f6
+* github.com/tklauser/go-sysconf: v0.3.16 -> v0.4.0
+* github.com/tklauser/numcpus: v0.11.0 -> v0.12.0
+* golang.org/x/crypto: v0.57.0 -> v0.58.0
+* golang.org/x/net: v0.59.0 -> v0.61.0
+* golang.org/x/sync: v0.23.0 -> v0.24.0
+* golang.org/x/term: v0.46.0 -> v0.47.0
+* golang.org/x/text: v0.42.0 -> v0.43.0
 
 # Release notes 1.8.2
 
