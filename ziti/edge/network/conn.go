@@ -915,6 +915,13 @@ func (conn *edgeConn) close(notifyCtrl bool) {
 		// cancel any pending writes
 		_ = conn.xgCircuit.writeAdapter.SetWriteDeadline(time.Now())
 
+		if !conn.xgCircuit.xg.IsCircuitStarted() {
+			// A terminator's send buffer only runs once the circuit starts, so the EOF that
+			// PeerClosed sends would block until CircuitStartTimeout.
+			conn.xgCircuit.xg.Close()
+			return
+		}
+
 		// if we're using xgress, wait to remove the connection from the mux until the xgress closes, otherwise it becomes unroutable.
 		conn.xgCircuit.xg.PeerClosed()
 	}

@@ -324,16 +324,19 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 		}
 	}
 
-	cleanupAndReportError := func(description string, err error) {
+	reportError := func(description string, err error) {
 		logger.WithError(err).Error(description)
-
-		edgeCh.close(false)
 
 		reply := edge.NewDialFailedMsg(conn.Id(), fmt.Sprintf("%s (%s)", description, err.Error()))
 		reply.ReplyTo(message)
 		if sendErr := reply.WithPriority(channel.Highest).WithTimeout(5 * time.Second).SendAndWaitForWire(conn.GetControlSender()); sendErr != nil {
 			logger.WithError(sendErr).Error("failed to send reply to dial request")
 		}
+	}
+
+	cleanupAndReportError := func(description string, err error) {
+		edgeCh.close(false)
+		reportError(description, err)
 	}
 
 	newConnLogger := pfxlog.Logger().
@@ -346,7 +349,9 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	// duplicate errors only happen on the server side, since client controls ids
 	if err := conn.msgMux.Add(edgeCh); err != nil {
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		cleanupAndReportError("invalid connection id, already in use", err)
+		// edgeCh holds nothing that needs releasing yet, and closing it would tear down the
+		// live conn registered under the same id.
+		reportError("invalid connection id, already in use", err)
 		return
 	}
 
