@@ -89,6 +89,7 @@
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1054](https://github.com/openziti/sdk-golang/issues/1054) - Xgress conn closed locally ignores the router's StateClosed and retransmits forever
     * [Issue #977](https://github.com/openziti/sdk-golang/issues/977) - Add DirectE2EE header constants and error enum values
+    * [Issue #1036](https://github.com/openziti/sdk-golang/issues/1036) - Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
     * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1004](https://github.com/openziti/sdk-golang/issues/1004) - UnmarshallPacketPayload indexes the buffer without bounds checks
     * [Issue #1006](https://github.com/openziti/sdk-golang/issues/1006) - Chunked payload reassembly trusts the peer's declared size
