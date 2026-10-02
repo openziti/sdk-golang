@@ -344,7 +344,9 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 	// duplicate errors only happen on the server side, since client controls ids
 	if err := conn.msgMux.Add(edgeCh); err != nil {
 		newConnLogger.WithError(err).Error("invalid conn id, already in use")
-		cleanupAndReportError("invalid connection id, already in use", err)
+		// edgeCh holds nothing that needs releasing yet, and closing it would tear down the
+		// live conn registered under the same id.
+		reportDialFailure(logger, ch, conn.Id(), message, "invalid connection id, already in use", err)
 		return
 	}
 
