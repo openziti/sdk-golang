@@ -304,7 +304,7 @@ func (self *Xgress) Start() {
 }
 
 func (self *Xgress) terminateIfNotStarted() {
-	if !self.IsCircuitStarted() {
+	if !self.IsCircuitStarted() && !self.Closed() {
 		logrus.WithField("xgress", self.Label()).Warn("xgress circuit not started in time, closing")
 		self.Close()
 	}
@@ -737,10 +737,15 @@ func (self *Xgress) sendWriteFailed() {
 	_ = self.forwardPayload(payload, context.Background())
 }
 
+// endOfCircuitTimeout bounds the end-of-circuit send that Close makes.
+var endOfCircuitTimeout = 5 * time.Second
+
 func (self *Xgress) sendEndOfCircuit() {
 	log := pfxlog.ContextLogger(self.Label())
 	log.Debug("sendEndOfCircuit")
-	self.dataPlane.ForwardPayload(self.GetEndCircuit(), self, context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), endOfCircuitTimeout)
+	defer cancel()
+	self.dataPlane.ForwardPayload(self.GetEndCircuit(), self, ctx)
 }
 
 /**
@@ -1283,4 +1288,3 @@ func readU8ToBytesMap(buf []byte) (map[uint8][]byte, []byte, error) {
 
 	return result, buf, nil
 }
-
