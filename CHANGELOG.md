@@ -1,3 +1,11 @@
+# Release notes 1.8.3
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.2 -> v1.8.3](https://github.com/openziti/sdk-golang/compare/v1.8.2...v1.8.3)
+    * [Issue #1037](https://github.com/openziti/sdk-golang/issues/1037) - [Backport-1.8] Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
+
+
 # Release notes 1.8.2
 
 ## Issues Fixed and Dependency Updates
