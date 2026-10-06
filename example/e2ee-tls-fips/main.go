@@ -33,9 +33,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/openziti/sdk-golang/v2/ziti"
@@ -57,6 +57,7 @@ func main() {
 	method := flags.String("method", "tls", "e2ee method: tls or libsodium")
 	forceV1 := flags.Bool("v1", false, "dial with Connect V1 instead of ConnectV2")
 	sdkFlowControl := flags.Bool("sdk-flow-control", false, "with -v1, ask for sdk flow control (xgress) instead of legacy")
+	addr := flags.String("addr", "localhost:17777", "tcp-echo listen address, or tcp-check target")
 	_ = flags.Parse(os.Args[2:])
 
 	reportFips()
@@ -66,6 +67,12 @@ func main() {
 		if !checkEnforcement() {
 			os.Exit(1)
 		}
+		return
+	case "tcp-echo":
+		tcpEcho(*addr)
+		return
+	case "tcp-check":
+		tcpCheck(*addr, *size, *count)
 		return
 	case "host", "dial", "both":
 		if *identityFile == "" || *service == "" {
@@ -92,7 +99,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: e2ee-tls-fips fips|host|dial|both [-identity file] [-service name] [-size n] [-count n]")
+	fmt.Fprintln(os.Stderr, "usage: e2ee-tls-fips fips|host|dial|both|tcp-echo|tcp-check [-identity file] [-service name] [-addr host:port] [-size n] [-count n]")
 	os.Exit(2)
 }
 
@@ -130,7 +137,7 @@ func checkEnforcement() bool {
 		return err
 	}()
 
-	only := strings.Contains(os.Getenv("GODEBUG"), "fips140=only")
+	only := fips140.Enforced()
 	switch {
 	case err != nil && only:
 		logrus.Infof("enforcement: non-approved X25519 key generation failed as required: %v", err)
@@ -153,10 +160,16 @@ func newContext(identityFile, method string) ziti.Context {
 		logrus.WithError(err).Fatal("unable to load identity")
 	}
 	opts := *ziti.DefaultOptions
-	if method == "tls" {
+	switch method {
+	case "tls":
 		opts.E2EEMethod = edge.CryptoMethodTLS
+	case "libsodium":
+	default:
+		logrus.Fatalf("unknown -method %q: want tls or libsodium", method)
 	}
-	logrus.Infof("e2ee method %s", opts.E2EEMethod)
+	// the context uses tls regardless when the process runs Go's FIPS module or the controller
+	// reports FIPS_MODE
+	logrus.Infof("configured e2ee method %s", opts.E2EEMethod)
 	ctx, err := ziti.NewContextWithOpts(cfg, &opts)
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to create context")
@@ -217,9 +230,17 @@ func dialOnce(ctx ziti.Context, service string, size int, forceV1, sdkFlowContro
 		return err
 	}
 	defer func() { _ = conn.Close() }()
+	if err = echoCheck(conn, conn.CloseWrite, size); err != nil {
+		return err
+	}
+	logrus.Infof("dial: echoed %d bytes, state %s", size, conn.GetState())
+	return nil
+}
 
+// echoCheck sends size random bytes, half-closes, and checks the same bytes come back.
+func echoCheck(conn net.Conn, closeWrite func() error, size int) error {
 	payload := make([]byte, size)
-	if _, err = rand.Read(payload); err != nil {
+	if _, err := rand.Read(payload); err != nil {
 		return err
 	}
 
@@ -227,7 +248,7 @@ func dialOnce(ctx ziti.Context, service string, size int, forceV1, sdkFlowContro
 	go func() {
 		_, err := conn.Write(payload)
 		if err == nil {
-			err = conn.CloseWrite()
+			err = closeWrite()
 		}
 		errC <- err
 	}()
@@ -238,16 +259,60 @@ func dialOnce(ctx ziti.Context, service string, size int, forceV1, sdkFlowContro
 		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		n, err := conn.Read(buf)
 		got = append(got, buf[:n]...)
-		if err != nil {
+		if err != nil && len(got) < size {
 			return fmt.Errorf("read after %d of %d bytes: %w", len(got), size, err)
 		}
 	}
-	if err = <-errC; err != nil {
+	if err := <-errC; err != nil {
 		return err
 	}
 	if !bytes.Equal(payload, got) {
 		return fmt.Errorf("echo mismatch")
 	}
-	logrus.Infof("dial: echoed %d bytes, state %s", size, conn.GetState())
 	return nil
+}
+
+// tcpEcho is a plain TCP echo server, for a C SDK host to forward to.
+func tcpEcho(addr string) {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		logrus.WithError(err).Fatal("unable to listen")
+	}
+	logrus.Infof("tcp echo on %s", l.Addr())
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			logrus.WithError(err).Fatal("accept failed")
+		}
+		go func() {
+			defer func() { _ = conn.Close() }()
+			n, err := io.Copy(conn, conn)
+			logrus.WithError(err).Infof("tcp echo: echoed %d bytes", n)
+		}()
+	}
+}
+
+// tcpCheck runs the echo check over plain TCP, for a C SDK dialer's local listener.
+func tcpCheck(addr string, size, count int) {
+	failed := false
+	for i := 0; i < count; i++ {
+		err := func() error {
+			conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+			return echoCheck(conn, conn.(*net.TCPConn).CloseWrite, size)
+		}()
+		if err != nil {
+			logrus.WithError(err).Errorf("tcp check %d failed", i+1)
+			failed = true
+		} else {
+			logrus.Infof("tcp check %d: echoed %d bytes", i+1, size)
+		}
+	}
+	if failed {
+		os.Exit(1)
+	}
+	logrus.Infof("PASS: %d tcp checks echoed %d bytes each", count, size)
 }

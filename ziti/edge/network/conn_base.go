@@ -192,6 +192,11 @@ func (base *edgeConnBase) baseState() map[string]any {
 			state["tlsVersion"] = tls.VersionName(cs.Version)
 			state["tlsCipherSuite"] = tls.CipherSuiteName(cs.CipherSuite)
 			state["tlsCurve"] = cs.CurveID.String()
+			if len(cs.PeerCertificates) > 0 {
+				state["tlsPeerCert"] = cs.PeerCertificates[0].Subject.CommonName
+			} else {
+				state["tlsPeerCert"] = "none"
+			}
 		}
 	}
 	return state
