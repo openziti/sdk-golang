@@ -280,7 +280,7 @@ func TestTlsE2eeHandshakeWithData(t *testing.T) {
 	req.NoError(err)
 	data := p.cliSink.take()
 
-	// the dialer's Finished and its first data arrive in one buffer (ziti-sdk-c e01e1e4)
+	// the dialer's Finished and its first data arrive in one buffer
 	plain, err := p.srv.decrypt(bytes.Join(append(finished, data...), nil))
 	req.NoError(err)
 	req.True(p.srv.handshakeComplete())

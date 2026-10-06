@@ -420,8 +420,6 @@ func (base *edgeConnBase) primeTls(closeConn func(notifyCtrl bool)) {
 	}()
 }
 
-// setTlsWriteDeadline hands the conn's write deadline to the tls engine, where a write waits
-// on the handshake before it reaches the data sink.
 func (base *edgeConnBase) setTlsWriteDeadline(t time.Time) {
 	if base.tlsE2ee != nil {
 		base.tlsE2ee.setWriteDeadline(t)
@@ -429,8 +427,7 @@ func (base *edgeConnBase) setTlsWriteDeadline(t time.Time) {
 }
 
 // establishClientTlsFromReply completes the dialer side of CryptoMethodTLS from the host's first
-// flight in the dial reply. The dialer's last flight goes out as the first Data message. The
-// caller then calls primeTlsIfNeeded.
+// flight in the dial reply. The dialer's last flight goes out as the first Data message.
 func (base *edgeConnBase) establishClientTlsFromReply(e *tlsE2ee, replyMsg *channel.Message, sink io.Writer) error {
 	if err := checkPeerCryptoMethod(replyMsg.Headers[edge.CryptoMethodHeader]); err != nil {
 		return err

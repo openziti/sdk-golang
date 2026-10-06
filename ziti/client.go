@@ -595,8 +595,7 @@ func (self *CtrlClient) loadCtrlCapabilities() {
 	}
 }
 
-// controllerRequestsFips reports whether the controller carries the FIPS_MODE build flag. It
-// returns false until the controller version loads.
+// controllerRequestsFips is false until the controller version loads.
 func (self *CtrlClient) controllerRequestsFips() bool {
 	self.ensureCtrlCapabilities()
 	return self.controllerFipsMode.Load()

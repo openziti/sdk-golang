@@ -105,7 +105,6 @@ func (r *edgeChunkReader) ReadFIN() bool {
 	return r.readFIN.Load()
 }
 
-// IsEncrypted reports whether the reader decrypts chunks.
 func (r *edgeChunkReader) IsEncrypted() bool {
 	return r.rxKey != nil || r.receiver != nil || r.tls != nil
 }
@@ -116,11 +115,9 @@ func (r *edgeChunkReader) SetTls(e *tlsE2ee) {
 
 const primeTlsRetryInterval = 50 * time.Millisecond
 
-// primeTls pulls chunks until the TLS handshake ends, buffering any plaintext for Read. It lets a
-// conn write before the application first reads: the write waits on the handshake, and the
-// peer's handshake bytes only arrive through the chunk source. A read deadline the application
-// set does not stop it: it lets a waiting Read in, then pulls again. It returns the handshake
-// error, if any, and nil when the source ends.
+// primeTls pulls chunks until the TLS handshake ends, buffering plaintext for Read, so a conn can
+// write before the application reads. An application read deadline does not stop it. It returns
+// the handshake error, or nil when the source ends.
 func (r *edgeChunkReader) primeTls() error {
 	for {
 		retry, err := r.primeTlsUntilDeadline()

@@ -170,8 +170,6 @@ func encryptionRequired(service *rest_model.ServiceDetail) bool {
 	return service.EncryptionRequired != nil && *service.EncryptionRequired
 }
 
-// maybeKeyPair returns a fresh libsodium key pair if the service requires encryption, or nil
-// otherwise.
 func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, error) {
 	if !encryptionRequired(service) {
 		return nil, nil

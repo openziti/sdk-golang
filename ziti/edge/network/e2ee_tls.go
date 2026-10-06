@@ -184,7 +184,6 @@ type tlsPipeAddr struct{}
 func (tlsPipeAddr) Network() string { return "ziti-e2ee" }
 func (tlsPipeAddr) String() string  { return "ziti-e2ee" }
 
-// newTlsE2eeClient starts a client handshake and returns the ClientHello.
 func newTlsE2eeClient(cfg *tls.Config) (*tlsE2ee, []byte, error) {
 	e := newTlsE2ee(cfg, false)
 	out, err := e.step(nil)
@@ -272,7 +271,6 @@ func (e *tlsE2ee) handshakeComplete() bool {
 	return ended && err == nil
 }
 
-// handshakeResult reports whether the handshake has ended, and its error if it failed.
 func (e *tlsE2ee) handshakeResult() (bool, error) {
 	select {
 	case <-e.hsDone:

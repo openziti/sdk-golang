@@ -193,9 +193,8 @@ const (
 	// CryptoMethodLibsodium are used to indicate the crypto engine in use
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
 	CryptoMethodSSL       CryptoMethod = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
-	// CryptoMethodTLS runs a TLS session end to end, carried in edge message fields. It matches
-	// ziti-sdk-c's ziti_crypto_tls. Its CryptoMethodHeader goes on the wire as the string "tls",
-	// the way the C SDK sends it, never as this byte value.
+	// CryptoMethodTLS is ziti-sdk-c's ziti_crypto_tls. On the wire its CryptoMethodHeader is the
+	// string "tls", never this byte value.
 	CryptoMethodTLS CryptoMethod = 2
 )
 

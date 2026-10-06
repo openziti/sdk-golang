@@ -294,10 +294,8 @@ type ContextImpl struct {
 	fipsE2eeLogged atomic.Bool
 }
 
-// e2eeMethod returns the end-to-end encryption method for new dials and listens. It is
-// CryptoMethodTLS when the process runs Go's FIPS 140-3 module or the controller reports the
-// FIPS_MODE build flag, because libsodium's X25519 and XChaCha20-Poly1305 are not FIPS approved.
-// Otherwise it is the configured method.
+// e2eeMethod forces CryptoMethodTLS under Go's FIPS module or a FIPS_MODE controller, because
+// libsodium's algorithms are not FIPS approved.
 func (context *ContextImpl) e2eeMethod() edge.CryptoMethod {
 	if context.options.E2EEMethod == edge.CryptoMethodTLS {
 		return edge.CryptoMethodTLS
@@ -2721,7 +2719,7 @@ type listenerManager struct {
 	observers              concurrenz.CopyOnWriteSlice[ListenEventObserver]
 	sessionRefreshBaseLine time.Duration
 	// e2eeProvisional is set while options.CryptoMethod may change once the controller
-	// capabilities load. See recheckE2eeMethod.
+	// capabilities load.
 	e2eeProvisional bool
 }
 

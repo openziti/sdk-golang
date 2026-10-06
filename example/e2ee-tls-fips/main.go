@@ -103,7 +103,6 @@ func usage() {
 	os.Exit(2)
 }
 
-// reportFips logs what the binary was built with and whether the FIPS module is on right now.
 func reportFips() {
 	var gofips, godebug string
 	if info, ok := debug.ReadBuildInfo(); ok {
@@ -167,8 +166,6 @@ func newContext(identityFile, method string) ziti.Context {
 	default:
 		logrus.Fatalf("unknown -method %q: want tls or libsodium", method)
 	}
-	// the context uses tls regardless when the process runs Go's FIPS module or the controller
-	// reports FIPS_MODE
 	logrus.Infof("configured e2ee method %s", opts.E2EEMethod)
 	ctx, err := ziti.NewContextWithOpts(cfg, &opts)
 	if err != nil {
