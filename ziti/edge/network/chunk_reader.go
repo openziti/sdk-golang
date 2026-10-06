@@ -19,6 +19,7 @@ package network
 import (
 	"encoding/binary"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.com/openziti/sdk-golang/v2/edgexg"
@@ -56,6 +57,15 @@ type edgeChunkReader struct {
 	// It is consumed on the first chunk and replaced by receiver.
 	rxKey    []byte
 	receiver secretstream.Decryptor
+
+	// tls is the CryptoMethodTLS engine. It is set instead of rxKey/receiver.
+	tls *tlsE2ee
+
+	// readLock serializes Read with primeTls, which may pull chunks from another goroutine
+	// until the TLS handshake completes.
+	readLock sync.Mutex
+	// primeErr is a fatal crypto error primeTls hit, returned by the next Read
+	primeErr error
 
 	// inBuffer holds data that was decoded but didn't fit in the caller's
 	// p slice. Subsequent Read calls drain this before pulling new chunks.
@@ -97,18 +107,59 @@ func (r *edgeChunkReader) ReadFIN() bool {
 // IsEncrypted reports whether the reader is either waiting for the secretstream
 // header (key set but no receiver yet) or actively decrypting (receiver set).
 func (r *edgeChunkReader) IsEncrypted() bool {
-	return r.rxKey != nil || r.receiver != nil
+	return r.rxKey != nil || r.receiver != nil || r.tls != nil
+}
+
+// SetTls installs the TLS engine that decrypts every chunk.
+func (r *edgeChunkReader) SetTls(e *tlsE2ee) {
+	r.tls = e
+}
+
+// primeTls pulls chunks until the TLS handshake completes, buffering any plaintext for Read. It
+// lets a conn write before the application first reads: the write waits on the handshake, and
+// the peer's handshake bytes only arrive through the chunk source. It gives up quietly on a
+// source error, leaving Read to see the same error.
+func (r *edgeChunkReader) primeTls() {
+	r.readLock.Lock()
+	defer r.readLock.Unlock()
+
+	for !r.tls.handshakeComplete() && !r.readFIN.Load() {
+		data, flags, err := r.source()
+		if err != nil {
+			return
+		}
+		if flags&edge.FIN != 0 {
+			r.readFIN.Store(true)
+		}
+		plain, err := r.tls.decrypt(data)
+		if err != nil {
+			r.logger().WithError(err).Error("tls e2ee handshake failed")
+			r.primeErr = err
+			return
+		}
+		if _, err = r.deliver(nil, plain, flags&edge.MULTIPART_MSG != 0); err != nil {
+			r.primeErr = err
+			return
+		}
+	}
 }
 
 // Read fills p with decoded, decrypted data from the source. It pulls new
 // chunks only when its internal buffer is empty. Each Read returns at most
 // one chunk's worth of data, matching the existing doRead contract.
 func (r *edgeChunkReader) Read(p []byte) (int, error) {
+	r.readLock.Lock()
+	defer r.readLock.Unlock()
+
 	log := r.logger()
 
 	// Fast path: previously-buffered data.
 	if len(r.inBuffer) > 0 {
 		return r.drainBuffer(p), nil
+	}
+
+	if r.primeErr != nil {
+		return 0, r.primeErr
 	}
 
 	for {
@@ -155,6 +206,19 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			if err != nil {
 				log.Errorf("crypto failed on chunk of size=%d err=(%v)", len(data), err)
 				return 0, err
+			}
+		}
+
+		// A TLS chunk may hold only handshake bytes or part of a record. That yields no
+		// plaintext and is not an error, so read the next chunk.
+		if r.tls != nil {
+			size := len(data)
+			if data, err = r.tls.decrypt(data); err != nil {
+				log.Errorf("crypto failed on chunk of size=%d err=(%v)", size, err)
+				return 0, err
+			}
+			if len(data) == 0 {
+				continue
 			}
 		}
 
