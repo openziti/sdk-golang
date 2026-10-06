@@ -213,8 +213,8 @@ func (m CryptoMethod) String() string {
 	}
 }
 
-// ParseCryptoMethodHeader reads a CryptoMethodHeader value. The Go SDK sends a single byte and the
-// C SDK sends a name ("none", "libsodium", "aes-gcm", "tls"), so both forms are accepted.
+// ParseCryptoMethodHeader reads a CryptoMethodHeader value. The Go SDK sends a single byte. The C SDK sends a
+// name ("libsodium", "aes-gcm", "tls"). "none" and other names are an error.
 func ParseCryptoMethodHeader(val []byte) (CryptoMethod, error) {
 	if len(val) == 1 {
 		return CryptoMethod(val[0]), nil

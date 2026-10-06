@@ -166,31 +166,32 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-// maybeKeyPair returns a fresh key pair if the service requires encryption,
-// or nil otherwise. A key-generation error is logged but not fatal — the
-// connection proceeds unencrypted, matching the prior behavior.
-func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, bool) {
-	if !*service.EncryptionRequired {
-		return nil, false
+func encryptionRequired(service *rest_model.ServiceDetail) bool {
+	return service.EncryptionRequired != nil && *service.EncryptionRequired
+}
+
+// maybeKeyPair returns a fresh libsodium key pair if the service requires encryption, or nil
+// otherwise.
+func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, error) {
+	if !encryptionRequired(service) {
+		return nil, nil
 	}
 	keyPair, err := kx.NewKeyPair()
 	if err != nil {
-		pfxlog.Logger().Errorf("unable to setup encryption for service[%s] %v", *service.Name, err)
-		return nil, false
+		return nil, errors.Wrapf(err, "unable to set up end-to-end encryption for service[%s]", *service.Name)
 	}
-	return keyPair, true
+	return keyPair, nil
 }
 
 // dialCrypto returns the dialer's e2ee state for the service and the key material for the
 // connect request: a TLS engine and its ClientHello with CryptoMethodTLS, else a libsodium key
 // pair and its public key. crypto is false when the service does not require encryption.
 func dialCrypto(service *rest_model.ServiceDetail, options *edge.DialOptions) (keyPair *kx.KeyPair, engine *tlsE2ee, pub []byte, crypto bool, err error) {
-	if options.CryptoMethod != edge.CryptoMethodTLS || !*service.EncryptionRequired {
-		keyPair, crypto = maybeKeyPair(service)
-		if crypto {
-			pub = keyPair.Public()
+	if options.CryptoMethod != edge.CryptoMethodTLS || !encryptionRequired(service) {
+		if keyPair, err = maybeKeyPair(service); err != nil || keyPair == nil {
+			return nil, nil, nil, false, err
 		}
-		return keyPair, nil, pub, crypto, nil
+		return keyPair, nil, keyPair.Public(), true, nil
 	}
 
 	if options.E2eeIdentity == nil {
@@ -226,7 +227,6 @@ func closeTlsE2eeOnError(engine *tlsE2ee, err *error) {
 	}
 }
 
-// establishClientCrypto finishes whichever e2ee method dialCrypto chose, once the conn exists.
 func establishClientCrypto(
 	logger *logrus.Entry,
 	base *edgeConnBase,
@@ -337,7 +337,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 		serviceName:  *service.Name,
 		routerInfo:   edge.EdgeRouterInfo{Name: conn.routerName, Addr: conn.routerAddr},
 		keyPair:      options.KeyPair,
-		crypto:       options.KeyPair != nil || (options.CryptoMethod == edge.CryptoMethodTLS && *service.EncryptionRequired),
+		crypto:       options.KeyPair != nil || (options.CryptoMethod == edge.CryptoMethodTLS && encryptionRequired(service)),
 		cryptoMethod: options.CryptoMethod,
 		e2eeIdentity: options.E2eeIdentity,
 		service:      service,

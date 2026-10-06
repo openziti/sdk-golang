@@ -375,13 +375,13 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 
-		if clientKey != nil {
-			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
-				cleanupAndReportError("failed to establish crypto session", err)
-				return
-			}
-		} else {
-			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
+		if clientKey == nil {
+			cleanupAndReportError("failed to establish crypto session", errors.New("dialer sent no e2ee public key"))
+			return
+		}
+		if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
+			cleanupAndReportError("failed to establish crypto session", err)
+			return
 		}
 	}
 
@@ -592,7 +592,7 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 	}()
 
 	logger.Debug("sending bind request to edge router")
-	// a tls host sends no key at bind: its handshake answers each dial, as with the C SDK
+	// a tls host sends no key at bind: its handshake answers each dial
 	var pub []byte
 	if conn.crypto && conn.keyPair != nil {
 		pub = conn.keyPair.Public()

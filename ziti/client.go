@@ -579,7 +579,10 @@ func (self *CtrlClient) ensureCtrlCapabilities() {
 // ensureCtrlCapabilities call retries, rather than pinning capabilities based on a transient
 // failure.
 func (self *CtrlClient) loadCtrlCapabilities() {
-	result, _ := self.API.Informational.ListVersion(informational.NewListVersionParams())
+	result, err := self.API.Informational.ListVersion(informational.NewListVersionParams())
+	if err != nil {
+		pfxlog.Logger().WithError(err).Warn("unable to load controller version and capabilities")
+	}
 	if result != nil && result.Payload != nil && result.Payload.Data != nil {
 		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
 			self.controllerVersion.Store(sv)
@@ -592,8 +595,8 @@ func (self *CtrlClient) loadCtrlCapabilities() {
 	}
 }
 
-// controllerRequestsFips returns true if the controller version reports the FIPS_MODE build flag.
-// While the controller version is still unknown it returns false; the load is retried later.
+// controllerRequestsFips reports whether the controller carries the FIPS_MODE build flag. It
+// returns false until the controller version loads.
 func (self *CtrlClient) controllerRequestsFips() bool {
 	self.ensureCtrlCapabilities()
 	return self.controllerFipsMode.Load()

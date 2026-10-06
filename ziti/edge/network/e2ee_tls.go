@@ -17,7 +17,6 @@
 package network
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"io"
@@ -38,14 +37,17 @@ import (
 //   - dialer: its last flight is the body of the first Data message on the circuit
 //   - data: each Data message body holds the records from one write
 //
+// If the dialer's key share does not suit the host, the host's first flight is a HelloRetryRequest.
+// The dialer's second ClientHello is then its first Data message, the host's flight comes back as a
+// Data message, and the dialer's last flight follows it: one more round trip, as with ziti-sdk-c.
+//
 // crypto/tls only speaks over a net.Conn, so it runs over an in-memory pipe on one goroutine
 // (Handshake, then a Read loop). Every call feeds bytes in and waits until that goroutine blocks
 // on an empty pipe again, so each call returns everything the input produced, the way the C
 // engine's synchronous calls do.
 type tlsE2ee struct {
-	pipe   *tlsPipe
-	conn   *tls.Conn
-	server bool
+	pipe *tlsPipe
+	conn *tls.Conn
 
 	hsDone chan struct{}
 	hsErr  error
@@ -205,39 +207,12 @@ func newTlsE2eeServer(cfg *tls.Config, clientHello []byte) (*tlsE2ee, []byte, er
 		e.close()
 		return nil, nil, errors.New("tls e2ee: no server flight produced")
 	}
-	if isHelloRetryRequest(out) {
-		e.close()
-		return nil, nil, errors.New("tls e2ee: dialer offered no key share this host accepts, and this exchange " +
-			"cannot carry a HelloRetryRequest (a FIPS host needs a P-256, P-384, or ML-KEM hybrid share)")
-	}
 	return e, out, nil
-}
-
-// helloRetryRequestRandom is the ServerHello.random value that marks a HelloRetryRequest (RFC 8446 4.1.3).
-var helloRetryRequestRandom = []byte{
-	0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
-	0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c,
-}
-
-// isHelloRetryRequest reports whether a server flight opens with a HelloRetryRequest: a handshake
-// record whose first message is a ServerHello carrying the HRR random.
-func isHelloRetryRequest(flight []byte) bool {
-	const (
-		recordHandshake  = 22
-		msgServerHello   = 2
-		randomOffset     = 5 + 4 + 2 // record header, handshake header, legacy_version
-		helloRetryMinLen = randomOffset + 32
-	)
-	return len(flight) >= helloRetryMinLen &&
-		flight[0] == recordHandshake &&
-		flight[5] == msgServerHello &&
-		bytes.Equal(flight[randomOffset:helloRetryMinLen], helloRetryRequestRandom)
 }
 
 func newTlsE2ee(cfg *tls.Config, server bool) *tlsE2ee {
 	e := &tlsE2ee{
 		pipe:   newTlsPipe(),
-		server: server,
 		hsDone: make(chan struct{}),
 	}
 	if server {
@@ -301,8 +276,8 @@ func (e *tlsE2ee) setSink(w io.Writer) error {
 	return e.flush()
 }
 
-// finishClient feeds the host's first flight to the dialer and sends the dialer's last flight,
-// which must be the first Data message on the circuit.
+// finishClient feeds the host's first flight to the dialer and sends what the dialer answers (its
+// last flight, or a second ClientHello after a HelloRetryRequest) as the first Data message.
 func (e *tlsE2ee) finishClient(serverFlight []byte) error {
 	if len(serverFlight) == 0 {
 		return errors.New("tls e2ee: host sent no handshake flight")
@@ -372,8 +347,9 @@ func (e *tlsE2ee) close() {
 }
 
 // newE2eeTlsConfig builds the TLS config for one side of an e2ee session from the SDK identity.
-// Neither side sets a server name. The peer chain is verified against the identity CA bundle
-// with any EKU accepted, because identity certs may lack the serverAuth EKU (ziti#4416).
+// The peer chain must reach the identity CA bundle, with any EKU accepted because identity certs
+// may lack serverAuth (ziti#4416). No server name is set and no identity is pinned, so this
+// proves the peer belongs to the network, not which identity hosts the service.
 func newE2eeTlsConfig(id identity.Identity, server bool) (*tls.Config, error) {
 	if id == nil {
 		return nil, errors.New("tls e2ee: no identity")
@@ -398,27 +374,22 @@ func newE2eeTlsConfig(id identity.Identity, server bool) (*tls.Config, error) {
 
 	if server {
 		cfg.Certificates = []tls.Certificate{*cert}
-		cfg.ClientAuth = tls.RequestClientCert
+		// the dialer must present its identity certificate, as the C SDK host requires
+		cfg.ClientAuth = tls.RequireAnyClientCert
 	} else {
 		cfg.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return cert, nil
 		}
-		// the ClientHello carries a key share for the first curve only. Listing only NIST
-		// curves keeps a peer from answering with a HelloRetryRequest, which this message
-		// exchange has no room for. The server side keeps the defaults so it can take
-		// whatever share the peer offers.
-		cfg.CurvePreferences = []tls.CurveID{tls.CurveP256, tls.CurveP384}
 	}
 	return cfg, nil
 }
 
-// verifyE2eePeer checks the peer chain against roots. A dialer need not present a certificate,
-// but one that does must chain to roots.
+// verifyE2eePeer checks the peer chain against roots. Both sides must present a certificate.
 func verifyE2eePeer(roots *x509.CertPool, server bool) func(tls.ConnectionState) error {
 	return func(cs tls.ConnectionState) error {
 		if len(cs.PeerCertificates) == 0 {
 			if server {
-				return nil
+				return errors.New("tls e2ee: dialer presented no certificate")
 			}
 			return errors.New("tls e2ee: host presented no certificate")
 		}
@@ -439,7 +410,8 @@ func verifyE2eePeer(roots *x509.CertPool, server bool) func(tls.ConnectionState)
 }
 
 // checkPeerCryptoMethod fails when the peer names a crypto method other than tls. A missing
-// header is accepted: the router strips it, so each side uses its own configured method.
+// header is accepted: routers that do not forward CryptoMethodHeader leave a mismatch to show
+// up as a failed handshake instead.
 func checkPeerCryptoMethod(val []byte) error {
 	if val == nil {
 		return nil

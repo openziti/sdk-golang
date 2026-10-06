@@ -18,6 +18,7 @@ package ziti
 
 import (
 	gocontext "context"
+	"crypto/fips140"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -289,19 +290,28 @@ type ContextImpl struct {
 
 	listenerManagers cmap.ConcurrentMap[string, *listenerManager]
 
-	// fipsE2eeLogged makes the controller-requested switch to tls e2ee log once
+	// fipsE2eeLogged limits the FIPS switch to tls e2ee to one log line per context
 	fipsE2eeLogged atomic.Bool
 }
 
-// e2eeMethod returns the end-to-end encryption method for new dials and listens: the configured
-// one, or CryptoMethodTLS when the controller reports the FIPS_MODE build flag.
+// e2eeMethod returns the end-to-end encryption method for new dials and listens. It is
+// CryptoMethodTLS when the process runs Go's FIPS 140-3 module or the controller reports the
+// FIPS_MODE build flag, because libsodium's X25519 and XChaCha20-Poly1305 are not FIPS approved.
+// Otherwise it is the configured method.
 func (context *ContextImpl) e2eeMethod() edge.CryptoMethod {
 	if context.options.E2EEMethod == edge.CryptoMethodTLS {
 		return edge.CryptoMethodTLS
 	}
+	if fips140.Enabled() {
+		if !context.fipsE2eeLogged.Swap(true) {
+			pfxlog.Logger().Infof("Go FIPS 140-3 module enabled: using crypto method[%s]", edge.CryptoMethodTLS)
+		}
+		return edge.CryptoMethodTLS
+	}
 	if context.CtrlClt.controllerRequestsFips() {
 		if !context.fipsE2eeLogged.Swap(true) {
-			pfxlog.Logger().Infof("controller requested FIPS_MODE: using crypto method[%s]", edge.CryptoMethodTLS)
+			pfxlog.Logger().Warnf("controller requested FIPS_MODE: using crypto method[%s], but the Go FIPS 140-3 "+
+				"module is not enabled, so the TLS algorithms are not limited to FIPS-approved ones", edge.CryptoMethodTLS)
 		}
 		return edge.CryptoMethodTLS
 	}

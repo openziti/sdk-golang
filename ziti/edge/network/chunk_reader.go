@@ -104,21 +104,19 @@ func (r *edgeChunkReader) ReadFIN() bool {
 	return r.readFIN.Load()
 }
 
-// IsEncrypted reports whether the reader is either waiting for the secretstream
-// header (key set but no receiver yet) or actively decrypting (receiver set).
+// IsEncrypted reports whether the reader decrypts chunks.
 func (r *edgeChunkReader) IsEncrypted() bool {
 	return r.rxKey != nil || r.receiver != nil || r.tls != nil
 }
 
-// SetTls installs the TLS engine that decrypts every chunk.
 func (r *edgeChunkReader) SetTls(e *tlsE2ee) {
 	r.tls = e
 }
 
 // primeTls pulls chunks until the TLS handshake completes, buffering any plaintext for Read. It
 // lets a conn write before the application first reads: the write waits on the handshake, and
-// the peer's handshake bytes only arrive through the chunk source. It gives up quietly on a
-// source error, leaving Read to see the same error.
+// the peer's handshake bytes only arrive through the chunk source. On a source error it stops
+// without recording it. The next Read calls the source itself.
 func (r *edgeChunkReader) primeTls() {
 	r.readLock.Lock()
 	defer r.readLock.Unlock()

@@ -72,9 +72,10 @@ type Options struct {
 
 	// E2EEMethod selects the end-to-end encryption method for services that require encryption.
 	// The zero value is edge.CryptoMethodLibsodium. edge.CryptoMethodTLS runs a TLS session end to
-	// end, compatible with ziti-sdk-c's ziti_crypto_tls. Both ends of a circuit must use the same
-	// method. The context switches to edge.CryptoMethodTLS on its own when the controller reports
-	// the FIPS_MODE build flag, as the C SDK does.
+	// end and interoperates with ziti-sdk-c's tls method. Both ends of a circuit must use the same
+	// method. The context uses edge.CryptoMethodTLS whatever this is set to when the process runs
+	// Go's FIPS 140-3 module (crypto/fips140.Enabled) or the controller reports the FIPS_MODE build
+	// flag. Only the first makes the TLS algorithms FIPS approved. FIPS_MODE alone picks the method.
 	E2EEMethod edge.CryptoMethod
 }
 
