@@ -113,7 +113,12 @@ func (conn *edgeConnLegacy) CloseWrite() error {
 }
 
 func (conn *edgeConnLegacy) SetWriteDeadline(t time.Time) error {
+	conn.setTlsWriteDeadline(t)
 	return conn.msgCh.SetWriteDeadline(t)
+}
+
+func (conn *edgeConnLegacy) primeTlsIfNeeded() {
+	conn.primeTls(conn.close)
 }
 
 func (conn *edgeConnLegacy) SetReadDeadline(t time.Time) error {

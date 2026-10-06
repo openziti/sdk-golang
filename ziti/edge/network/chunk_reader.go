@@ -21,6 +21,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/openziti/sdk-golang/v2/edgexg"
 	"github.com/openziti/sdk-golang/v2/secretstream"
@@ -113,18 +114,37 @@ func (r *edgeChunkReader) SetTls(e *tlsE2ee) {
 	r.tls = e
 }
 
-// primeTls pulls chunks until the TLS handshake completes, buffering any plaintext for Read. It
-// lets a conn write before the application first reads: the write waits on the handshake, and
-// the peer's handshake bytes only arrive through the chunk source. On a source error it stops
-// without recording it. The next Read calls the source itself.
-func (r *edgeChunkReader) primeTls() {
+const primeTlsRetryInterval = 50 * time.Millisecond
+
+// primeTls pulls chunks until the TLS handshake ends, buffering any plaintext for Read. It lets a
+// conn write before the application first reads: the write waits on the handshake, and the
+// peer's handshake bytes only arrive through the chunk source. A read deadline the application
+// set does not stop it: it lets a waiting Read in, then pulls again. It returns the handshake
+// error, if any, and nil when the source ends.
+func (r *edgeChunkReader) primeTls() error {
+	for {
+		retry, err := r.primeTlsUntilDeadline()
+		if !retry {
+			return err
+		}
+		time.Sleep(primeTlsRetryInterval)
+	}
+}
+
+// primeTlsUntilDeadline is one primeTls pass under readLock. It reports retry when the source hit
+// a read deadline before the handshake ended.
+func (r *edgeChunkReader) primeTlsUntilDeadline() (retry bool, err error) {
 	r.readLock.Lock()
 	defer r.readLock.Unlock()
 
-	for !r.tls.handshakeComplete() && !r.readFIN.Load() {
+	for !r.readFIN.Load() && r.primeErr == nil {
+		if ended, err := r.tls.handshakeResult(); ended {
+			return false, err
+		}
 		data, flags, err := r.source()
 		if err != nil {
-			return
+			var timeout interface{ Timeout() bool }
+			return errors.As(err, &timeout) && timeout.Timeout(), nil
 		}
 		if flags&edge.FIN != 0 {
 			r.readFIN.Store(true)
@@ -133,13 +153,14 @@ func (r *edgeChunkReader) primeTls() {
 		if err != nil {
 			r.logger().WithError(err).Error("tls e2ee handshake failed")
 			r.primeErr = err
-			return
+			return false, err
 		}
 		if _, err = r.deliver(nil, plain, flags&edge.MULTIPART_MSG != 0); err != nil {
 			r.primeErr = err
-			return
+			return false, err
 		}
 	}
+	return false, r.primeErr
 }
 
 // Read fills p with decoded, decrypted data from the source. It pulls new

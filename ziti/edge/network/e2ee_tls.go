@@ -21,9 +21,11 @@ import (
 	"crypto/x509"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/pkg/errors"
@@ -55,6 +57,12 @@ type tlsE2ee struct {
 	// sendLock keeps drained output in record order when both the writer and the reader flush.
 	sendLock sync.Mutex
 	sink     io.Writer
+
+	// deadlineLock guards writeDeadline and deadlineSet
+	deadlineLock  sync.Mutex
+	writeDeadline time.Time
+	// deadlineSet is closed and replaced when writeDeadline changes, to wake a waiting write
+	deadlineSet chan struct{}
 }
 
 // tlsPipe is the in-memory net.Conn under the engine. Reads block until input is fed or the
@@ -212,8 +220,9 @@ func newTlsE2eeServer(cfg *tls.Config, clientHello []byte) (*tlsE2ee, []byte, er
 
 func newTlsE2ee(cfg *tls.Config, server bool) *tlsE2ee {
 	e := &tlsE2ee{
-		pipe:   newTlsPipe(),
-		hsDone: make(chan struct{}),
+		pipe:        newTlsPipe(),
+		hsDone:      make(chan struct{}),
+		deadlineSet: make(chan struct{}),
 	}
 	if server {
 		e.conn = tls.Server(e.pipe, cfg)
@@ -259,11 +268,58 @@ func (e *tlsE2ee) step(input []byte) ([]byte, error) {
 }
 
 func (e *tlsE2ee) handshakeComplete() bool {
+	ended, err := e.handshakeResult()
+	return ended && err == nil
+}
+
+// handshakeResult reports whether the handshake has ended, and its error if it failed.
+func (e *tlsE2ee) handshakeResult() (bool, error) {
 	select {
 	case <-e.hsDone:
-		return e.hsErr == nil
+		return true, e.hsErr
 	default:
-		return false
+		return false, nil
+	}
+}
+
+func (e *tlsE2ee) setWriteDeadline(t time.Time) {
+	e.deadlineLock.Lock()
+	defer e.deadlineLock.Unlock()
+	e.writeDeadline = t
+	close(e.deadlineSet)
+	e.deadlineSet = make(chan struct{})
+}
+
+// awaitHandshake waits for the handshake to end, and gives up at the write deadline with
+// os.ErrDeadlineExceeded, as the conn's own writes do.
+func (e *tlsE2ee) awaitHandshake() error {
+	for {
+		if ended, err := e.handshakeResult(); ended {
+			if err != nil {
+				return errors.Wrap(err, "tls e2ee handshake failed")
+			}
+			return nil
+		}
+
+		e.deadlineLock.Lock()
+		deadline, deadlineSet := e.writeDeadline, e.deadlineSet
+		e.deadlineLock.Unlock()
+
+		var expired <-chan time.Time
+		var timer *time.Timer
+		if !deadline.IsZero() {
+			timer = time.NewTimer(time.Until(deadline))
+			expired = timer.C
+		}
+		select {
+		case <-e.hsDone:
+		case <-deadlineSet:
+		case <-expired:
+			return os.ErrDeadlineExceeded
+		}
+		if timer != nil {
+			timer.Stop()
+		}
 	}
 }
 
@@ -283,6 +339,7 @@ func (e *tlsE2ee) finishClient(serverFlight []byte) error {
 		return errors.New("tls e2ee: host sent no handshake flight")
 	}
 	if _, err := e.pipe.feed(serverFlight); err != nil {
+		e.flushAlert()
 		return err
 	}
 	return e.flush()
@@ -294,6 +351,7 @@ func (e *tlsE2ee) finishClient(serverFlight []byte) error {
 func (e *tlsE2ee) decrypt(ciphertext []byte) ([]byte, error) {
 	plain, err := e.pipe.feed(ciphertext)
 	if err != nil {
+		e.flushAlert()
 		return plain, err
 	}
 	// check before taking sendLock, so a read is not held up behind a write waiting on flow
@@ -309,9 +367,8 @@ func (e *tlsE2ee) decrypt(ciphertext []byte) ([]byte, error) {
 // write encrypts data and sends the records from this one write as a single Data message. It
 // waits for the handshake to complete first.
 func (e *tlsE2ee) write(data []byte) (int, error) {
-	<-e.hsDone
-	if e.hsErr != nil {
-		return 0, errors.Wrap(e.hsErr, "tls e2ee handshake failed")
+	if err := e.awaitHandshake(); err != nil {
+		return 0, err
 	}
 
 	e.sendLock.Lock()
@@ -338,6 +395,14 @@ func (e *tlsE2ee) flush() error {
 	}
 	_, err := e.sink.Write(e.pipe.takeOut())
 	return err
+}
+
+// flushAlert sends what the engine wrote before it failed, so the peer gets the alert that
+// says why instead of a bare close.
+func (e *tlsE2ee) flushAlert() {
+	if err := e.flush(); err != nil {
+		pfxlog.Logger().WithError(err).Debug("unable to send tls e2ee alert")
+	}
 }
 
 // close stops the engine goroutine. No close_notify is sent: the C engine does not send one

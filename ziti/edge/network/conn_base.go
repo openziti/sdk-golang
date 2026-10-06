@@ -400,16 +400,31 @@ func (base *edgeConnBase) installTlsE2ee(e *tlsE2ee, sink io.Writer) error {
 	return e.setSink(sink)
 }
 
-// primeTlsIfNeeded drives a handshake that is still open (the host always, a TLS 1.2 dialer)
-// from a goroutine, so a write does not wait on a read the application has not made yet.
-func (base *edgeConnBase) primeTlsIfNeeded() {
-	if base.tlsE2ee != nil && !base.tlsE2ee.handshakeComplete() {
-		go base.chunkReader.primeTls()
+// primeTls drives a handshake that is still open (the host always, a TLS 1.2 or HRR dialer) from
+// a goroutine, so a write does not wait on a read the application has not made yet. A failed
+// handshake closes the conn, so a peer that only writes does not keep writing into a dead circuit.
+func (base *edgeConnBase) primeTls(closeConn func(notifyCtrl bool)) {
+	if base.tlsE2ee == nil || base.tlsE2ee.handshakeComplete() {
+		return
+	}
+	go func() {
+		if err := base.chunkReader.primeTls(); err != nil {
+			closeConn(true)
+		}
+	}()
+}
+
+// setTlsWriteDeadline hands the conn's write deadline to the tls engine, where a write waits
+// on the handshake before it reaches the data sink.
+func (base *edgeConnBase) setTlsWriteDeadline(t time.Time) {
+	if base.tlsE2ee != nil {
+		base.tlsE2ee.setWriteDeadline(t)
 	}
 }
 
 // establishClientTlsFromReply completes the dialer side of CryptoMethodTLS from the host's first
-// flight in the dial reply. The dialer's last flight goes out as the first Data message.
+// flight in the dial reply. The dialer's last flight goes out as the first Data message. The
+// caller then calls primeTlsIfNeeded.
 func (base *edgeConnBase) establishClientTlsFromReply(e *tlsE2ee, replyMsg *channel.Message, sink io.Writer) error {
 	if err := checkPeerCryptoMethod(replyMsg.Headers[edge.CryptoMethodHeader]); err != nil {
 		return err
@@ -424,7 +439,6 @@ func (base *edgeConnBase) establishClientTlsFromReply(e *tlsE2ee, replyMsg *chan
 	if err := e.finishClient(serverFlight); err != nil {
 		return errors.Wrap(err, "failed to establish encryption")
 	}
-	base.primeTlsIfNeeded()
 	return nil
 }
 

@@ -458,6 +458,7 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected via v2")
@@ -572,6 +573,7 @@ func (conn *routerConn) buildV1XgressConn(
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected (xgress)")
@@ -619,6 +621,7 @@ func (conn *routerConn) buildV1LegacyConn(
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected (legacy)")

@@ -73,6 +73,11 @@ func newTestPki(t *testing.T) *testPki {
 
 // identity issues a leaf with only the clientAuth EKU, like a ziti identity cert before ziti#4416.
 func (p *testPki) identity(t *testing.T, name string) identity.Identity {
+	return p.identityTrusting(t, name, p.pool)
+}
+
+// identityTrusting issues a leaf like identity does, with roots as the identity's CA bundle.
+func (p *testPki) identityTrusting(t *testing.T, name string, roots *x509.CertPool) identity.Identity {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	serial, err := rand.Int(rand.Reader, big.NewInt(1<<62))
@@ -89,7 +94,7 @@ func (p *testPki) identity(t *testing.T, name string) identity.Identity {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(der)
 	require.NoError(t, err)
-	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{cert, p.caCert}, key, p.pool)
+	return identity.NewClientTokenIdentityWithPool([]*x509.Certificate{cert, p.caCert}, key, roots)
 }
 
 // recordSink stands in for the edge conn's data sink: each Write is one Data message.

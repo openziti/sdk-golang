@@ -98,6 +98,9 @@ type MultiListener interface {
 	HasListenerForRouter(routerName string) bool
 	// GetListenerCount returns the number of active child listeners.
 	GetListenerCount() int
+	// CloseListeners closes the child listeners and leaves this listener open, so its owner binds
+	// new ones.
+	CloseListeners() error
 }
 
 func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
@@ -373,6 +376,19 @@ func (self *multiListener) Close() error {
 	}
 
 	return nil
+}
+
+func (self *multiListener) CloseListeners() error {
+	self.listenerLock.Lock()
+	defer self.listenerLock.Unlock()
+
+	var resultErrors []error
+	for child := range self.listeners {
+		if err := child.Close(); err != nil {
+			resultErrors = append(resultErrors, err)
+		}
+	}
+	return self.condenseErrors(resultErrors)
 }
 
 func (self *multiListener) CloseWithError(err error) {
