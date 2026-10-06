@@ -17,6 +17,7 @@
 package network
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"io"
@@ -204,7 +205,33 @@ func newTlsE2eeServer(cfg *tls.Config, clientHello []byte) (*tlsE2ee, []byte, er
 		e.close()
 		return nil, nil, errors.New("tls e2ee: no server flight produced")
 	}
+	if isHelloRetryRequest(out) {
+		e.close()
+		return nil, nil, errors.New("tls e2ee: dialer offered no key share this host accepts, and this exchange " +
+			"cannot carry a HelloRetryRequest (a FIPS host needs a P-256, P-384, or ML-KEM hybrid share)")
+	}
 	return e, out, nil
+}
+
+// helloRetryRequestRandom is the ServerHello.random value that marks a HelloRetryRequest (RFC 8446 4.1.3).
+var helloRetryRequestRandom = []byte{
+	0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
+	0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c,
+}
+
+// isHelloRetryRequest reports whether a server flight opens with a HelloRetryRequest: a handshake
+// record whose first message is a ServerHello carrying the HRR random.
+func isHelloRetryRequest(flight []byte) bool {
+	const (
+		recordHandshake  = 22
+		msgServerHello   = 2
+		randomOffset     = 5 + 4 + 2 // record header, handshake header, legacy_version
+		helloRetryMinLen = randomOffset + 32
+	)
+	return len(flight) >= helloRetryMinLen &&
+		flight[0] == recordHandshake &&
+		flight[5] == msgServerHello &&
+		bytes.Equal(flight[randomOffset:helloRetryMinLen], helloRetryRequestRandom)
 }
 
 func newTlsE2ee(cfg *tls.Config, server bool) *tlsE2ee {

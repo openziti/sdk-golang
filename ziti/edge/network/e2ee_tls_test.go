@@ -20,12 +20,16 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/fips140"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"io"
 	"math/big"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -359,4 +363,142 @@ func TestTlsE2eeHostWritesFirst(t *testing.T) {
 	req.NoError(err)
 	req.Equal("dialer data", string(buf[:n]))
 	close(chunks)
+}
+
+// chanSource feeds a chunk reader from a channel, the way readQ or the xgress adapter would.
+func chanSource(chunks chan []byte) chunkSource {
+	return func() ([]byte, uint32, error) {
+		c, ok := <-chunks
+		if !ok {
+			return nil, 0, io.EOF
+		}
+		return c, 0, nil
+	}
+}
+
+// On TLS 1.2 the host's CCS and Finished arrive as a Data message with no payload (the Schannel
+// C build negotiates 1.2). A dialer that writes before it reads must still complete.
+func TestTlsE2eeTls12DialerWritesFirst(t *testing.T) {
+	req := require.New(t)
+	cliCfg, srvCfg := testConfigs(t)
+	cliCfg.MaxVersion = tls.VersionTLS12
+	p := startPair(t, cliCfg, srvCfg)
+	defer p.close()
+	req.False(p.cli.handshakeComplete())
+
+	chunks := make(chan []byte, 16)
+	reader := newEdgeChunkReader(chanSource(chunks), func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
+	reader.SetTls(p.cli)
+	go reader.primeTls()
+
+	written := make(chan error, 1)
+	go func() {
+		_, err := p.cli.write([]byte("client speaks first"))
+		written <- err
+	}()
+
+	req.Empty(decryptAll(t, p.srv, p.cliSink.take()))
+	req.True(p.srv.handshakeComplete())
+	srvFinished := p.srvSink.take()
+	req.Len(srvFinished, 1, "the host sends CCS+Finished at once, as its own Data message")
+	chunks <- srvFinished[0]
+
+	select {
+	case err := <-written:
+		req.NoError(err)
+	case <-time.After(5 * time.Second):
+		req.Fail("the dialer write never completed")
+	}
+	req.True(p.cli.handshakeComplete())
+	req.Equal("client speaks first", string(decryptAll(t, p.srv, p.cliSink.take())))
+
+	_, err := p.srv.write([]byte("host reply"))
+	req.NoError(err)
+	for _, m := range p.srvSink.take() {
+		chunks <- m
+	}
+	buf := make([]byte, 64)
+	n, err := reader.Read(buf)
+	req.NoError(err)
+	req.Equal("host reply", string(buf[:n]), "the empty Finished message yields no plaintext")
+	close(chunks)
+}
+
+// clientHelloWith returns a ClientHello whose key share is for the first of curves.
+func clientHelloWith(t *testing.T, cliCfg *tls.Config, curves ...tls.CurveID) []byte {
+	cfg := cliCfg.Clone()
+	cfg.CurvePreferences = curves
+	cli, hello, err := newTlsE2eeClient(cfg)
+	require.NoError(t, err)
+	cli.close()
+	return hello
+}
+
+// TestTlsE2eeFipsHostKeyShares pins which dialer key shares a FIPS host takes without a
+// HelloRetryRequest, which this exchange cannot carry. The FIPS side runs in a child process
+// under GODEBUG=fips140=only, since fips140 mode is fixed at process start and a FIPS client
+// cannot build an X25519 share.
+func TestTlsE2eeFipsHostKeyShares(t *testing.T) {
+	const childEnv = "E2EE_TLS_KEYSHARE_DIR"
+	shares := map[string]bool{ // share -> a FIPS host accepts it
+		"x25519":         false,
+		"p256":           true,
+		"x25519mlkem768": true,
+	}
+
+	if dir := os.Getenv(childEnv); dir != "" {
+		require.True(t, fips140.Enabled())
+		_, srvCfg := testConfigs(t)
+		for name, accepted := range shares {
+			hello, err := os.ReadFile(filepath.Join(dir, name))
+			require.NoError(t, err)
+			srv, _, err := newTlsE2eeServer(srvCfg, hello)
+			if accepted {
+				require.NoError(t, err, name)
+				srv.close()
+			} else {
+				require.ErrorContains(t, err, "HelloRetryRequest", name)
+			}
+			t.Logf("fips host, %s key share: accepted=%v", name, err == nil)
+		}
+		return
+	}
+
+	if fips140.Enabled() {
+		t.Skip("building an X25519 key share needs a non-FIPS parent")
+	}
+	cliCfg, srvCfg := testConfigs(t)
+	hellos := map[string][]byte{
+		// the OpenSSL < 3.5 default: an X25519 share only
+		"x25519": clientHelloWith(t, cliCfg, tls.X25519, tls.CurveP256),
+		"p256":   clientHelloWith(t, cliCfg, tls.CurveP256),
+		// the OpenSSL 3.5 default: X25519MLKEM768 and X25519 shares
+		"x25519mlkem768": clientHelloWith(t, cliCfg, tls.X25519MLKEM768, tls.X25519, tls.CurveP256),
+	}
+
+	// a non-FIPS host takes every share
+	dir := t.TempDir()
+	for name, hello := range hellos {
+		srv, _, err := newTlsE2eeServer(srvCfg, hello)
+		require.NoError(t, err, name)
+		srv.close()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), hello, 0o600))
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestTlsE2eeFipsHostKeyShares$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), childEnv+"="+dir, "GODEBUG=fips140=only")
+	out, err := cmd.CombinedOutput()
+	t.Logf("fips child:\n%s", out)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "--- PASS: TestTlsE2eeFipsHostKeyShares")
+}
+
+func TestTlsE2eeIsHelloRetryRequest(t *testing.T) {
+	req := require.New(t)
+	hrr := append([]byte{22, 3, 3, 0, 90, 2, 0, 0, 86, 3, 3}, helloRetryRequestRandom...)
+	req.True(isHelloRetryRequest(hrr))
+	notHrr := append([]byte(nil), hrr...)
+	notHrr[20] ^= 1
+	req.False(isHelloRetryRequest(notHrr))
+	req.False(isHelloRetryRequest(hrr[:30]))
 }
