@@ -31,6 +31,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequence"
+	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/xgress"
@@ -319,6 +320,11 @@ type DialOptions struct {
 	// ForceConnectV1 skips the ConnectV2 path even if the router advertises support.
 	// Intended as an escape hatch; normal callers should leave this false.
 	ForceConnectV1 bool
+	// CryptoMethod selects the end-to-end encryption method used when the service requires
+	// encryption. The zero value is CryptoMethodLibsodium.
+	CryptoMethod CryptoMethod
+	// E2eeIdentity supplies the certificate and trust anchors for CryptoMethodTLS.
+	E2eeIdentity func() (identity.Identity, error)
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -342,6 +348,11 @@ type ListenOptions struct {
 	DoNotSaveDialerIdentity bool
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
+	// CryptoMethod selects the end-to-end encryption method for accepted connections when the
+	// service requires encryption. With CryptoMethodTLS, KeyPair is nil.
+	CryptoMethod CryptoMethod
+	// E2eeIdentity supplies the certificate and trust anchors for CryptoMethodTLS.
+	E2eeIdentity func() (identity.Identity, error)
 	// EventHandler receives listener lifecycle notifications. If nil, events are discarded.
 	EventHandler ListenerEventHandler
 }
