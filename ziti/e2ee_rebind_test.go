@@ -60,8 +60,6 @@ func newRebindManager(t *testing.T, controllerFips bool) (*listenerManager, *reb
 	return mgr, listener
 }
 
-// requireRebind waits up to 5s for an expected rebind, and 200ms to show an unexpected one does not
-// come.
 func requireRebind(t *testing.T, l *rebindListener, expected bool) {
 	t.Helper()
 	wait := 200 * time.Millisecond
@@ -76,8 +74,6 @@ func requireRebind(t *testing.T, l *rebindListener, expected bool) {
 	}
 }
 
-// TestRecheckE2eeMethodCapabilitiesNotLoaded verifies that the listener keeps its method and its
-// binds until the controller capabilities load.
 func TestRecheckE2eeMethodCapabilitiesNotLoaded(t *testing.T) {
 	req := require.New(t)
 	mgr, l := newRebindManager(t, true)
@@ -106,8 +102,6 @@ func TestRecheckE2eeMethodControllerFips(t *testing.T) {
 	requireRebind(t, l, false)
 }
 
-// TestRecheckE2eeMethodUnchanged verifies that a method that did not change keeps the key pair and the
-// binds.
 func TestRecheckE2eeMethodUnchanged(t *testing.T) {
 	req := require.New(t)
 	if fips140.Enabled() {

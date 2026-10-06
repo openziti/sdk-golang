@@ -66,7 +66,7 @@ type tlsE2ee struct {
 }
 
 // tlsPipe is the in-memory net.Conn under the engine. Reads block until input is fed or the
-// pipe closes; writes never block. All fields are guarded by mu.
+// pipe closes. Writes never block. All fields are guarded by mu.
 type tlsPipe struct {
 	mu   sync.Mutex
 	cond *sync.Cond
@@ -167,7 +167,7 @@ func (p *tlsPipe) feed(input []byte) ([]byte, error) {
 	defer p.mu.Unlock()
 	p.in = append(p.in, input...)
 	p.cond.Broadcast()
-	for !p.done && !(p.waiting && len(p.in) == 0) {
+	for !p.done && (!p.waiting || len(p.in) > 0) {
 		p.cond.Wait()
 	}
 	plain := p.plain

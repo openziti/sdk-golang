@@ -361,7 +361,7 @@ func TestTlsE2eeHostWritesFirst(t *testing.T) {
 	}
 	reader := newEdgeChunkReader(source, func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
 	reader.SetTls(p.srv)
-	go reader.primeTls()
+	go func() { _ = reader.primeTls() }()
 
 	written := make(chan error, 1)
 	go func() {
@@ -397,7 +397,7 @@ func TestTlsE2eeHostWritesFirst(t *testing.T) {
 	close(chunks)
 }
 
-// chanSource feeds a chunk reader from a channel, the way readQ or the xgress adapter would.
+// chanSource feeds a chunk reader from a channel.
 func chanSource(chunks chan []byte) chunkSource {
 	return func() ([]byte, uint32, error) {
 		c, ok := <-chunks
@@ -421,7 +421,7 @@ func TestTlsE2eeTls12DialerWritesFirst(t *testing.T) {
 	chunks := make(chan []byte, 16)
 	reader := newEdgeChunkReader(chanSource(chunks), func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
 	reader.SetTls(p.cli)
-	go reader.primeTls()
+	go func() { _ = reader.primeTls() }()
 
 	written := make(chan error, 1)
 	go func() {

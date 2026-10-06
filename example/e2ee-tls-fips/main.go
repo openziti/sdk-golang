@@ -15,8 +15,10 @@
 */
 
 // e2ee-tls-fips hosts and dials an echo service with the tls end-to-end encryption method, and
-// reports whether Go's FIPS 140-3 module is on. Build it with GOFIPS140=v1.0.0 and run it with
-// GODEBUG=fips140=only to have non-approved crypto fail.
+// reports whether Go's FIPS 140-3 module is on. Build it with GOFIPS140=v1.0.0, which defaults to
+// fips140=on. The fips mode also checks enforcement under GODEBUG=fips140=only. That setting fails
+// non-approved crypto in every dependency, including uses that need no FIPS restriction, so use it
+// to detect non-compliance, not for general use.
 //
 //	e2ee-tls-fips fips
 //	e2ee-tls-fips host -identity host.json -service echo

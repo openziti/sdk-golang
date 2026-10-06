@@ -69,8 +69,6 @@ func TestDialCryptoMethodUnencrypted(t *testing.T) {
 	req.Equal(edge.CryptoMethodLibsodium, ctx.dialCryptoMethod(&rest_model.ServiceDetail{EncryptionRequired: &encrypted}))
 }
 
-// TestDialCryptoMethodEncrypted verifies that a dial to a service that requires encryption uses the
-// e2ee method.
 func TestDialCryptoMethodEncrypted(t *testing.T) {
 	encrypted := true
 	ctx := e2eeMethodContext(edge.CryptoMethodLibsodium, true)

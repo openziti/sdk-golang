@@ -2736,9 +2736,9 @@ func listenKeyPair(service *rest_model.ServiceDetail, method edge.CryptoMethod) 
 }
 
 // recheckE2eeMethod picks the e2ee method again once the controller capabilities load after the
-// listener picked one. If the method changed (FIPS_MODE seen late), it closes the router binds so
-// new ones carry the new method; otherwise every tls dial would fail against a libsodium host.
-// It waits for in-flight binds, which read options.
+// listener picked one. If the method changed, it closes the router binds so new ones carry the new
+// method, since a tls dial fails against a libsodium host. It waits for in-flight binds, which read
+// options.
 func (mgr *listenerManager) recheckE2eeMethod() {
 	if !mgr.e2eeProvisional || !mgr.context.CtrlClt.capabilitiesLoaded.Load() || len(mgr.pendingListens) > 0 {
 		return

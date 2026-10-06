@@ -100,8 +100,7 @@ type tlsConnPairHooks struct {
 	beforePrime  func(p *tlsConnPair)
 }
 
-// newTlsConnPair runs the dial up to the dialer's last flight. Messages from the dialer go through
-// dialerToHost, which may hold them back.
+// newTlsConnPair runs the dial up to the dialer's last flight.
 func newTlsConnPair(t *testing.T, cliCfg, srvCfg *tls.Config, dialerToHost func(host *edgeConnLegacy, msg *channel.Message)) *tlsConnPair {
 	p, err := dialTlsConnPair(t, cliCfg, srvCfg, tlsConnPairHooks{dialerToHost: dialerToHost})
 	require.NoError(t, err)
@@ -172,7 +171,6 @@ func readString(t *testing.T, conn *edgeConnLegacy, n int) string {
 	return string(buf)
 }
 
-// TestTlsConnEcho verifies that data crosses a tls e2ee dialer and host in both directions.
 func TestTlsConnEcho(t *testing.T) {
 	req := require.New(t)
 	cliCfg, srvCfg := testConfigs(t)
@@ -214,8 +212,6 @@ func TestTlsConnRejectsMultipartFlag(t *testing.T) {
 	requireReadErr(t, p.host, "multipart message on an encrypted connection")
 }
 
-// TestChunkReaderRejectsMultipartFlagLibsodium verifies that a libsodium conn also fails a chunk
-// that carries MULTIPART_MSG.
 func TestChunkReaderRejectsMultipartFlagLibsodium(t *testing.T) {
 	r := newEdgeChunkReader(func() ([]byte, uint32, error) {
 		return []byte{1, 0, 'a'}, edge.MULTIPART_MSG, nil
