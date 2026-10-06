@@ -608,6 +608,9 @@ func (conn *routerConn) buildV1LegacyConn(
 		mux:   conn.mux,
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	if crypto {
+		ec.msgCh.DisableMultipart()
+	}
 	ec.initChunkReader()
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
 

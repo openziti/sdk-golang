@@ -18,14 +18,18 @@ package network
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/openziti/channel/v5"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -182,6 +186,68 @@ func TestTlsConnEcho(t *testing.T) {
 	_, err = p.host.Write([]byte("pong"))
 	req.NoError(err)
 	req.Equal("pong", readString(t, p.dialer, 4))
+}
+
+// TestTlsConnRejectsMultipartFlag verifies that a router that sets MULTIPART_MSG on an encrypted
+// Data message fails the read, instead of re-framing the plaintext into different bytes.
+func TestTlsConnRejectsMultipartFlag(t *testing.T) {
+	req := require.New(t)
+	cliCfg, srvCfg := testConfigs(t)
+	var tamper atomic.Bool
+	p := newTlsConnPair(t, cliCfg, srvCfg, func(host *edgeConnLegacy, msg *channel.Message) {
+		if tamper.Load() && msg.ContentType == edge.ContentTypeData {
+			flags, _ := msg.GetUint32Header(edge.FlagsHeader)
+			msg.PutUint32Header(edge.FlagsHeader, flags|edge.MULTIPART_MSG)
+		}
+		host.AcceptMessage(msg, nil)
+	})
+	defer p.close()
+
+	_, err := p.dialer.Write([]byte("ping"))
+	req.NoError(err)
+	req.Equal("ping", readString(t, p.host, 4))
+
+	tamper.Store(true)
+	// a valid multipart body: two parts, "ab" and "c"
+	_, err = p.dialer.Write([]byte{2, 0, 'a', 'b', 1, 0, 'c'})
+	req.NoError(err)
+	requireReadErr(t, p.host, "multipart message on an encrypted connection")
+}
+
+// TestChunkReaderRejectsMultipartFlagLibsodium verifies that a libsodium conn also fails a chunk
+// that carries MULTIPART_MSG.
+func TestChunkReaderRejectsMultipartFlagLibsodium(t *testing.T) {
+	r := newEdgeChunkReader(func() ([]byte, uint32, error) {
+		return []byte{1, 0, 'a'}, edge.MULTIPART_MSG, nil
+	}, func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
+	r.SetRxKey(make([]byte, 32))
+
+	_, err := r.Read(make([]byte, 16))
+	require.ErrorContains(t, err, "multipart message on an encrypted connection")
+}
+
+// TestHostChildConnMultipartAdvertisement verifies that an encrypted hosted conn does not advertise
+// MULTIPART on its first message, so a C SDK peer never sends MULTIPART_MSG to it. A plain conn
+// still does.
+func TestHostChildConnMultipartAdvertisement(t *testing.T) {
+	for _, crypto := range []bool{true, false} {
+		t.Run(fmt.Sprintf("crypto=%v", crypto), func(t *testing.T) {
+			req := require.New(t)
+			name := "multipart-test"
+			wire := newWireChannel()
+			sent := make(chan *channel.Message, 1)
+			wire.setDeliver(func(msg *channel.Message) { sent <- msg })
+			hostConn := newWiredHostConn(1, &rest_model.ServiceDetail{Name: &name}, wire)
+
+			child, err := hostConn.buildChildConn(childConnParams{id: 2, crypto: crypto}, false, nil)
+			req.NoError(err)
+			_, err = child.(*edgeConnLegacy).msgCh.Write([]byte("x"))
+			req.NoError(err)
+
+			flags, _ := (<-sent).GetUint32Header(edge.FlagsHeader)
+			req.Equal(!crypto, flags&edge.MULTIPART != 0)
+		})
+	}
 }
 
 // TestTlsConnHostWritesFirst verifies that a host can write before it reads: primeTls completes the

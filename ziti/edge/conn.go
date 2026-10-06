@@ -39,6 +39,7 @@ import (
 
 const (
 	ConnFlagIdxFirstMsgSent = 0
+	ConnFlagIdxNoMultipart  = 1
 )
 
 func init() {
@@ -237,6 +238,12 @@ func (ec *MsgChannel) NextMsgId() uint32 {
 	return ec.msgIdSeq.Next()
 }
 
+// DisableMultipart stops the conn from advertising MULTIPART. An encrypted conn calls it, because
+// the MULTIPART_MSG flag that frames a multipart body travels outside the encryption.
+func (ec *MsgChannel) DisableMultipart() {
+	ec.flags.Set(ConnFlagIdxNoMultipart, true)
+}
+
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
 	return nil
@@ -258,7 +265,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 
 	// indicate that we can accept multipart messages
 	// with the first message
-	if ec.flags.CompareAndSet(ConnFlagIdxFirstMsgSent, false, true) {
+	if ec.flags.CompareAndSet(ConnFlagIdxFirstMsgSent, false, true) && !ec.flags.IsSet(ConnFlagIdxNoMultipart) {
 		flags, _ := msg.GetUint32Header(FlagsHeader)
 		flags = flags | MULTIPART
 		msg.PutUint32Header(FlagsHeader, flags)

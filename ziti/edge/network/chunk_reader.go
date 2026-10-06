@@ -153,6 +153,10 @@ func (r *edgeChunkReader) primeTlsUntilDeadline() (retry bool, err error) {
 		if flags&edge.FIN != 0 {
 			r.readFIN.Store(true)
 		}
+		if err = r.checkMultipart(flags); err != nil {
+			r.primeErr = err
+			return false, err
+		}
 		plain, err := r.tls.decrypt(data)
 		if err != nil {
 			r.logger().WithError(err).Error("tls e2ee handshake failed")
@@ -210,6 +214,10 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			return 0, io.EOF
 		}
 
+		if err = r.checkMultipart(flags); err != nil {
+			return 0, err
+		}
+
 		// The first chunk on an encrypted stream carries the secretstream header.
 		// Consume it, initialize the decryptor, and loop to read the next chunk.
 		if r.rxKey != nil {
@@ -254,6 +262,15 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 		log.Debugf("read %d bytes", n)
 		return n, nil
 	}
+}
+
+// checkMultipart fails a MULTIPART_MSG chunk on an encrypted conn. The flag is not covered by the
+// encryption, so it could re-frame the plaintext, and an encrypted conn never advertises MULTIPART.
+func (r *edgeChunkReader) checkMultipart(flags uint32) error {
+	if flags&edge.MULTIPART_MSG != 0 && r.IsEncrypted() {
+		return errors.New("multipart message on an encrypted connection")
+	}
+	return nil
 }
 
 // drainBuffer copies from the head of inBuffer into p and updates the buffer.

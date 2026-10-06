@@ -506,6 +506,9 @@ func (conn *edgeHostConn) buildChildConn(p childConnParams, useXg bool, message 
 		mux:   conn.msgMux,
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	if p.crypto {
+		ec.msgCh.DisableMultipart()
+	}
 	ec.initChunkReader()
 	return ec, nil
 }
