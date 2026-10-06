@@ -100,6 +100,7 @@ type edgeConnBase struct {
 	crypto                bool
 	keyPair               *kx.KeyPair
 	sender                secretstream.Encryptor
+	tlsE2ee               *tlsE2ee
 	chunkReader           *edgeChunkReader
 	appData               []byte
 	sync.Mutex
@@ -309,6 +310,10 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 		return 0, errors.New("connection closed for writes")
 	}
 
+	if base.tlsE2ee != nil {
+		return base.tlsE2ee.write(data)
+	}
+
 	if base.sender != nil {
 		base.Lock()
 		defer base.Unlock()
@@ -336,6 +341,9 @@ func (base *edgeConnBase) beginClose() bool {
 		return false
 	}
 	close(base.closeNotify)
+	if base.tlsE2ee != nil {
+		base.tlsE2ee.close()
+	}
 	base.chunkReader.MarkFIN()
 	base.flags.Set(flagSentFIN, true)
 	return true
@@ -366,6 +374,41 @@ func (base *edgeConnBase) establishClientCryptoTo(keypair *kx.KeyPair, peerKey [
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
+	return nil
+}
+
+// installTlsE2ee makes e the conn's crypto for both directions. sink carries the Data messages.
+func (base *edgeConnBase) installTlsE2ee(e *tlsE2ee, sink io.Writer) error {
+	base.tlsE2ee = e
+	base.chunkReader.SetTls(e)
+	return e.setSink(sink)
+}
+
+// primeTlsIfNeeded drives a handshake that is still open (the host always, a TLS 1.2 dialer)
+// from a goroutine, so a write does not wait on a read the application has not made yet.
+func (base *edgeConnBase) primeTlsIfNeeded() {
+	if base.tlsE2ee != nil && !base.tlsE2ee.handshakeComplete() {
+		go base.chunkReader.primeTls()
+	}
+}
+
+// establishClientTlsFromReply completes the dialer side of CryptoMethodTLS from the host's first
+// flight in the dial reply. The dialer's last flight goes out as the first Data message.
+func (base *edgeConnBase) establishClientTlsFromReply(e *tlsE2ee, replyMsg *channel.Message, sink io.Writer) error {
+	if err := checkPeerCryptoMethod(replyMsg.Headers[edge.CryptoMethodHeader]); err != nil {
+		return err
+	}
+	serverFlight := replyMsg.Headers[edge.PublicKeyHeader]
+	if serverFlight == nil {
+		return errors.New("failed to establish encryption: host sent no tls handshake")
+	}
+	if err := base.installTlsE2ee(e, sink); err != nil {
+		return err
+	}
+	if err := e.finishClient(serverFlight); err != nil {
+		return errors.Wrap(err, "failed to establish encryption")
+	}
+	base.primeTlsIfNeeded()
 	return nil
 }
 

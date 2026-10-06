@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
+	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/pb/edge_client_pb"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
@@ -82,6 +84,13 @@ type edgeHostConn struct {
 	// keyPair contains the cryptographic keys used for end-to-end encryption
 	// when crypto is enabled. Used during client connection handshake.
 	keyPair *kx.KeyPair
+
+	// cryptoMethod is the e2ee method used when crypto is enabled. With CryptoMethodTLS each
+	// accepted connection gets its own TLS server engine, and keyPair is nil.
+	cryptoMethod edge.CryptoMethod
+
+	// e2eeIdentity supplies the host certificate and trust anchors for CryptoMethodTLS.
+	e2eeIdentity func() (identity.Identity, error)
 
 	// data stores arbitrary service-level context information that can be
 	// accessed by the hosting application. This might include service configuration,
@@ -354,8 +363,14 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		xgConn.start()
 	}
 
-	var txHeader []byte
-	if conn.crypto {
+	var txHeader, tlsFlight []byte
+	if conn.crypto && conn.cryptoMethod == edge.CryptoMethodTLS {
+		newConnLogger.Debug("setting up tls crypto")
+		if tlsFlight, err = conn.establishServerTls(edgeCh, message); err != nil {
+			cleanupAndReportError("failed to establish crypto session", err)
+			return
+		}
+	} else if conn.crypto {
 		newConnLogger.Debug("setting up crypto")
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
@@ -376,6 +391,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		message:              message,
 		ctrlSender:           ch.GetControlSender(),
 		txHeader:             txHeader,
+		tlsFlight:            tlsFlight,
 		routerProvidedConnId: routerProvidedConnId,
 		circuitId:            circuitId,
 	}
@@ -402,7 +418,41 @@ type hostedConn interface {
 	edge.MsgSink[any]
 	acceptableConn
 	establishServerCrypto(keypair *kx.KeyPair, peerKey []byte, method edge.CryptoMethod) ([]byte, error)
+	installTlsE2ee(e *tlsE2ee, sink io.Writer) error
+	primeTlsIfNeeded()
 	setAcceptCompleteHandler(h *newConnHandler)
+}
+
+// establishServerTls answers the dialer's ClientHello with a new TLS server engine for this
+// connection and returns the first server flight for the DialSuccess reply.
+func (conn *edgeHostConn) establishServerTls(edgeCh hostedConn, message *channel.Message) ([]byte, error) {
+	if err := checkPeerCryptoMethod(message.Headers[edge.CryptoMethodHeader]); err != nil {
+		return nil, err
+	}
+	clientHello := message.Headers[edge.PublicKeyHeader]
+	if clientHello == nil {
+		return nil, errors.New("dialer sent no tls handshake")
+	}
+	if conn.e2eeIdentity == nil {
+		return nil, errors.New("tls e2ee requires an identity provider")
+	}
+	id, err := conn.e2eeIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("tls e2ee: unable to get identity: %w", err)
+	}
+	cfg, err := newE2eeTlsConfig(id, true)
+	if err != nil {
+		return nil, err
+	}
+	engine, flight, err := newTlsE2eeServer(cfg, clientHello)
+	if err != nil {
+		return nil, err
+	}
+	if err = edgeCh.installTlsE2ee(engine, edgeCh.DataSink()); err != nil {
+		engine.close()
+		return nil, err
+	}
+	return flight, nil
 }
 
 // childConnParams holds the primitive fields needed to build a child conn on
@@ -542,8 +592,9 @@ func (conn *edgeHostConn) listen(session *rest_model.SessionDetail, service *res
 	}()
 
 	logger.Debug("sending bind request to edge router")
+	// a tls host sends no key at bind: its handshake answers each dial, as with the C SDK
 	var pub []byte
-	if conn.crypto {
+	if conn.crypto && conn.keyPair != nil {
 		pub = conn.keyPair.Public()
 	}
 	bindRequest := edge.NewBindMsg(conn.Id(), *session.Token, pub, options)

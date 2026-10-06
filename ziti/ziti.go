@@ -288,6 +288,24 @@ type ContextImpl struct {
 	identityCachedAt time.Time
 
 	listenerManagers cmap.ConcurrentMap[string, *listenerManager]
+
+	// fipsE2eeLogged makes the controller-requested switch to tls e2ee log once
+	fipsE2eeLogged atomic.Bool
+}
+
+// e2eeMethod returns the end-to-end encryption method for new dials and listens: the configured
+// one, or CryptoMethodTLS when the controller reports the FIPS_MODE build flag.
+func (context *ContextImpl) e2eeMethod() edge.CryptoMethod {
+	if context.options.E2EEMethod == edge.CryptoMethodTLS {
+		return edge.CryptoMethodTLS
+	}
+	if context.CtrlClt.controllerRequestsFips() {
+		if !context.fipsE2eeLogged.Swap(true) {
+			pfxlog.Logger().Infof("controller requested FIPS_MODE: using crypto method[%s]", edge.CryptoMethodTLS)
+		}
+		return edge.CryptoMethodTLS
+	}
+	return context.options.E2EEMethod
 }
 
 func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
@@ -1761,6 +1779,8 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 	context.addActiveDialService(svc)
 
 	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
+	edgeDialOptions.CryptoMethod = context.e2eeMethod()
+	edgeDialOptions.E2eeIdentity = context.CtrlClt.GetIdentity
 
 	conn, err := context.dialService(ctx, svc, options, edgeDialOptions)
 	if err == nil {
@@ -2603,8 +2623,11 @@ func (self *waitForNHelper) WaitForN(timeout time.Duration) error {
 }
 
 func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions, waitForN uint) (*listenerManager, error) {
+	options.CryptoMethod = context.e2eeMethod()
+	options.E2eeIdentity = context.CtrlClt.GetIdentity
+
 	var keyPair *kx.KeyPair
-	if service.EncryptionRequired != nil && *service.EncryptionRequired {
+	if service.EncryptionRequired != nil && *service.EncryptionRequired && options.CryptoMethod != edge.CryptoMethodTLS {
 		var err error
 		keyPair, err = kx.NewKeyPair()
 		if err != nil {

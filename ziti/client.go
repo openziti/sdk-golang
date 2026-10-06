@@ -26,6 +26,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,7 @@ type CtrlClient struct {
 	capabilitiesLoaded               atomic.Bool
 	lastCapabilitiesAttempt          atomic.Int64
 	controllerVersion                atomic.Pointer[versions.SemVer]
+	controllerFipsMode               atomic.Bool
 }
 
 // RequestTotpToken implements TotpTokenRequestor, exchanging a TOTP code for a TOTP token.
@@ -581,12 +583,20 @@ func (self *CtrlClient) loadCtrlCapabilities() {
 	if result != nil && result.Payload != nil && result.Payload.Data != nil {
 		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
 			self.controllerVersion.Store(sv)
+			self.controllerFipsMode.Store(slices.Contains(result.Payload.Data.BuildFlags, "FIPS_MODE"))
 			if sv.Equals(versions.MustParseSemVer("0.0.0")) || sv.CompareTo(versions.MustParseSemVer("1.1.0")) >= 0 {
 				self.supportsConfigTypesOnServiceList.Store(true)
 			}
 			self.capabilitiesLoaded.Store(true)
 		}
 	}
+}
+
+// controllerRequestsFips returns true if the controller version reports the FIPS_MODE build flag.
+// While the controller version is still unknown it returns false; the load is retried later.
+func (self *CtrlClient) controllerRequestsFips() bool {
+	self.ensureCtrlCapabilities()
+	return self.controllerFipsMode.Load()
 }
 
 func (self *CtrlClient) supportsSetOfConfigTypesOnServiceList() bool {
