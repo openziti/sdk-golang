@@ -283,6 +283,10 @@ func (e *tlsE2ee) handshakeResult() (bool, error) {
 }
 
 func (e *tlsE2ee) setWriteDeadline(t time.Time) {
+	// only a write waiting on the handshake reads the deadline
+	if ended, _ := e.handshakeResult(); ended {
+		return
+	}
 	e.deadlineLock.Lock()
 	defer e.deadlineLock.Unlock()
 	e.writeDeadline = t
@@ -400,6 +404,9 @@ func (e *tlsE2ee) flush() error {
 // flushAlert sends what the engine wrote before it failed, so the peer gets the alert that
 // says why instead of a bare close.
 func (e *tlsE2ee) flushAlert() {
+	if !e.pipe.hasOutput() {
+		return
+	}
 	if err := e.flush(); err != nil {
 		pfxlog.Logger().WithError(err).Debug("unable to send tls e2ee alert")
 	}

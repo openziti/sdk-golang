@@ -318,6 +318,15 @@ func (context *ContextImpl) e2eeMethod() edge.CryptoMethod {
 	return context.options.E2EEMethod
 }
 
+// dialCryptoMethod returns the crypto method for a dial to svc. e2eeMethod may ask the controller
+// for its capabilities, so it is skipped for a dial that sends no keys.
+func (context *ContextImpl) dialCryptoMethod(svc *rest_model.ServiceDetail) edge.CryptoMethod {
+	if svc.EncryptionRequired != nil && *svc.EncryptionRequired {
+		return context.e2eeMethod()
+	}
+	return edge.CryptoMethodLibsodium
+}
+
 func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
 	var result []*rest_model.ServiceDetail
 
@@ -1789,10 +1798,7 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 	context.addActiveDialService(svc)
 
 	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
-	// e2eeMethod may ask the controller for its capabilities, so skip it for a dial that sends no keys
-	if svc.EncryptionRequired != nil && *svc.EncryptionRequired {
-		edgeDialOptions.CryptoMethod = context.e2eeMethod()
-	}
+	edgeDialOptions.CryptoMethod = context.dialCryptoMethod(svc)
 	edgeDialOptions.E2eeIdentity = context.CtrlClt.GetIdentity
 
 	conn, err := context.dialService(ctx, svc, options, edgeDialOptions)
@@ -2637,6 +2643,8 @@ func (self *waitForNHelper) WaitForN(timeout time.Duration) error {
 
 func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions, waitForN uint) (*listenerManager, error) {
 	encrypted := service.EncryptionRequired != nil && *service.EncryptionRequired
+	// read before e2eeMethod, so capabilities that load in between leave the method marked provisional
+	capsLoaded := context.CtrlClt.capabilitiesLoaded.Load()
 	if encrypted {
 		options.CryptoMethod = context.e2eeMethod()
 	}
@@ -2658,7 +2666,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 		connects:        map[string]time.Time{},
 		connectChan:     make(chan *edgeRouterConnResult, 3),
 		eventChan:       make(chan listenerEvent, 3),
-		e2eeProvisional: encrypted && !context.CtrlClt.capabilitiesLoaded.Load(),
+		e2eeProvisional: encrypted && !capsLoaded,
 	}
 
 	options.EventHandler = &listenerEventSender{

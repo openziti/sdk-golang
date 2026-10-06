@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +56,25 @@ func TestE2eeMethod(t *testing.T) {
 			require.Equal(t, tt.want, e2eeMethodContext(tt.configured, tt.controllerFips).e2eeMethod())
 		})
 	}
+}
+
+// TestDialCryptoMethodUnencrypted verifies that a dial to a service without encryption does not ask
+// the controller for its capabilities. The controller client has no API, so a call would panic.
+func TestDialCryptoMethodUnencrypted(t *testing.T) {
+	req := require.New(t)
+	ctx := &ContextImpl{options: &Options{E2EEMethod: edge.CryptoMethodTLS}, CtrlClt: &CtrlClient{}}
+	encrypted := false
+
+	req.Equal(edge.CryptoMethodLibsodium, ctx.dialCryptoMethod(&rest_model.ServiceDetail{}))
+	req.Equal(edge.CryptoMethodLibsodium, ctx.dialCryptoMethod(&rest_model.ServiceDetail{EncryptionRequired: &encrypted}))
+}
+
+// TestDialCryptoMethodEncrypted verifies that a dial to a service that requires encryption uses the
+// e2ee method.
+func TestDialCryptoMethodEncrypted(t *testing.T) {
+	encrypted := true
+	ctx := e2eeMethodContext(edge.CryptoMethodLibsodium, true)
+	require.Equal(t, edge.CryptoMethodTLS, ctx.dialCryptoMethod(&rest_model.ServiceDetail{EncryptionRequired: &encrypted}))
 }
 
 // TestE2eeMethodFipsProcess checks that a process running Go's FIPS 140-3 module picks tls even

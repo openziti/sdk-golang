@@ -60,12 +60,18 @@ func newRebindManager(t *testing.T, controllerFips bool) (*listenerManager, *reb
 	return mgr, listener
 }
 
+// requireRebind waits up to 5s for an expected rebind, and 200ms to show an unexpected one does not
+// come.
 func requireRebind(t *testing.T, l *rebindListener, expected bool) {
 	t.Helper()
+	wait := 200 * time.Millisecond
+	if expected {
+		wait = 5 * time.Second
+	}
 	select {
 	case <-l.closed:
 		require.True(t, expected, "listeners closed with no method change")
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(wait):
 		require.False(t, expected, "listeners not closed after the method changed")
 	}
 }

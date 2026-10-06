@@ -144,7 +144,11 @@ func (r *edgeChunkReader) primeTlsUntilDeadline() (retry bool, err error) {
 		data, flags, err := r.source()
 		if err != nil {
 			var timeout interface{ Timeout() bool }
-			return errors.As(err, &timeout) && timeout.Timeout(), nil
+			if errors.As(err, &timeout) && timeout.Timeout() {
+				return true, nil
+			}
+			r.logger().WithError(err).Debug("tls e2ee handshake source ended")
+			return false, nil
 		}
 		if flags&edge.FIN != 0 {
 			r.readFIN.Store(true)

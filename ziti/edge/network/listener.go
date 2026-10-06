@@ -380,11 +380,27 @@ func (self *multiListener) Close() error {
 
 func (self *multiListener) CloseListeners() error {
 	self.listenerLock.Lock()
-	defer self.listenerLock.Unlock()
+	children := make([]*edgeHostConn, 0, len(self.listeners))
+	for child := range self.listeners {
+		children = append(children, child)
+	}
+	self.listenerLock.Unlock()
+
+	// each close waits up to 5s on an unbind, so run them in parallel and outside the lock
+	errs := make([]error, len(children))
+	var wg sync.WaitGroup
+	for i, child := range children {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = child.Close()
+		}()
+	}
+	wg.Wait()
 
 	var resultErrors []error
-	for child := range self.listeners {
-		if err := child.Close(); err != nil {
+	for _, err := range errs {
+		if err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}

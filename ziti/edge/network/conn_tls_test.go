@@ -89,14 +89,29 @@ func (p *tlsConnPair) close() {
 	_ = p.host.Close()
 }
 
+// tlsConnPairHooks adjust newTlsConnPair. dialerToHost carries the dialer's messages and may hold
+// them back. beforePrime runs once both conns exist, before the host starts its handshake.
+type tlsConnPairHooks struct {
+	dialerToHost func(host *edgeConnLegacy, msg *channel.Message)
+	beforePrime  func(p *tlsConnPair)
+}
+
 // newTlsConnPair runs the dial up to the dialer's last flight. Messages from the dialer go through
 // dialerToHost, which may hold them back.
 func newTlsConnPair(t *testing.T, cliCfg, srvCfg *tls.Config, dialerToHost func(host *edgeConnLegacy, msg *channel.Message)) *tlsConnPair {
+	p, err := dialTlsConnPair(t, cliCfg, srvCfg, tlsConnPairHooks{dialerToHost: dialerToHost})
+	require.NoError(t, err)
+	return p
+}
+
+// dialTlsConnPair is newTlsConnPair, returning the error the dialer hit on the host's first flight.
+func dialTlsConnPair(t *testing.T, cliCfg, srvCfg *tls.Config, hooks tlsConnPairHooks) (*tlsConnPair, error) {
 	req := require.New(t)
 	dialer, dialerWire := newWiredLegacyConn(t)
 	host, hostWire := newWiredLegacyConn(t)
 	p := &tlsConnPair{dialer: dialer, host: host, dialerWire: dialerWire, hostWire: hostWire}
 	hostWire.setDeliver(func(msg *channel.Message) { dialer.AcceptMessage(msg, nil) })
+	dialerToHost := hooks.dialerToHost
 	if dialerToHost == nil {
 		dialerToHost = func(host *edgeConnLegacy, msg *channel.Message) { host.AcceptMessage(msg, nil) }
 	}
@@ -107,14 +122,42 @@ func newTlsConnPair(t *testing.T, cliCfg, srvCfg *tls.Config, dialerToHost func(
 	srv, flight, err := newTlsE2eeServer(srvCfg, hello)
 	req.NoError(err)
 
+	if hooks.beforePrime != nil {
+		hooks.beforePrime(p)
+	}
 	req.NoError(host.installTlsE2ee(srv, host.DataSink()))
 	host.primeTlsIfNeeded()
 
 	reply := channel.NewMessage(edge.ContentTypeStateConnected, nil)
 	reply.Headers[edge.PublicKeyHeader] = flight
-	req.NoError(dialer.establishClientTlsFromReply(cli, reply, dialer.DataSink()))
+	if err = dialer.establishClientTlsFromReply(cli, reply, dialer.DataSink()); err != nil {
+		return p, err
+	}
 	dialer.primeTlsIfNeeded()
-	return p
+	return p, nil
+}
+
+func requireReadErr(t *testing.T, conn *edgeConnLegacy, msg string) {
+	t.Helper()
+	readErr := make(chan error, 1)
+	go func() {
+		_, err := conn.Read(make([]byte, 16))
+		readErr <- err
+	}()
+	select {
+	case err := <-readErr:
+		require.ErrorContains(t, err, msg)
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "the read did not end", "want an error containing %q", msg)
+	}
+}
+
+// hrrConfigs returns configs whose handshake needs a HelloRetryRequest: the dialer sends only a
+// P-256 key share and the host accepts only P-384.
+func hrrConfigs(cliCfg, srvCfg *tls.Config) (*tls.Config, *tls.Config) {
+	cliCfg.CurvePreferences = []tls.CurveID{tls.CurveP256, tls.CurveP384}
+	srvCfg.CurvePreferences = []tls.CurveID{tls.CurveP384}
+	return cliCfg, srvCfg
 }
 
 func readString(t *testing.T, conn *edgeConnLegacy, n int) string {
@@ -155,7 +198,8 @@ func TestTlsConnHostWritesFirst(t *testing.T) {
 }
 
 // TestTlsConnHostRejectsDialerCert verifies that a host that rejects the dialer's certificate sends
-// the alert and closes the conn, so the dialer learns why instead of writing into a dead circuit.
+// the alert and closes the conn, so the dialer learns why instead of writing into a dead circuit. A
+// host read then returns the handshake error, not io.EOF.
 func TestTlsConnHostRejectsDialerCert(t *testing.T) {
 	req := require.New(t)
 	hostPki := newTestPki(t)
@@ -168,18 +212,67 @@ func TestTlsConnHostRejectsDialerCert(t *testing.T) {
 	p := newTlsConnPair(t, cliCfg, srvCfg, nil)
 	defer p.close()
 
-	readErr := make(chan error, 1)
-	go func() {
-		_, err := p.dialer.Read(make([]byte, 16))
-		readErr <- err
-	}()
-	select {
-	case err := <-readErr:
-		req.ErrorContains(err, "bad certificate")
-	case <-time.After(time.Second):
-		req.Fail("the dialer never saw the host's alert")
-	}
-	req.Eventually(p.host.IsClosed, time.Second, 10*time.Millisecond)
+	requireReadErr(t, p.dialer, "bad certificate")
+	req.Eventually(p.host.IsClosed, 5*time.Second, 10*time.Millisecond)
+	requireReadErr(t, p.host, "peer certificate verification failed")
+}
+
+// TestTlsConnDialerRejectsHostCert verifies that a dialer that rejects the host's certificate fails
+// the dial and sends the alert, so the host closes its conn and a host read says why.
+func TestTlsConnDialerRejectsHostCert(t *testing.T) {
+	req := require.New(t)
+	dialerPki := newTestPki(t)
+	cliCfg, err := newE2eeTlsConfig(dialerPki.identity(t, "dialer"), false)
+	req.NoError(err)
+	// the host trusts the dialer, but its own cert is from a CA the dialer does not know
+	srvCfg, err := newE2eeTlsConfig(newTestPki(t).identityTrusting(t, "host", dialerPki.pool), true)
+	req.NoError(err)
+
+	p, err := dialTlsConnPair(t, cliCfg, srvCfg, tlsConnPairHooks{})
+	defer p.close()
+	req.ErrorContains(err, "peer certificate verification failed")
+
+	req.Eventually(p.host.IsClosed, 5*time.Second, 10*time.Millisecond)
+	requireReadErr(t, p.host, "bad certificate")
+}
+
+// TestTlsConnHelloRetryRequest verifies a dial whose handshake needs a HelloRetryRequest: the second
+// ClientHello and the host's flight travel as Data messages, and a dialer that writes first still
+// gets its data through once the handshake completes.
+func TestTlsConnHelloRetryRequest(t *testing.T) {
+	req := require.New(t)
+	cliCfg, srvCfg := hrrConfigs(testConfigs(t))
+	p := newTlsConnPair(t, cliCfg, srvCfg, nil)
+	defer p.close()
+
+	_, err := p.dialer.Write([]byte("ping"))
+	req.NoError(err)
+	req.Equal("ping", readString(t, p.host, 4))
+
+	_, err = p.host.Write([]byte("pong"))
+	req.NoError(err)
+	req.Equal("pong", readString(t, p.dialer, 4))
+	req.True(p.dialer.tlsE2ee.conn.ConnectionState().HelloRetryRequest)
+}
+
+// TestTlsConnHelloRetryRequestUntrustedHost verifies that a dialer that rejects the host's
+// certificate after a HelloRetryRequest closes its conn, and the host learns why from the alert.
+// The rejection happens after the dial returned, on the dialer's prime goroutine.
+func TestTlsConnHelloRetryRequestUntrustedHost(t *testing.T) {
+	req := require.New(t)
+	dialerPki := newTestPki(t)
+	cliCfg, err := newE2eeTlsConfig(dialerPki.identity(t, "dialer"), false)
+	req.NoError(err)
+	srvCfg, err := newE2eeTlsConfig(newTestPki(t).identityTrusting(t, "host", dialerPki.pool), true)
+	req.NoError(err)
+	cliCfg, srvCfg = hrrConfigs(cliCfg, srvCfg)
+
+	p := newTlsConnPair(t, cliCfg, srvCfg, nil)
+	defer p.close()
+
+	req.Eventually(p.dialer.IsClosed, 5*time.Second, 10*time.Millisecond)
+	requireReadErr(t, p.dialer, "peer certificate verification failed")
+	requireReadErr(t, p.host, "bad certificate")
 }
 
 // TestTlsConnWriteDeadlineDuringHandshake verifies that a write waiting on the handshake gives up at
@@ -225,11 +318,13 @@ func TestTlsConnReadDeadlineDuringHandshake(t *testing.T) {
 	req := require.New(t)
 	cliCfg, srvCfg := testConfigs(t)
 	held := make(chan *channel.Message, 4)
-	p := newTlsConnPair(t, cliCfg, srvCfg, func(_ *edgeConnLegacy, msg *channel.Message) {
-		held <- msg
+	p, err := dialTlsConnPair(t, cliCfg, srvCfg, tlsConnPairHooks{
+		dialerToHost: func(_ *edgeConnLegacy, msg *channel.Message) { held <- msg },
+		// set before priming, so the first pull already meets the deadline
+		beforePrime: func(p *tlsConnPair) { req.NoError(p.host.SetReadDeadline(time.Now())) },
 	})
 	defer p.close()
-	req.NoError(p.host.SetReadDeadline(time.Now()))
+	req.NoError(err)
 
 	go func() {
 		time.Sleep(150 * time.Millisecond)
