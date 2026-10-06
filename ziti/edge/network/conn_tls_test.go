@@ -250,6 +250,33 @@ func TestHostChildConnMultipartAdvertisement(t *testing.T) {
 	}
 }
 
+// TestDialConnMultipartAdvertisement verifies that an encrypted dialed conn does not advertise
+// MULTIPART on its first message. A plain conn still does.
+func TestDialConnMultipartAdvertisement(t *testing.T) {
+	for _, crypto := range []bool{true, false} {
+		t.Run(fmt.Sprintf("crypto=%v", crypto), func(t *testing.T) {
+			req := require.New(t)
+			wire := newWireChannel()
+			sent := make(chan *channel.Message, 1)
+			wire.setDeliver(func(msg *channel.Message) { sent <- msg })
+			rc := &routerConn{ch: edge.NewSingleSdkChannel(wire), mux: edge.NewChannelConnMapMux[any](nil)}
+			pending := newPendingMsgSink(2)
+			req.NoError(rc.mux.Add(pending))
+
+			// the reply carries no host key, so the crypto setup leaves the conn unencrypted
+			reply := channel.NewMessage(edge.ContentTypeStateConnected, nil)
+			logger := logrus.NewEntry(logrus.StandardLogger())
+			conn, err := rc.buildV1LegacyConn(logger, reply, pending, 2, "", "", nil, nil, crypto, "multipart-test")
+			req.NoError(err)
+			_, err = conn.(*edgeConnLegacy).msgCh.Write([]byte("x"))
+			req.NoError(err)
+
+			flags, _ := (<-sent).GetUint32Header(edge.FlagsHeader)
+			req.Equal(!crypto, flags&edge.MULTIPART != 0)
+		})
+	}
+}
+
 // TestTlsConnHostWritesFirst verifies that a host can write before it reads: primeTls completes the
 // handshake from the dialer's Finished.
 func TestTlsConnHostWritesFirst(t *testing.T) {

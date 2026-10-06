@@ -238,7 +238,7 @@ func (ec *MsgChannel) NextMsgId() uint32 {
 	return ec.msgIdSeq.Next()
 }
 
-// DisableMultipart stops the conn from advertising MULTIPART. An encrypted conn calls it, because
+// DisableMultipart stops the conn from advertising MULTIPART. An encrypted conn needs this, because
 // the MULTIPART_MSG flag that frames a multipart body travels outside the encryption.
 func (ec *MsgChannel) DisableMultipart() {
 	ec.flags.Set(ConnFlagIdxNoMultipart, true)
