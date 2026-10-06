@@ -19,6 +19,7 @@ package network
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -174,7 +175,7 @@ func (base *edgeConnBase) setAcceptCompleteHandler(h *newConnHandler) {
 // any extra fields on top. circuitId is already included and serves as the
 // primary identifier for xgress conns.
 func (base *edgeConnBase) baseState() map[string]any {
-	return map[string]any{
+	state := map[string]any{
 		"serviceName":        base.serviceName,
 		"closed":             base.flags.IsSet(flagClosed),
 		"encryptionRequired": base.crypto,
@@ -184,6 +185,16 @@ func (base *edgeConnBase) baseState() map[string]any {
 		"marker":             base.marker,
 		"circuitId":          base.circuitId,
 	}
+	if base.tlsE2ee != nil {
+		state["cryptoMethod"] = edge.CryptoMethodTLS.String()
+		if base.tlsE2ee.handshakeComplete() {
+			cs := base.tlsE2ee.conn.ConnectionState()
+			state["tlsVersion"] = tls.VersionName(cs.Version)
+			state["tlsCipherSuite"] = tls.CipherSuiteName(cs.CipherSuite)
+			state["tlsCurve"] = cs.CurveID.String()
+		}
+	}
+	return state
 }
 
 // InspectSink returns a VirtualConnDetail for this connection.
