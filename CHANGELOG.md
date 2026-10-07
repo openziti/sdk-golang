@@ -1,3 +1,18 @@
+# Release notes 1.8.3
+
+## API Changes
+
+* `network.NewMultiListener` takes the listener's initial cost and precedence, and
+  `network.MultiListener` adds `GetCostAndPrecedence()`, which reports the values new binds carry.
+  Both are used only by the SDK's own hosting path; applications hosting through `ziti.Context`
+  are unaffected.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.2 -> v1.8.3](https://github.com/openziti/sdk-golang/compare/v1.8.2...v1.8.3)
+    * [Issue #1043](https://github.com/openziti/sdk-golang/issues/1043) - [Backport-1.8] Cost and precedence updates on a hosted service are lost when its listener rebinds
+
+
 # Release notes 1.8.2
 
 ## Issues Fixed and Dependency Updates
