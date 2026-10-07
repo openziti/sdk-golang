@@ -57,6 +57,11 @@
 
 * `edge.Conn` no longer exposes `GetRouterId()` (and `edge.MsgChannel` no longer implements it).
 
+* `network.NewMultiListener` takes the listener's initial cost and precedence, and
+  `network.MultiListener` adds `GetCostAndPrecedence()`, which reports the values new binds carry.
+  A listener's cost and precedence updates now apply to every later bind, not only the routers it
+  was bound to at the time of the update.
+
 ## What's New
 
 * `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
@@ -86,6 +91,8 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang/v2: [v1.9.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.9.0...v2.0.0)
+    * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
+    * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1004](https://github.com/openziti/sdk-golang/issues/1004) - UnmarshallPacketPayload indexes the buffer without bounds checks
     * [Issue #1006](https://github.com/openziti/sdk-golang/issues/1006) - Chunked payload reassembly trusts the peer's declared size
     * [Issue #1011](https://github.com/openziti/sdk-golang/issues/1011) - secretstream: rekey is not implemented, so streams diverge from libsodium peers

@@ -99,6 +99,9 @@ type edgeHostConn struct {
 	established  atomic.Bool
 	eventHandler edge.ListenerEventHandler
 	envF         func() xgress.Env
+
+	// confirmedHandler, if set, runs on its own goroutine each time the router confirms the bind.
+	confirmedHandler concurrenz.AtomicValue[func()]
 }
 
 // GetEdgeRouterInfo returns the name and address of the edge router for this hosting connection.
@@ -185,6 +188,9 @@ func (conn *edgeHostConn) AcceptMessage(msg *channel.Message, ch edge.SdkChannel
 		conn.closeAndLogError(true)
 	case edge.ContentTypeBindSuccess:
 		conn.established.Store(true)
+		if handler := conn.confirmedHandler.Load(); handler != nil {
+			go handler()
+		}
 		conn.eventHandler.NotifyEstablished()
 	}
 }
