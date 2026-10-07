@@ -2630,7 +2630,7 @@ func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl,
 		closeNotify: context.closeNotify,
 	}
 
-	listenerMgr.listener = network.NewMultiListener(service, listenerMgr.GetCurrentSession)
+	listenerMgr.listener = network.NewMultiListener(service, options.Cost, options.Precedence, listenerMgr.GetCurrentSession)
 
 	var helper *waitForNHelper
 	if waitForN > 0 {
@@ -2878,7 +2878,9 @@ func (mgr *listenerManager) createListener(routerConnection edge.RouterConn, ses
 	logger := pfxlog.Logger().WithField("serviceName", *mgr.service.Name).
 		WithField("router", routerName)
 	svc := mgr.listener.GetService()
-	listener, err := routerConnection.Listen(svc, session, mgr.options, mgr.context.getXgressEnv)
+	options := *mgr.options
+	options.Cost, options.Precedence = mgr.listener.GetCostAndPrecedence()
+	listener, err := routerConnection.Listen(svc, session, &options, mgr.context.getXgressEnv)
 	elapsed := time.Since(start)
 	if err == nil {
 		logger = logger.WithField("connId", listener.Id())

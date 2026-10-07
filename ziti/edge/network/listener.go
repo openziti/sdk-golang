@@ -98,9 +98,14 @@ type MultiListener interface {
 	HasListenerForRouter(routerName string) bool
 	// GetListenerCount returns the number of active child listeners.
 	GetListenerCount() int
+	// GetCostAndPrecedence returns the cost and precedence a new bind should carry: the values most
+	// recently set through UpdateCost, UpdatePrecedence or UpdateCostAndPrecedence, or the initial ones.
+	GetCostAndPrecedence() (uint16, edge.Precedence)
 }
 
-func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
+// NewMultiListener returns a MultiListener for service. cost and precedence are the initial values
+// reported by GetCostAndPrecedence.
+func NewMultiListener(service *rest_model.ServiceDetail, cost uint16, precedence edge.Precedence, getSessionF func() *rest_model.SessionDetail) MultiListener {
 	return &multiListener{
 		baseListener: baseListener{
 			service: service,
@@ -108,6 +113,8 @@ func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *res
 		},
 		listeners:   map[*edgeHostConn]struct{}{},
 		getSessionF: getSessionF,
+		cost:        cost,
+		precedence:  precedence,
 	}
 }
 
@@ -118,6 +125,11 @@ type multiListener struct {
 	getSessionF          func() *rest_model.SessionDetail
 	listenerEventHandler atomic.Value
 	errorEventHandler    atomic.Value
+
+	// cost, precedence and updated are guarded by listenerLock.
+	cost       uint16
+	precedence edge.Precedence
+	updated    bool
 }
 
 func (self *multiListener) Id() uint32 {
@@ -202,39 +214,46 @@ func (self *multiListener) GetCurrentSession() *rest_model.SessionDetail {
 	return self.getSessionF()
 }
 
-func (self *multiListener) UpdateCost(cost uint16) error {
+func (self *multiListener) GetCostAndPrecedence() (uint16, edge.Precedence) {
 	self.listenerLock.Lock()
 	defer self.listenerLock.Unlock()
+	return self.cost, self.precedence
+}
 
-	var resultErrors []error
-	for child := range self.listeners {
-		if err := child.UpdateCost(cost); err != nil {
-			resultErrors = append(resultErrors, err)
-		}
-	}
-	return self.condenseErrors(resultErrors)
+func (self *multiListener) UpdateCost(cost uint16) error {
+	return self.updateCostAndPrecedence(&cost, nil)
 }
 
 func (self *multiListener) UpdatePrecedence(precedence edge.Precedence) error {
-	self.listenerLock.Lock()
-	defer self.listenerLock.Unlock()
-
-	var resultErrors []error
-	for child := range self.listeners {
-		if err := child.UpdatePrecedence(precedence); err != nil {
-			resultErrors = append(resultErrors, err)
-		}
-	}
-	return self.condenseErrors(resultErrors)
+	return self.updateCostAndPrecedence(nil, &precedence)
 }
 
 func (self *multiListener) UpdateCostAndPrecedence(cost uint16, precedence edge.Precedence) error {
+	return self.updateCostAndPrecedence(&cost, &precedence)
+}
+
+// updateCostAndPrecedence records the non-nil values for future binds and sends them to every child
+// whose bind the router has confirmed; reconcile covers the rest once they are confirmed. The returned
+// error covers only the sends; the values are recorded regardless.
+func (self *multiListener) updateCostAndPrecedence(cost *uint16, precedence *edge.Precedence) error {
 	self.listenerLock.Lock()
 	defer self.listenerLock.Unlock()
 
+	if cost != nil {
+		self.cost = *cost
+	}
+	if precedence != nil {
+		self.precedence = *precedence
+	}
+	self.updated = true
+
 	var resultErrors []error
 	for child := range self.listeners {
-		if err := child.UpdateCostAndPrecedence(cost, precedence); err != nil {
+		// Before confirmation the controller may not have the terminator yet, and would reject the update.
+		if !child.established.Load() {
+			continue
+		}
+		if err := child.updateCostAndPrecedence(cost, precedence); err != nil {
 			resultErrors = append(resultErrors, err)
 		}
 	}
@@ -288,6 +307,18 @@ func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHan
 	defer self.listenerLock.Unlock()
 	self.listeners[listener] = struct{}{}
 
+	// Every confirmation is reconciled, not only one whose bind carried stale values: the router may have
+	// handed the bind an existing terminator for its listener id, or re-created the terminator from the
+	// bind's values. The confirmation may also have arrived before the handler was set.
+	listener.confirmedHandler.Store(func() {
+		self.listenerLock.Lock()
+		defer self.listenerLock.Unlock()
+		self.reconcile(listener)
+	})
+	if listener.established.Load() {
+		self.reconcile(listener)
+	}
+
 	closer := func() {
 		self.listenerLock.Lock()
 		defer self.listenerLock.Unlock()
@@ -300,6 +331,22 @@ func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHan
 	self.notifyOfConnectionChange()
 
 	go self.forward(listener, closer)
+}
+
+// reconcile sends the recorded cost and precedence to child if it is still a child and the values have
+// been updated since the listener was created. The caller holds listenerLock.
+func (self *multiListener) reconcile(child *edgeHostConn) {
+	if !self.updated {
+		return
+	}
+	if _, ok := self.listeners[child]; !ok {
+		return
+	}
+	if err := child.UpdateCostAndPrecedence(self.cost, self.precedence); err != nil {
+		pfxlog.Logger().WithField("connId", child.Id()).
+			WithField("serviceName", child.serviceName).
+			WithError(err).Error("failed to send cost and precedence to confirmed listener")
+	}
 }
 
 func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func()) {
