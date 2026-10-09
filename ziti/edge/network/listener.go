@@ -98,6 +98,9 @@ type MultiListener interface {
 	HasListenerForRouter(routerName string) bool
 	// GetListenerCount returns the number of active child listeners.
 	GetListenerCount() int
+	// CloseListeners closes the child listeners and leaves this listener open, so its owner binds
+	// new ones.
+	CloseListeners() error
 }
 
 func NewMultiListener(service *rest_model.ServiceDetail, getSessionF func() *rest_model.SessionDetail) MultiListener {
@@ -373,6 +376,35 @@ func (self *multiListener) Close() error {
 	}
 
 	return nil
+}
+
+func (self *multiListener) CloseListeners() error {
+	self.listenerLock.Lock()
+	children := make([]*edgeHostConn, 0, len(self.listeners))
+	for child := range self.listeners {
+		children = append(children, child)
+	}
+	self.listenerLock.Unlock()
+
+	// each close waits up to 5s on an unbind, so run them in parallel and outside the lock
+	errs := make([]error, len(children))
+	var wg sync.WaitGroup
+	for i, child := range children {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = child.Close()
+		}()
+	}
+	wg.Wait()
+
+	var resultErrors []error
+	for _, err := range errs {
+		if err != nil {
+			resultErrors = append(resultErrors, err)
+		}
+	}
+	return self.condenseErrors(resultErrors)
 }
 
 func (self *multiListener) CloseWithError(err error) {

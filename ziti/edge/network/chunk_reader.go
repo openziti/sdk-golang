@@ -19,7 +19,9 @@ package network
 import (
 	"encoding/binary"
 	"io"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/openziti/sdk-golang/v2/edgexg"
 	"github.com/openziti/sdk-golang/v2/secretstream"
@@ -56,6 +58,15 @@ type edgeChunkReader struct {
 	// It is consumed on the first chunk and replaced by receiver.
 	rxKey    []byte
 	receiver secretstream.Decryptor
+
+	// tls is the CryptoMethodTLS engine. It is set instead of rxKey/receiver.
+	tls *tlsE2ee
+
+	// readLock serializes Read with primeTls, which may pull chunks from another goroutine
+	// until the TLS handshake completes.
+	readLock sync.Mutex
+	// primeErr is a fatal crypto error primeTls hit, returned by the next Read
+	primeErr error
 
 	// inBuffer holds data that was decoded but didn't fit in the caller's
 	// p slice. Subsequent Read calls drain this before pulling new chunks.
@@ -95,20 +106,87 @@ func (r *edgeChunkReader) ReadFIN() bool {
 }
 
 // IsEncrypted reports whether the reader is either waiting for the secretstream
-// header (key set but no receiver yet) or actively decrypting (receiver set).
+// header (key set but no receiver yet), actively decrypting (receiver set), or
+// using a tls e2ee engine.
 func (r *edgeChunkReader) IsEncrypted() bool {
-	return r.rxKey != nil || r.receiver != nil
+	return r.rxKey != nil || r.receiver != nil || r.tls != nil
+}
+
+func (r *edgeChunkReader) SetTls(e *tlsE2ee) {
+	r.tls = e
+}
+
+const primeTlsRetryInterval = 50 * time.Millisecond
+
+// primeTls pulls chunks until the TLS handshake ends, buffering plaintext for Read, so a conn can
+// write before the application reads. An application read deadline does not stop it. It returns
+// the handshake error, or nil when the source ends.
+func (r *edgeChunkReader) primeTls() error {
+	for {
+		retry, err := r.primeTlsUntilDeadline()
+		if !retry {
+			return err
+		}
+		time.Sleep(primeTlsRetryInterval)
+	}
+}
+
+// primeTlsUntilDeadline is one primeTls pass under readLock. It reports retry when the source hit
+// a read deadline before the handshake ended.
+func (r *edgeChunkReader) primeTlsUntilDeadline() (retry bool, err error) {
+	r.readLock.Lock()
+	defer r.readLock.Unlock()
+
+	for !r.readFIN.Load() && r.primeErr == nil {
+		if ended, err := r.tls.handshakeResult(); ended {
+			return false, err
+		}
+		data, flags, err := r.source()
+		if err != nil {
+			var timeout interface{ Timeout() bool }
+			if errors.As(err, &timeout) && timeout.Timeout() {
+				return true, nil
+			}
+			r.logger().WithError(err).Debug("tls e2ee handshake source ended")
+			return false, nil
+		}
+		if flags&edge.FIN != 0 {
+			r.readFIN.Store(true)
+		}
+		if err = r.checkMultipart(flags); err != nil {
+			r.primeErr = err
+			return false, err
+		}
+		plain, err := r.tls.decrypt(data)
+		if err != nil {
+			r.logger().WithError(err).Error("tls e2ee handshake failed")
+			r.primeErr = err
+			return false, err
+		}
+		if _, err = r.deliver(nil, plain, flags&edge.MULTIPART_MSG != 0); err != nil {
+			r.primeErr = err
+			return false, err
+		}
+	}
+	return false, r.primeErr
 }
 
 // Read fills p with decoded, decrypted data from the source. It pulls new
 // chunks only when its internal buffer is empty. Each Read returns at most
 // one chunk's worth of data, matching the existing doRead contract.
 func (r *edgeChunkReader) Read(p []byte) (int, error) {
+	r.readLock.Lock()
+	defer r.readLock.Unlock()
+
 	log := r.logger()
 
 	// Fast path: previously-buffered data.
 	if len(r.inBuffer) > 0 {
 		return r.drainBuffer(p), nil
+	}
+
+	if r.primeErr != nil {
+		return 0, r.primeErr
 	}
 
 	for {
@@ -136,6 +214,10 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			return 0, io.EOF
 		}
 
+		if err = r.checkMultipart(flags); err != nil {
+			return 0, err
+		}
+
 		// The first chunk on an encrypted stream carries the secretstream header.
 		// Consume it, initialize the decryptor, and loop to read the next chunk.
 		if r.rxKey != nil {
@@ -158,6 +240,19 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			}
 		}
 
+		// A TLS chunk may hold only handshake bytes or part of a record. That yields no
+		// plaintext and is not an error, so read the next chunk.
+		if r.tls != nil {
+			size := len(data)
+			if data, err = r.tls.decrypt(data); err != nil {
+				log.Errorf("crypto failed on chunk of size=%d err=(%v)", size, err)
+				return 0, err
+			}
+			if len(data) == 0 {
+				continue
+			}
+		}
+
 		multipart := flags&edge.MULTIPART_MSG != 0
 		n, err := r.deliver(p, data, multipart)
 		if err != nil {
@@ -167,6 +262,15 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 		log.Debugf("read %d bytes", n)
 		return n, nil
 	}
+}
+
+// checkMultipart fails a MULTIPART_MSG chunk on an encrypted conn. The flag is not covered by the
+// encryption, so it could re-frame the plaintext, and an encrypted conn never advertises MULTIPART.
+func (r *edgeChunkReader) checkMultipart(flags uint32) error {
+	if flags&edge.MULTIPART_MSG != 0 && r.IsEncrypted() {
+		return errors.New("multipart message on an encrypted connection")
+	}
+	return nil
 }
 
 // drainBuffer copies from the head of inBuffer into p and updates the buffer.

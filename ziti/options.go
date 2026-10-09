@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/openziti/edge-api/rest_model"
+	"github.com/openziti/sdk-golang/v2/ziti/edge"
 )
 
 type ServiceEventType string
@@ -68,6 +69,12 @@ type Options struct {
 	// Use `zitiContext.AddListener(<eventName>, handler)` where `eventName` may be EventServiceAdded, EventServiceChanged, EventServiceRemoved.
 	OnServiceUpdate     serviceCB
 	EdgeRouterUrlFilter func(string) bool
+
+	// E2EEMethod selects the end-to-end encryption method for services that require encryption. The
+	// zero value is edge.CryptoMethodLibsodium. Both ends of a circuit must use the same method.
+	// edge.CryptoMethodTLS is forced when Go's FIPS 140-3 module is on or the controller reports the
+	// FIPS_MODE build flag. Only the FIPS module makes the TLS algorithms FIPS approved.
+	E2EEMethod edge.CryptoMethod
 }
 
 func (self *Options) isEdgeRouterUrlAccepted(url string) bool {

@@ -18,6 +18,7 @@ package ziti
 
 import (
 	gocontext "context"
+	"crypto/fips140"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -288,6 +289,40 @@ type ContextImpl struct {
 	identityCachedAt time.Time
 
 	listenerManagers cmap.ConcurrentMap[string, *listenerManager]
+
+	// fipsE2eeLogged limits the FIPS switch to tls e2ee to one log line per context
+	fipsE2eeLogged atomic.Bool
+}
+
+// e2eeMethod forces CryptoMethodTLS under Go's FIPS module or a FIPS_MODE controller, because
+// libsodium's algorithms are not FIPS approved.
+func (context *ContextImpl) e2eeMethod() edge.CryptoMethod {
+	if context.options.E2EEMethod == edge.CryptoMethodTLS {
+		return edge.CryptoMethodTLS
+	}
+	if fips140.Enabled() {
+		if !context.fipsE2eeLogged.Swap(true) {
+			pfxlog.Logger().Infof("Go FIPS 140-3 module enabled: using crypto method[%s]", edge.CryptoMethodTLS)
+		}
+		return edge.CryptoMethodTLS
+	}
+	if context.CtrlClt.controllerRequestsFips() {
+		if !context.fipsE2eeLogged.Swap(true) {
+			pfxlog.Logger().Warnf("controller requested FIPS_MODE: using crypto method[%s], but the Go FIPS 140-3 "+
+				"module is not enabled, so the TLS algorithms are not limited to FIPS-approved ones", edge.CryptoMethodTLS)
+		}
+		return edge.CryptoMethodTLS
+	}
+	return context.options.E2EEMethod
+}
+
+// dialCryptoMethod returns the crypto method for a dial to svc. e2eeMethod may ask the controller
+// for its capabilities, so it is skipped for a dial that sends no keys.
+func (context *ContextImpl) dialCryptoMethod(svc *rest_model.ServiceDetail) edge.CryptoMethod {
+	if svc.EncryptionRequired != nil && *svc.EncryptionRequired {
+		return context.e2eeMethod()
+	}
+	return edge.CryptoMethodLibsodium
 }
 
 func (context *ContextImpl) GetActiveDialServices() []*rest_model.ServiceDetail {
@@ -1761,6 +1796,8 @@ func (context *ContextImpl) DialContextWithOptions(ctx gocontext.Context, servic
 	context.addActiveDialService(svc)
 
 	edgeDialOptions.CallerId = context.CtrlClt.GetCurrentApiSession().GetIdentityName()
+	edgeDialOptions.CryptoMethod = context.dialCryptoMethod(svc)
+	edgeDialOptions.E2eeIdentity = context.CtrlClt.GetIdentity
 
 	conn, err := context.dialService(ctx, svc, options, edgeDialOptions)
 	if err == nil {
@@ -2603,26 +2640,31 @@ func (self *waitForNHelper) WaitForN(timeout time.Duration) error {
 }
 
 func newListenerManager(service *rest_model.ServiceDetail, context *ContextImpl, options *edge.ListenOptions, waitForN uint) (*listenerManager, error) {
-	var keyPair *kx.KeyPair
-	if service.EncryptionRequired != nil && *service.EncryptionRequired {
-		var err error
-		keyPair, err = kx.NewKeyPair()
-		if err != nil {
-			return nil, fmt.Errorf("unable to create end-to-end encrytpion key-pair while hosting service '%s' (%w)", *service.Name, err)
-		}
+	encrypted := service.EncryptionRequired != nil && *service.EncryptionRequired
+	// read before e2eeMethod, so capabilities that load in between leave the method marked provisional
+	capsLoaded := context.CtrlClt.capabilitiesLoaded.Load()
+	if encrypted {
+		options.CryptoMethod = context.e2eeMethod()
+	}
+	options.E2eeIdentity = context.CtrlClt.GetIdentity
+
+	keyPair, err := listenKeyPair(service, options.CryptoMethod)
+	if err != nil {
+		return nil, err
 	}
 
 	options.KeyPair = keyPair
 	options.ListenerId = uuid.NewString()
 
 	listenerMgr := &listenerManager{
-		service:        service,
-		context:        context,
-		options:        options,
-		pendingListens: map[string]uint64{},
-		connects:       map[string]time.Time{},
-		connectChan:    make(chan *edgeRouterConnResult, 3),
-		eventChan:      make(chan listenerEvent, 3),
+		service:         service,
+		context:         context,
+		options:         options,
+		pendingListens:  map[string]uint64{},
+		connects:        map[string]time.Time{},
+		connectChan:     make(chan *edgeRouterConnResult, 3),
+		eventChan:       make(chan listenerEvent, 3),
+		e2eeProvisional: encrypted && !capsLoaded,
 	}
 
 	options.EventHandler = &listenerEventSender{
@@ -2676,6 +2718,52 @@ type listenerManager struct {
 	lastSessionRefresh     time.Time
 	observers              concurrenz.CopyOnWriteSlice[ListenEventObserver]
 	sessionRefreshBaseLine time.Duration
+	// e2eeProvisional is set while options.CryptoMethod may change once the controller
+	// capabilities load.
+	e2eeProvisional bool
+}
+
+// listenKeyPair returns the libsodium key pair a listener for service needs with method, or nil.
+func listenKeyPair(service *rest_model.ServiceDetail, method edge.CryptoMethod) (*kx.KeyPair, error) {
+	if service.EncryptionRequired == nil || !*service.EncryptionRequired || method == edge.CryptoMethodTLS {
+		return nil, nil
+	}
+	keyPair, err := kx.NewKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create end-to-end encrytpion key-pair while hosting service '%s' (%w)", *service.Name, err)
+	}
+	return keyPair, nil
+}
+
+// recheckE2eeMethod picks the e2ee method again once the controller capabilities load after the
+// listener picked one. If the method changed, it closes the router binds so new ones carry the new
+// method, since a tls dial fails against a libsodium host. It waits for in-flight binds, which read
+// options.
+func (mgr *listenerManager) recheckE2eeMethod() {
+	if !mgr.e2eeProvisional || !mgr.context.CtrlClt.capabilitiesLoaded.Load() || len(mgr.pendingListens) > 0 {
+		return
+	}
+	mgr.e2eeProvisional = false
+
+	method := mgr.context.e2eeMethod()
+	if method == mgr.options.CryptoMethod {
+		return
+	}
+	log := pfxlog.Logger().WithField("service", stringz.OrEmpty(mgr.service.Name))
+	keyPair, err := listenKeyPair(mgr.service, method)
+	if err != nil {
+		log.WithError(err).Errorf("unable to switch to crypto method[%s]", method)
+		return
+	}
+	log.Infof("controller capabilities loaded after listen: rebinding with crypto method[%s]", method)
+	mgr.options.CryptoMethod = method
+	mgr.options.KeyPair = keyPair
+	// each close waits on an unbind, so keep it off the run loop
+	go func() {
+		if err := mgr.listener.CloseListeners(); err != nil {
+			log.WithError(err).Warn("error closing listeners to rebind")
+		}
+	}()
 }
 
 func (mgr *listenerManager) AddObserver(observer ListenEventObserver) {
@@ -2770,6 +2858,7 @@ func (mgr *listenerManager) run() {
 				mgr.sessionRefreshInterval = 30 * time.Minute
 			}
 		case <-ticker.C:
+			mgr.recheckE2eeMethod()
 			mgr.makeMoreListeners()
 		case <-mgr.context.closeNotify:
 			mgr.listener.CloseWithError(errors.New("context closed"))

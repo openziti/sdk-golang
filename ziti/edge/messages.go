@@ -193,7 +193,41 @@ const (
 	// CryptoMethodLibsodium are used to indicate the crypto engine in use
 	CryptoMethodLibsodium CryptoMethod = 0 // default: crypto_kx_*, crypto_secretstream_*
 	CryptoMethodSSL       CryptoMethod = 1 // OpenSSL(possibly with FIPS): ECDH, AES256-GCM
+	// CryptoMethodTLS is ziti-sdk-c's ziti_crypto_tls. On the wire its CryptoMethodHeader is the
+	// string "tls", never this byte value.
+	CryptoMethodTLS CryptoMethod = 2
 )
+
+// String returns the method name the C SDK uses in CryptoMethodHeader.
+func (m CryptoMethod) String() string {
+	switch m {
+	case CryptoMethodLibsodium:
+		return "libsodium"
+	case CryptoMethodSSL:
+		return "aes-gcm"
+	case CryptoMethodTLS:
+		return "tls"
+	default:
+		return fmt.Sprintf("unknown(%d)", byte(m))
+	}
+}
+
+// ParseCryptoMethodHeader reads a CryptoMethodHeader value. The Go SDK sends a single byte. The C SDK sends a
+// name ("libsodium", "aes-gcm", "tls"). "none" and other names are an error.
+func ParseCryptoMethodHeader(val []byte) (CryptoMethod, error) {
+	if len(val) == 1 {
+		return CryptoMethod(val[0]), nil
+	}
+	switch string(val) {
+	case "libsodium":
+		return CryptoMethodLibsodium, nil
+	case "aes-gcm":
+		return CryptoMethodSSL, nil
+	case "tls":
+		return CryptoMethodTLS, nil
+	}
+	return 0, fmt.Errorf("unsupported crypto method '%s'", string(val))
+}
 
 const (
 	// FIN is an edge payload flag used to signal communication ends

@@ -19,6 +19,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -165,19 +166,77 @@ func (conn *routerConn) BindChannel(binding channel.Binding) error {
 	return nil
 }
 
-// maybeKeyPair returns a fresh key pair if the service requires encryption,
-// or nil otherwise. A key-generation error is logged but not fatal — the
-// connection proceeds unencrypted, matching the prior behavior.
-func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, bool) {
-	if !*service.EncryptionRequired {
-		return nil, false
+func encryptionRequired(service *rest_model.ServiceDetail) bool {
+	return service.EncryptionRequired != nil && *service.EncryptionRequired
+}
+
+func maybeKeyPair(service *rest_model.ServiceDetail) (*kx.KeyPair, error) {
+	if !encryptionRequired(service) {
+		return nil, nil
 	}
 	keyPair, err := kx.NewKeyPair()
 	if err != nil {
-		pfxlog.Logger().Errorf("unable to setup encryption for service[%s] %v", *service.Name, err)
-		return nil, false
+		return nil, errors.Wrapf(err, "unable to set up end-to-end encryption for service[%s]", *service.Name)
 	}
-	return keyPair, true
+	return keyPair, nil
+}
+
+// dialCrypto returns the dialer's e2ee state for the service and the key material for the
+// connect request: a TLS engine and its ClientHello with CryptoMethodTLS, else a libsodium key
+// pair and its public key. crypto is false when the service does not require encryption.
+func dialCrypto(service *rest_model.ServiceDetail, options *edge.DialOptions) (keyPair *kx.KeyPair, engine *tlsE2ee, pub []byte, crypto bool, err error) {
+	if options.CryptoMethod != edge.CryptoMethodTLS || !encryptionRequired(service) {
+		if keyPair, err = maybeKeyPair(service); err != nil || keyPair == nil {
+			return nil, nil, nil, false, err
+		}
+		return keyPair, nil, keyPair.Public(), true, nil
+	}
+
+	cfg, err := e2eeTlsConfigFrom(options.E2eeIdentity, false)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	engine, pub, err = newTlsE2eeClient(cfg)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	return nil, engine, pub, true, nil
+}
+
+// putTlsCryptoMethod names tls in the connect request's CryptoMethodHeader, as a string the way
+// the C SDK sends it.
+func putTlsCryptoMethod(msg *channel.Message, engine *tlsE2ee) {
+	if engine != nil {
+		msg.PutStringHeader(edge.CryptoMethodHeader, edge.CryptoMethodTLS.String())
+	}
+}
+
+// closeTlsE2eeOnError stops the dial's TLS engine when the dial fails. On success the conn owns it.
+func closeTlsE2eeOnError(engine *tlsE2ee, err *error) {
+	if engine != nil && *err != nil {
+		engine.close()
+	}
+}
+
+func establishClientCrypto(
+	logger *logrus.Entry,
+	base *edgeConnBase,
+	replyMsg *channel.Message,
+	keyPair *kx.KeyPair,
+	engine *tlsE2ee,
+	sink io.Writer,
+	establish func(*kx.KeyPair, []byte, edge.CryptoMethod) error,
+) error {
+	if engine == nil {
+		return establishClientCryptoFromReply(logger, replyMsg, keyPair, establish)
+	}
+	logger.Debug("setting up tls end-to-end encryption")
+	if err := base.establishClientTlsFromReply(engine, replyMsg, sink); err != nil {
+		logger.WithError(err).Error("crypto failure")
+		return err
+	}
+	logger.Debug("client tls encryption setup done")
+	return nil
 }
 
 // applyReplyState copies post-dial state (circuit ID, stickiness token) from
@@ -269,7 +328,9 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 		serviceName:  *service.Name,
 		routerInfo:   edge.EdgeRouterInfo{Name: conn.routerName, Addr: conn.routerAddr},
 		keyPair:      options.KeyPair,
-		crypto:       options.KeyPair != nil,
+		crypto:       options.KeyPair != nil || (options.CryptoMethod == edge.CryptoMethodTLS && encryptionRequired(service)),
+		cryptoMethod: options.CryptoMethod,
+		e2eeIdentity: options.E2eeIdentity,
 		service:      service,
 		acceptC:      make(chan edge.Conn, 10),
 		token:        *session.Token,
@@ -304,10 +365,14 @@ func (conn *routerConn) SupportsConnectV2() bool {
 // ConnectV2 performs a sessionless dial via the V2 protocol. The router
 // authorizes locally via RDM, so no service session token is required. The
 // resulting connection always uses xgress flow control.
-func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.ServiceDetail, options *edge.DialOptions, envF func() xgress.Env) (_ edge.Conn, err error) {
 	connId := conn.mux.GetNextId()
 	marker := newMarker()
-	keyPair, crypto := maybeKeyPair(service)
+	keyPair, engine, pub, crypto, err := dialCrypto(service, options)
+	if err != nil {
+		return nil, err
+	}
+	defer closeTlsE2eeOnError(engine, &err)
 
 	ec := &edgeConnXgress{
 		edgeConnBase: edgeConnBase{
@@ -326,11 +391,8 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 		WithField("connId", connId).
 		WithField("serviceId", *service.ID)
 
-	var pub []byte
-	if crypto {
-		pub = keyPair.Public()
-	}
 	connectRequest := edge.NewConnectV2Msg(connId, *service.ID, edge.ServiceIdentifierById, pub, options)
+	putTlsCryptoMethod(connectRequest, engine)
 	// The go sdk's V2 implementation always uses sdk xgress flow control — the returned conn
 	// is always an edgeConnXgress. Override whatever the caller set on options.SdkFlowControl
 	// so the router picks the xgEdgeForwarder handler and returns xgress headers.
@@ -383,10 +445,11 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 	ec.start()
 
 	if crypto {
-		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+		if err := establishClientCrypto(logger, &ec.edgeConnBase, replyMsg, keyPair, engine, ec.DataSink(), ec.establishClientCrypto); err != nil {
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected via v2")
@@ -396,21 +459,22 @@ func (conn *routerConn) ConnectV2(ctx context.Context, service *rest_model.Servi
 // Connect performs a V1 dial. Depending on what the router grants in its
 // reply, the resulting connection runs in either legacy or xgress flow-control
 // mode.
-func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (edge.Conn, error) {
+func (conn *routerConn) Connect(ctx context.Context, service *rest_model.ServiceDetail, session *rest_model.SessionDetail, options *edge.DialOptions, envF func() xgress.Env) (_ edge.Conn, err error) {
 	connId := conn.mux.GetNextId()
 	marker := newMarker()
-	keyPair, crypto := maybeKeyPair(service)
+	keyPair, engine, pub, crypto, err := dialCrypto(service, options)
+	if err != nil {
+		return nil, err
+	}
+	defer closeTlsE2eeOnError(engine, &err)
 
 	logger := pfxlog.Logger().
 		WithField("marker", marker).
 		WithField("connId", connId).
 		WithField("sessionId", session.ID)
 
-	var pub []byte
-	if crypto {
-		pub = keyPair.Public()
-	}
 	connectRequest := edge.NewConnectMsg(connId, *session.Token, pub, options)
+	putTlsCryptoMethod(connectRequest, engine)
 	connectRequest.PutStringHeader(edge.ConnectionMarkerHeader, marker)
 	connectRequest.PutBoolHeader(edge.UseXgressToSdkHeader, options.SdkFlowControl)
 
@@ -444,14 +508,14 @@ func (conn *routerConn) Connect(ctx context.Context, service *rest_model.Service
 
 	useXg, _ := replyMsg.GetBoolHeader(edge.UseXgressToSdkHeader)
 	if useXg {
-		return conn.buildV1XgressConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, crypto, envF, *service.Name)
+		return conn.buildV1XgressConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, engine, crypto, envF, *service.Name)
 	}
 
 	if defaultConnections := conn.ch.GetChannel().GetUnderlayCountsByType()[edge.ChannelTypeDefault]; defaultConnections > 1 {
 		conn.mux.RemoveByConnId(connId)
 		return nil, errors.New("edge connections must use sdk flow control when using multiple default connections")
 	}
-	return conn.buildV1LegacyConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, crypto, *service.Name)
+	return conn.buildV1LegacyConn(logger, replyMsg, pending, connId, marker, circuitId, keyPair, engine, crypto, *service.Name)
 }
 
 // buildV1XgressConn constructs an xgress-mode connection for a V1 dial reply,
@@ -464,6 +528,7 @@ func (conn *routerConn) buildV1XgressConn(
 	marker string,
 	circuitId string,
 	keyPair *kx.KeyPair,
+	engine *tlsE2ee,
 	crypto bool,
 	envF func() xgress.Env,
 	serviceName string,
@@ -495,10 +560,11 @@ func (conn *routerConn) buildV1XgressConn(
 	ec.start()
 
 	if crypto {
-		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+		if err := establishClientCrypto(logger, &ec.edgeConnBase, replyMsg, keyPair, engine, ec.DataSink(), ec.establishClientCrypto); err != nil {
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected (xgress)")
@@ -515,6 +581,7 @@ func (conn *routerConn) buildV1LegacyConn(
 	marker string,
 	circuitId string,
 	keyPair *kx.KeyPair,
+	engine *tlsE2ee,
 	crypto bool,
 	serviceName string,
 ) (edge.Conn, error) {
@@ -532,6 +599,9 @@ func (conn *routerConn) buildV1LegacyConn(
 		mux:   conn.mux,
 		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
 	}
+	if crypto {
+		ec.msgCh.DisableMultipart()
+	}
 	ec.initChunkReader()
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
 
@@ -541,10 +611,11 @@ func (conn *routerConn) buildV1LegacyConn(
 	}
 
 	if crypto {
-		if err := establishClientCryptoFromReply(logger, replyMsg, keyPair, ec.establishClientCrypto); err != nil {
+		if err := establishClientCrypto(logger, &ec.edgeConnBase, replyMsg, keyPair, engine, ec.DataSink(), ec.establishClientCrypto); err != nil {
 			_ = ec.Close()
 			return nil, err
 		}
+		ec.primeTlsIfNeeded()
 	}
 
 	logger.Debug("connected (legacy)")

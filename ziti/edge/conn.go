@@ -31,6 +31,7 @@ import (
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/sequence"
+	"github.com/openziti/identity"
 	"github.com/openziti/sdk-golang/v2/inspect"
 	"github.com/openziti/sdk-golang/v2/secretstream/kx"
 	"github.com/openziti/sdk-golang/v2/xgress"
@@ -38,6 +39,7 @@ import (
 
 const (
 	ConnFlagIdxFirstMsgSent = 0
+	ConnFlagIdxNoMultipart  = 1
 )
 
 func init() {
@@ -236,6 +238,12 @@ func (ec *MsgChannel) NextMsgId() uint32 {
 	return ec.msgIdSeq.Next()
 }
 
+// DisableMultipart stops the conn from advertising MULTIPART. An encrypted conn needs this, because
+// the MULTIPART_MSG flag that frames a multipart body travels outside the encryption.
+func (ec *MsgChannel) DisableMultipart() {
+	ec.flags.Set(ConnFlagIdxNoMultipart, true)
+}
+
 func (ec *MsgChannel) SetWriteDeadline(t time.Time) error {
 	ec.writeDeadline = t
 	return nil
@@ -257,7 +265,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 
 	// indicate that we can accept multipart messages
 	// with the first message
-	if ec.flags.CompareAndSet(ConnFlagIdxFirstMsgSent, false, true) {
+	if ec.flags.CompareAndSet(ConnFlagIdxFirstMsgSent, false, true) && !ec.flags.IsSet(ConnFlagIdxNoMultipart) {
 		flags, _ := msg.GetUint32Header(FlagsHeader)
 		flags = flags | MULTIPART
 		msg.PutUint32Header(FlagsHeader, flags)
@@ -319,6 +327,11 @@ type DialOptions struct {
 	// ForceConnectV1 skips the ConnectV2 path even if the router advertises support.
 	// Intended as an escape hatch; normal callers should leave this false.
 	ForceConnectV1 bool
+	// CryptoMethod selects the end-to-end encryption method used when the service requires
+	// encryption. The zero value is CryptoMethodLibsodium.
+	CryptoMethod CryptoMethod
+	// E2eeIdentity supplies the certificate and trust anchors for CryptoMethodTLS.
+	E2eeIdentity func() (identity.Identity, error)
 }
 
 func (d DialOptions) GetConnectTimeout() time.Duration {
@@ -342,6 +355,11 @@ type ListenOptions struct {
 	DoNotSaveDialerIdentity bool
 	ListenerId              string
 	KeyPair                 *kx.KeyPair
+	// CryptoMethod selects the end-to-end encryption method for accepted connections when the
+	// service requires encryption. With CryptoMethodTLS, KeyPair is nil.
+	CryptoMethod CryptoMethod
+	// E2eeIdentity supplies the certificate and trust anchors for CryptoMethodTLS.
+	E2eeIdentity func() (identity.Identity, error)
 	// EventHandler receives listener lifecycle notifications. If nil, events are discarded.
 	EventHandler ListenerEventHandler
 }
