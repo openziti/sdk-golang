@@ -105,6 +105,9 @@ func (r *edgeChunkReader) ReadFIN() bool {
 	return r.readFIN.Load()
 }
 
+// IsEncrypted reports whether the reader is either waiting for the secretstream
+// header (key set but no receiver yet), actively decrypting (receiver set), or
+// using a tls e2ee engine.
 func (r *edgeChunkReader) IsEncrypted() bool {
 	return r.rxKey != nil || r.receiver != nil || r.tls != nil
 }

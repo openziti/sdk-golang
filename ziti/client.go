@@ -579,10 +579,7 @@ func (self *CtrlClient) ensureCtrlCapabilities() {
 // ensureCtrlCapabilities call retries, rather than pinning capabilities based on a transient
 // failure.
 func (self *CtrlClient) loadCtrlCapabilities() {
-	result, err := self.API.Informational.ListVersion(informational.NewListVersionParams())
-	if err != nil {
-		pfxlog.Logger().WithError(err).Warn("unable to load controller version and capabilities")
-	}
+	result, _ := self.API.Informational.ListVersion(informational.NewListVersionParams())
 	if result != nil && result.Payload != nil && result.Payload.Data != nil {
 		if sv, err := versions.ParseSemVer(result.Payload.Data.Version); err == nil {
 			self.controllerVersion.Store(sv)

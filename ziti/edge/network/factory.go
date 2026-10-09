@@ -192,14 +192,7 @@ func dialCrypto(service *rest_model.ServiceDetail, options *edge.DialOptions) (k
 		return keyPair, nil, keyPair.Public(), true, nil
 	}
 
-	if options.E2eeIdentity == nil {
-		return nil, nil, nil, false, errors.New("tls e2ee requires an identity provider")
-	}
-	id, err := options.E2eeIdentity()
-	if err != nil {
-		return nil, nil, nil, false, errors.Wrap(err, "tls e2ee: unable to get identity")
-	}
-	cfg, err := newE2eeTlsConfig(id, false)
+	cfg, err := e2eeTlsConfigFrom(options.E2eeIdentity, false)
 	if err != nil {
 		return nil, nil, nil, false, err
 	}

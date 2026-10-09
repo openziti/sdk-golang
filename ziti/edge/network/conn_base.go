@@ -307,8 +307,7 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 
 // Read delegates to the chunk reader, after a fast-path check for closed
 // connections. The reader handles buffering, decryption, and multipart
-// splitting. A conn closed by a failed tls e2ee handshake returns that error
-// rather than io.EOF.
+// splitting.
 func (base *edgeConnBase) Read(p []byte) (int, error) {
 	if base.flags.IsSet(flagClosed) {
 		if base.tlsE2ee != nil {

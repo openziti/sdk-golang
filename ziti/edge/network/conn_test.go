@@ -3,14 +3,17 @@ package network
 import (
 	"crypto/x509"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/openziti/channel/v5"
+	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/foundation/v2/sequencer"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -184,6 +187,67 @@ func TestReadMultipart(t *testing.T) {
 	}
 
 	req.Equal(words, read)
+}
+
+func TestChunkReaderRejectsMultipartFlagLibsodium(t *testing.T) {
+	r := newEdgeChunkReader(func() ([]byte, uint32, error) {
+		return []byte{1, 0, 'a'}, edge.MULTIPART_MSG, nil
+	}, func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
+	r.SetRxKey(make([]byte, 32))
+
+	_, err := r.Read(make([]byte, 16))
+	require.ErrorContains(t, err, "multipart message on an encrypted connection")
+}
+
+// TestHostChildConnMultipartAdvertisement verifies that an encrypted hosted conn does not advertise
+// MULTIPART on its first message, so a C SDK peer never sends MULTIPART_MSG to it. A plain conn
+// still does.
+func TestHostChildConnMultipartAdvertisement(t *testing.T) {
+	for _, crypto := range []bool{true, false} {
+		t.Run(fmt.Sprintf("crypto=%v", crypto), func(t *testing.T) {
+			req := require.New(t)
+			name := "multipart-test"
+			wire := newWireChannel()
+			sent := make(chan *channel.Message, 1)
+			wire.setDeliver(func(msg *channel.Message) { sent <- msg })
+			hostConn := newWiredHostConn(1, &rest_model.ServiceDetail{Name: &name}, wire)
+
+			child, err := hostConn.buildChildConn(childConnParams{id: 2, crypto: crypto}, false, nil)
+			req.NoError(err)
+			_, err = child.(*edgeConnLegacy).msgCh.Write([]byte("x"))
+			req.NoError(err)
+
+			flags, _ := (<-sent).GetUint32Header(edge.FlagsHeader)
+			req.Equal(!crypto, flags&edge.MULTIPART != 0)
+		})
+	}
+}
+
+// TestDialConnMultipartAdvertisement verifies that an encrypted dialed conn does not advertise
+// MULTIPART on its first message. A plain conn still does.
+func TestDialConnMultipartAdvertisement(t *testing.T) {
+	for _, crypto := range []bool{true, false} {
+		t.Run(fmt.Sprintf("crypto=%v", crypto), func(t *testing.T) {
+			req := require.New(t)
+			wire := newWireChannel()
+			sent := make(chan *channel.Message, 1)
+			wire.setDeliver(func(msg *channel.Message) { sent <- msg })
+			rc := &routerConn{ch: edge.NewSingleSdkChannel(wire), mux: edge.NewChannelConnMapMux[any](nil)}
+			pending := newPendingMsgSink(2)
+			req.NoError(rc.mux.Add(pending))
+
+			// the reply carries no host key, so the crypto setup leaves the conn unencrypted
+			reply := channel.NewMessage(edge.ContentTypeStateConnected, nil)
+			logger := logrus.NewEntry(logrus.StandardLogger())
+			conn, err := rc.buildV1LegacyConn(logger, reply, pending, 2, "", "", nil, nil, crypto, "multipart-test")
+			req.NoError(err)
+			_, err = conn.(*edgeConnLegacy).msgCh.Write([]byte("x"))
+			req.NoError(err)
+
+			flags, _ := (<-sent).GetUint32Header(edge.FlagsHeader)
+			req.Equal(!crypto, flags&edge.MULTIPART != 0)
+		})
+	}
 }
 
 type NoopTestChannel struct {

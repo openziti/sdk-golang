@@ -433,14 +433,7 @@ func (conn *edgeHostConn) establishServerTls(edgeCh hostedConn, message *channel
 	if clientHello == nil {
 		return nil, errors.New("dialer sent no tls handshake")
 	}
-	if conn.e2eeIdentity == nil {
-		return nil, errors.New("tls e2ee requires an identity provider")
-	}
-	id, err := conn.e2eeIdentity()
-	if err != nil {
-		return nil, fmt.Errorf("tls e2ee: unable to get identity: %w", err)
-	}
-	cfg, err := newE2eeTlsConfig(id, true)
+	cfg, err := e2eeTlsConfigFrom(conn.e2eeIdentity, true)
 	if err != nil {
 		return nil, err
 	}

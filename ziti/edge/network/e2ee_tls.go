@@ -185,17 +185,7 @@ func (tlsPipeAddr) Network() string { return "ziti-e2ee" }
 func (tlsPipeAddr) String() string  { return "ziti-e2ee" }
 
 func newTlsE2eeClient(cfg *tls.Config) (*tlsE2ee, []byte, error) {
-	e := newTlsE2ee(cfg, false)
-	out, err := e.step(nil)
-	if err != nil {
-		e.close()
-		return nil, nil, err
-	}
-	if len(out) == 0 {
-		e.close()
-		return nil, nil, errors.New("tls e2ee: no ClientHello produced")
-	}
-	return e, out, nil
+	return newTlsE2ee(cfg, false, nil)
 }
 
 // newTlsE2eeServer feeds the dialer's ClientHello to a new server engine and returns the whole
@@ -204,20 +194,11 @@ func newTlsE2eeServer(cfg *tls.Config, clientHello []byte) (*tlsE2ee, []byte, er
 	if len(clientHello) == 0 {
 		return nil, nil, errors.New("tls e2ee: dialer sent no ClientHello")
 	}
-	e := newTlsE2ee(cfg, true)
-	out, err := e.step(clientHello)
-	if err != nil {
-		e.close()
-		return nil, nil, err
-	}
-	if len(out) == 0 {
-		e.close()
-		return nil, nil, errors.New("tls e2ee: no server flight produced")
-	}
-	return e, out, nil
+	return newTlsE2ee(cfg, true, clientHello)
 }
 
-func newTlsE2ee(cfg *tls.Config, server bool) *tlsE2ee {
+// newTlsE2ee starts an engine, feeds it input, and returns its first handshake flight.
+func newTlsE2ee(cfg *tls.Config, server bool, input []byte) (*tlsE2ee, []byte, error) {
 	e := &tlsE2ee{
 		pipe:        newTlsPipe(),
 		hsDone:      make(chan struct{}),
@@ -229,7 +210,16 @@ func newTlsE2ee(cfg *tls.Config, server bool) *tlsE2ee {
 		e.conn = tls.Client(e.pipe, cfg)
 	}
 	go e.run()
-	return e
+
+	out, err := e.step(input)
+	if err == nil && len(out) == 0 {
+		err = errors.New("tls e2ee: no handshake flight produced")
+	}
+	if err != nil {
+		e.close()
+		return nil, nil, err
+	}
+	return e, out, nil
 }
 
 func (e *tlsE2ee) run() {
@@ -452,6 +442,18 @@ func newE2eeTlsConfig(id identity.Identity, server bool) (*tls.Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// e2eeTlsConfigFrom is newE2eeTlsConfig for the identity that provider returns.
+func e2eeTlsConfigFrom(provider func() (identity.Identity, error), server bool) (*tls.Config, error) {
+	if provider == nil {
+		return nil, errors.New("tls e2ee requires an identity provider")
+	}
+	id, err := provider()
+	if err != nil {
+		return nil, errors.Wrap(err, "tls e2ee: unable to get identity")
+	}
+	return newE2eeTlsConfig(id, server)
 }
 
 // verifyE2eePeer checks the peer chain against roots. Both sides must present a certificate.

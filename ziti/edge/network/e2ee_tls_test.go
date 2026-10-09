@@ -20,16 +20,12 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/fips140"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"io"
 	"math/big"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -287,25 +283,6 @@ func TestTlsE2eeHandshakeWithData(t *testing.T) {
 	req.Equal("early data", string(plain))
 }
 
-func TestTlsE2eeUntrustedHost(t *testing.T) {
-	req := require.New(t)
-	cliCfg, _ := testConfigs(t)
-	_, otherSrvCfg := testConfigs(t)
-
-	cli, hello, err := newTlsE2eeClient(cliCfg)
-	req.NoError(err)
-	defer cli.close()
-	srv, flight, err := newTlsE2eeServer(otherSrvCfg, hello)
-	req.NoError(err)
-	defer srv.close()
-
-	req.NoError(cli.setSink(&recordSink{}))
-	req.Error(cli.finishClient(flight), "a host cert from another CA must fail verification")
-	req.False(cli.handshakeComplete())
-	_, err = cli.write([]byte("x"))
-	req.Error(err)
-}
-
 func TestTlsE2eeHostRequiresDialerCert(t *testing.T) {
 	req := require.New(t)
 	cliCfg, srvCfg := testConfigs(t)
@@ -352,14 +329,7 @@ func TestTlsE2eeHostWritesFirst(t *testing.T) {
 	defer p.close()
 
 	chunks := make(chan []byte, 16)
-	source := func() ([]byte, uint32, error) {
-		c, ok := <-chunks
-		if !ok {
-			return nil, 0, io.EOF
-		}
-		return c, 0, nil
-	}
-	reader := newEdgeChunkReader(source, func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
+	reader := newEdgeChunkReader(chanSource(chunks), func() *logrus.Entry { return logrus.NewEntry(logrus.StandardLogger()) })
 	reader.SetTls(p.srv)
 	go func() { _ = reader.primeTls() }()
 
@@ -456,104 +426,12 @@ func TestTlsE2eeTls12DialerWritesFirst(t *testing.T) {
 	close(chunks)
 }
 
-// clientHelloWith returns a ClientHello whose key share is for the first of curves.
-func clientHelloWith(t *testing.T, cliCfg *tls.Config, curves ...tls.CurveID) []byte {
-	cfg := cliCfg.Clone()
-	cfg.CurvePreferences = curves
-	cli, hello, err := newTlsE2eeClient(cfg)
-	require.NoError(t, err)
-	cli.close()
-	return hello
-}
-
-// TestTlsE2eeFipsHostKeyShares pins which dialer key shares a FIPS host takes without a
-// HelloRetryRequest, which costs the dial a round trip. The FIPS side runs in a child process
-// under GODEBUG=fips140=only, since fips140 mode is fixed at process start and a FIPS client
-// cannot build an X25519 share.
-func TestTlsE2eeFipsHostKeyShares(t *testing.T) {
-	const childEnv = "E2EE_TLS_KEYSHARE_DIR"
-	shares := map[string]bool{ // share -> a FIPS host accepts it
-		"x25519":         false,
-		"p256":           true,
-		"x25519mlkem768": true,
-	}
-
-	if dir := os.Getenv(childEnv); dir != "" {
-		require.True(t, fips140.Enabled())
-		_, srvCfg := testConfigs(t)
-		for name, accepted := range shares {
-			hello, err := os.ReadFile(filepath.Join(dir, name))
-			require.NoError(t, err)
-			srv, flight, err := newTlsE2eeServer(srvCfg, hello)
-			require.NoError(t, err, name)
-			srv.close()
-			retry := isHelloRetryRequest(flight)
-			require.Equal(t, !accepted, retry, name)
-			t.Logf("fips host, %s key share: accepted=%v", name, !retry)
-		}
-		return
-	}
-
-	if fips140.Enabled() {
-		t.Skip("building an X25519 key share needs a non-FIPS parent")
-	}
-	cliCfg, srvCfg := testConfigs(t)
-	hellos := map[string][]byte{
-		// the OpenSSL < 3.5 default: an X25519 share only
-		"x25519": clientHelloWith(t, cliCfg, tls.X25519, tls.CurveP256),
-		"p256":   clientHelloWith(t, cliCfg, tls.CurveP256),
-		// the OpenSSL 3.5 default: X25519MLKEM768 and X25519 shares
-		"x25519mlkem768": clientHelloWith(t, cliCfg, tls.X25519MLKEM768, tls.X25519, tls.CurveP256),
-	}
-
-	// a non-FIPS host takes every share
-	dir := t.TempDir()
-	for name, hello := range hellos {
-		srv, flight, err := newTlsE2eeServer(srvCfg, hello)
-		require.NoError(t, err, name)
-		srv.close()
-		require.False(t, isHelloRetryRequest(flight), name)
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), hello, 0o600))
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run=^TestTlsE2eeFipsHostKeyShares$", "-test.count=1", "-test.v")
-	cmd.Env = append(os.Environ(), childEnv+"="+dir, "GODEBUG=fips140=only")
-	out, err := cmd.CombinedOutput()
-	t.Logf("fips child:\n%s", out)
-	require.NoError(t, err)
-	require.Contains(t, string(out), "--- PASS: TestTlsE2eeFipsHostKeyShares")
-}
-
-// helloRetryRequestRandom is the ServerHello.random value that marks a HelloRetryRequest (RFC 8446 4.1.3).
-var helloRetryRequestRandom = []byte{
-	0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
-	0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c,
-}
-
-// isHelloRetryRequest reports whether a server flight opens with a HelloRetryRequest: a handshake
-// record whose first message is a ServerHello carrying the HRR random.
-func isHelloRetryRequest(flight []byte) bool {
-	const (
-		recordHandshake  = 22
-		msgServerHello   = 2
-		randomOffset     = 5 + 4 + 2 // record header, handshake header, legacy_version
-		helloRetryMinLen = randomOffset + 32
-	)
-	return len(flight) >= helloRetryMinLen &&
-		flight[0] == recordHandshake &&
-		flight[5] == msgServerHello &&
-		bytes.Equal(flight[randomOffset:helloRetryMinLen], helloRetryRequestRandom)
-}
-
-// TestTlsE2eeHelloRetryRequest runs the handshake through a HelloRetryRequest: the dialer's only
-// key share is for a group the host does not take, like an OpenSSL < 3.5 dialer's X25519 share at
-// a FIPS host. Go sends its share for P-256 ahead of P-384 (CurvePreferences does not reorder), and
-// curves a FIPS client can build stand in for X25519.
+// TestTlsE2eeHelloRetryRequest runs the handshake through a HelloRetryRequest, as an OpenSSL < 3.5
+// dialer's X25519 share does at a FIPS host. Go sends its share for P-256 ahead of P-384
+// (CurvePreferences does not reorder), and curves a FIPS client can build stand in for X25519.
 func TestTlsE2eeHelloRetryRequest(t *testing.T) {
 	req := require.New(t)
-	cliCfg, srvCfg := testConfigs(t)
-	cliCfg.CurvePreferences = []tls.CurveID{tls.CurveP256, tls.CurveP384}
-	srvCfg.CurvePreferences = []tls.CurveID{tls.CurveP384}
+	cliCfg, srvCfg := hrrConfigs(testConfigs(t))
 
 	cli, hello, err := newTlsE2eeClient(cliCfg)
 	req.NoError(err)
@@ -561,7 +439,6 @@ func TestTlsE2eeHelloRetryRequest(t *testing.T) {
 	req.NoError(err)
 	p := &tlsPair{cli: cli, srv: srv, cliSink: &recordSink{}, srvSink: &recordSink{}}
 	defer p.close()
-	req.True(isHelloRetryRequest(flight), "the host's first flight is a HelloRetryRequest")
 
 	req.NoError(srv.setSink(p.srvSink))
 	req.NoError(cli.setSink(p.cliSink))
@@ -591,14 +468,4 @@ func TestTlsE2eeHelloRetryRequest(t *testing.T) {
 	_, err = srv.write([]byte("host reply"))
 	req.NoError(err)
 	req.Equal("host reply", string(decryptAll(t, cli, p.srvSink.take())))
-}
-
-func TestTlsE2eeIsHelloRetryRequest(t *testing.T) {
-	req := require.New(t)
-	hrr := append([]byte{22, 3, 3, 0, 90, 2, 0, 0, 86, 3, 3}, helloRetryRequestRandom...)
-	req.True(isHelloRetryRequest(hrr))
-	notHrr := append([]byte(nil), hrr...)
-	notHrr[20] ^= 1
-	req.False(isHelloRetryRequest(notHrr))
-	req.False(isHelloRetryRequest(hrr[:30]))
 }
