@@ -42,6 +42,11 @@ const (
 	CauseServiceNotAvailable
 	// CauseNoCapableRouter means no connected edge router could carry the attempt.
 	CauseNoCapableRouter
+	// CauseE2eeNoCommonMode means the two endpoints support no e2ee mode in common.
+	CauseE2eeNoCommonMode
+	// CauseE2eeDirectRequired means a legacy e2ee attempt was rejected because the network
+	// requires DirectE2EE.
+	CauseE2eeDirectRequired
 )
 
 func (c FailureCause) String() string {
@@ -56,6 +61,10 @@ func (c FailureCause) String() string {
 		return "service not available"
 	case CauseNoCapableRouter:
 		return "no capable router"
+	case CauseE2eeNoCommonMode:
+		return "no common e2ee mode"
+	case CauseE2eeDirectRequired:
+		return "direct e2ee required"
 	default:
 		return "unknown"
 	}
@@ -69,6 +78,8 @@ var (
 	ErrSessionInvalid      = errors.New("session invalid")
 	ErrServiceNotAvailable = errors.New("service not available")
 	ErrNoCapableRouter     = errors.New("no capable router")
+	ErrE2eeNoCommonMode    = errors.New("no common e2ee mode")
+	ErrE2eeDirectRequired  = errors.New("direct e2ee required")
 )
 
 // ConnError is the typed failure a dial or bind returns: what was attempted (service, router)
@@ -133,6 +144,10 @@ func (e *ConnError) Is(target error) bool {
 		return e.Cause == CauseServiceNotAvailable
 	case ErrNoCapableRouter:
 		return e.Cause == CauseNoCapableRouter
+	case ErrE2eeNoCommonMode:
+		return e.Cause == CauseE2eeNoCommonMode
+	case ErrE2eeDirectRequired:
+		return e.Cause == CauseE2eeDirectRequired
 	}
 	return false
 }
@@ -149,6 +164,10 @@ func failureCauseFromCode(code uint32) FailureCause {
 		return CauseSessionInvalid
 	case ErrorCodeInvalidService:
 		return CauseServiceNotAvailable
+	case ErrorCodeE2eeNoCommonMode:
+		return CauseE2eeNoCommonMode
+	case ErrorCodeE2eeDirectRequired:
+		return CauseE2eeDirectRequired
 	default:
 		return CauseUnknown
 	}

@@ -139,6 +139,13 @@ const (
 	ServiceIdentifierTypeHeader    = int32(edge_client_pb.HeaderId_ServiceIdentifierType)
 	ConnectRequestIdHeader         = int32(edge_client_pb.HeaderId_ConnectRequestId)
 	RouterCapabilitiesHeader       = int32(edge_client_pb.HeaderId_RouterCapabilities)
+	// DirectE2EEModeHeader carries the asserted DirectE2EE mode. Sent on Connect, Bind and Dial
+	// by the initiator; on StateConnected and BindSuccess it carries the mode actually in
+	// effect, which is what tells a dialer whether to start TLS or fall back to legacy.
+	DirectE2EEModeHeader = int32(edge_client_pb.HeaderId_DirectE2EEModeHeader)
+	// DirectE2EECircuitTokenHeader carries the controller-signed circuit token. Sent on
+	// StateConnected to the dialer and on Dial to the host.
+	DirectE2EECircuitTokenHeader = int32(edge_client_pb.HeaderId_DirectE2EECircuitTokenHeader)
 )
 
 const (
@@ -157,6 +164,8 @@ const (
 	ErrorCodeInvalidInstanceId           = uint32(edge_client_pb.Error_InvalidInstanceId)
 	ErrorCodeAccessDenied                = uint32(edge_client_pb.Error_AccessDenied)
 	ErrorCodePostureCheckFailed          = uint32(edge_client_pb.Error_PostureCheckFailed)
+	ErrorCodeE2eeNoCommonMode            = uint32(edge_client_pb.Error_E2eeNoCommonMode)
+	ErrorCodeE2eeDirectRequired          = uint32(edge_client_pb.Error_E2eeDirectRequired)
 )
 
 type RetryHint byte

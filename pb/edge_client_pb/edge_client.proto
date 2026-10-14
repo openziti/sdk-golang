@@ -117,6 +117,13 @@ enum HeaderId {
   // structural index (-1 = no prior state). Not yet sent by the SDK or read by the router; the
   // initial feature always uses a full snapshot.
   ServiceSubscriptionIndex     = 1040;
+  // DirectE2EEModeHeader carries the asserted DirectE2EE mode. Sent on Connect, Bind and Dial
+  // by the initiator; on StateConnected and BindSuccess it carries the mode actually in effect,
+  // which is what tells a dialer whether to start TLS or fall back to legacy.
+  DirectE2EEModeHeader         = 1041;
+  // DirectE2EECircuitTokenHeader carries the controller-signed circuit token. Sent on
+  // StateConnected to the dialer and on Dial to the host.
+  DirectE2EECircuitTokenHeader = 1042;
 }
 
 enum Error {
@@ -138,6 +145,11 @@ enum Error {
   // PostureCheckFailed: policies grant access but their posture checks are failing. The
   // structured error's failingPostureCheckIds carries the failing check ids.
   PostureCheckFailed = 15;
+  // E2eeNoCommonMode: the two endpoints support no e2ee mode in common.
+  E2eeNoCommonMode = 16;
+  // E2eeDirectRequired: a legacy e2ee dial or bind was rejected because the network requires
+  // DirectE2EE.
+  E2eeDirectRequired = 17;
 }
 
 enum PrecedenceValue {
