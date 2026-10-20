@@ -14,6 +14,7 @@
     * [Issue #1043](https://github.com/openziti/sdk-golang/issues/1043) - [Backport-1.8] Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1032](https://github.com/openziti/sdk-golang/issues/1032) - [Backport-1.8] Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1056](https://github.com/openziti/sdk-golang/issues/1056) - [Backport-1.8] Xgress conn closed locally ignores the router's StateClosed and retransmits forever
+    * [Issue #1049](https://github.com/openziti/sdk-golang/issues/1049) - [Backport-1.8] Write-failed payload is written to the peer as empty data, failing encrypted reads with invalid input
 
 * github.com/go-openapi/runtime: v0.33.2 -> v0.33.3
 * github.com/go-openapi/strfmt: v0.27.2 -> v0.27.4
