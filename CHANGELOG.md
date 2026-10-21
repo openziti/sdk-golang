@@ -1,3 +1,11 @@
+# Release notes 1.8.3
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.2 -> v1.8.3](https://github.com/openziti/sdk-golang/compare/v1.8.2...v1.8.3)
+    * [Issue #1056](https://github.com/openziti/sdk-golang/issues/1056) - [Backport-1.8] Xgress conn closed locally ignores the router's StateClosed and retransmits forever
+
+
 # Release notes 1.8.2
 
 ## Issues Fixed and Dependency Updates
