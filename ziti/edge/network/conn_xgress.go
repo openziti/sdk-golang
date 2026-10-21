@@ -381,11 +381,13 @@ func (conn *edgeConnXgress) AcceptMessage(msg *channel.Message, ch edge.SdkChann
 		}
 
 	case edge.ContentTypeStateClosed:
+		// routing is not accepting more data, so nothing left in the send buffer can be delivered.
+		// That holds after a local close too, which leaves the xgress draining the buffer until
+		// it empties: unless it's closed here, the xgress retransmits forever and stays in the mux.
+		go conn.xg.CloseSendBuffer()
 		if conn.IsClosed() {
 			return
 		}
-		// routing is not accepting more data, so we need to close the send buffer
-		go conn.xg.CloseSendBuffer()
 		conn.xg.CloseXgToClient()
 		conn.flags.Set(flagSentFIN, true) // if we're not closing until all reads are done, at least prevent more writes
 
