@@ -113,7 +113,12 @@ func (conn *edgeConnLegacy) CloseWrite() error {
 }
 
 func (conn *edgeConnLegacy) SetWriteDeadline(t time.Time) error {
+	conn.setTlsWriteDeadline(t)
 	return conn.msgCh.SetWriteDeadline(t)
+}
+
+func (conn *edgeConnLegacy) primeTlsIfNeeded() {
+	conn.primeTls(conn.close)
 }
 
 func (conn *edgeConnLegacy) SetReadDeadline(t time.Time) error {
@@ -368,6 +373,7 @@ type acceptableConn interface {
 	Marker() string
 	DataSink() io.Writer
 	close(notifyCtrl bool)
+	primeTlsIfNeeded()
 }
 
 type newConnHandler struct {
@@ -376,6 +382,7 @@ type newConnHandler struct {
 	message              *channel.Message
 	ctrlSender           channel.Sender
 	txHeader             []byte
+	tlsFlight            []byte
 	routerProvidedConnId bool
 	circuitId            string
 }
@@ -410,6 +417,9 @@ func (self *newConnHandler) dialSucceeded() (error, bool) {
 
 	reply := edge.NewDialSuccessMsg(self.conn.Id(), self.edgeCh.Id())
 	reply.ReplyTo(self.message)
+	if self.tlsFlight != nil {
+		reply.Headers[edge.PublicKeyHeader] = self.tlsFlight
+	}
 
 	if !self.routerProvidedConnId {
 		startMsg, err := reply.WithTimeout(5 * time.Second).SendForReply(self.ctrlSender)
@@ -437,6 +447,8 @@ func (self *newConnHandler) dialSucceeded() (error, bool) {
 		}
 		newConnLogger.Debug("tx crypto established")
 	}
+
+	self.edgeCh.primeTlsIfNeeded()
 
 	return nil, false
 }

@@ -256,7 +256,12 @@ func (conn *edgeConnXgress) SetDeadline(t time.Time) error {
 }
 
 func (conn *edgeConnXgress) SetWriteDeadline(t time.Time) error {
+	conn.setTlsWriteDeadline(t)
 	return conn.writeAdapter.SetWriteDeadline(t)
+}
+
+func (conn *edgeConnXgress) primeTlsIfNeeded() {
+	conn.primeTls(conn.close)
 }
 
 func (conn *edgeConnXgress) SetReadDeadline(t time.Time) error {

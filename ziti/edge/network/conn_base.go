@@ -19,6 +19,7 @@ package network
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -100,6 +101,7 @@ type edgeConnBase struct {
 	crypto                bool
 	keyPair               *kx.KeyPair
 	sender                secretstream.Encryptor
+	tlsE2ee               *tlsE2ee
 	chunkReader           *edgeChunkReader
 	appData               []byte
 	sync.Mutex
@@ -173,7 +175,7 @@ func (base *edgeConnBase) setAcceptCompleteHandler(h *newConnHandler) {
 // any extra fields on top. circuitId is already included and serves as the
 // primary identifier for xgress conns.
 func (base *edgeConnBase) baseState() map[string]any {
-	return map[string]any{
+	state := map[string]any{
 		"serviceName":        base.serviceName,
 		"closed":             base.flags.IsSet(flagClosed),
 		"encryptionRequired": base.crypto,
@@ -183,6 +185,21 @@ func (base *edgeConnBase) baseState() map[string]any {
 		"marker":             base.marker,
 		"circuitId":          base.circuitId,
 	}
+	if base.tlsE2ee != nil {
+		state["cryptoMethod"] = edge.CryptoMethodTLS.String()
+		if base.tlsE2ee.handshakeComplete() {
+			cs := base.tlsE2ee.conn.ConnectionState()
+			state["tlsVersion"] = tls.VersionName(cs.Version)
+			state["tlsCipherSuite"] = tls.CipherSuiteName(cs.CipherSuite)
+			state["tlsCurve"] = cs.CurveID.String()
+			if len(cs.PeerCertificates) > 0 {
+				state["tlsPeerCert"] = cs.PeerCertificates[0].Subject.CommonName
+			} else {
+				state["tlsPeerCert"] = "none"
+			}
+		}
+	}
+	return state
 }
 
 // InspectSink returns a VirtualConnDetail for this connection.
@@ -293,6 +310,11 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 // splitting.
 func (base *edgeConnBase) Read(p []byte) (int, error) {
 	if base.flags.IsSet(flagClosed) {
+		if base.tlsE2ee != nil {
+			if _, err := base.tlsE2ee.handshakeResult(); err != nil {
+				return 0, errors.Wrap(err, "tls e2ee handshake failed")
+			}
+		}
 		return 0, io.EOF
 	}
 	return base.chunkReader.Read(p)
@@ -307,6 +329,10 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 			return 0, errors.New("connection closed")
 		}
 		return 0, errors.New("connection closed for writes")
+	}
+
+	if base.tlsE2ee != nil {
+		return base.tlsE2ee.write(data)
 	}
 
 	if base.sender != nil {
@@ -336,6 +362,9 @@ func (base *edgeConnBase) beginClose() bool {
 		return false
 	}
 	close(base.closeNotify)
+	if base.tlsE2ee != nil {
+		base.tlsE2ee.close()
+	}
 	base.chunkReader.MarkFIN()
 	base.flags.Set(flagSentFIN, true)
 	return true
@@ -366,6 +395,52 @@ func (base *edgeConnBase) establishClientCryptoTo(keypair *kx.KeyPair, peerKey [
 		return errors.Wrap(err, "failed to write crypto header")
 	}
 
+	return nil
+}
+
+// installTlsE2ee makes e the conn's crypto for both directions. sink carries the Data messages.
+func (base *edgeConnBase) installTlsE2ee(e *tlsE2ee, sink io.Writer) error {
+	base.tlsE2ee = e
+	base.chunkReader.SetTls(e)
+	return e.setSink(sink)
+}
+
+// primeTls drives a handshake that is still open (the host always, a TLS 1.2 or HRR dialer) from
+// a goroutine, so a write does not wait on a read the application has not made yet. A failed
+// handshake closes the conn, so a peer that only writes does not keep writing into a dead circuit.
+func (base *edgeConnBase) primeTls(closeConn func(notifyCtrl bool)) {
+	if base.tlsE2ee == nil || base.tlsE2ee.handshakeComplete() {
+		return
+	}
+	go func() {
+		if err := base.chunkReader.primeTls(); err != nil {
+			closeConn(true)
+		}
+	}()
+}
+
+func (base *edgeConnBase) setTlsWriteDeadline(t time.Time) {
+	if base.tlsE2ee != nil {
+		base.tlsE2ee.setWriteDeadline(t)
+	}
+}
+
+// establishClientTlsFromReply completes the dialer side of CryptoMethodTLS from the host's first
+// flight in the dial reply. The dialer's last flight goes out as the first Data message.
+func (base *edgeConnBase) establishClientTlsFromReply(e *tlsE2ee, replyMsg *channel.Message, sink io.Writer) error {
+	if err := checkPeerCryptoMethod(replyMsg.Headers[edge.CryptoMethodHeader]); err != nil {
+		return err
+	}
+	serverFlight := replyMsg.Headers[edge.PublicKeyHeader]
+	if serverFlight == nil {
+		return errors.New("failed to establish encryption: host sent no tls handshake")
+	}
+	if err := base.installTlsE2ee(e, sink); err != nil {
+		return err
+	}
+	if err := e.finishClient(serverFlight); err != nil {
+		return errors.Wrap(err, "failed to establish encryption")
+	}
 	return nil
 }
 
