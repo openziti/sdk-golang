@@ -5,6 +5,7 @@
 * github.com/openziti/sdk-golang: [v1.8.2 -> v1.8.3](https://github.com/openziti/sdk-golang/compare/v1.8.2...v1.8.3)
     * [Issue #1032](https://github.com/openziti/sdk-golang/issues/1032) - [Backport-1.8] Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1056](https://github.com/openziti/sdk-golang/issues/1056) - [Backport-1.8] Xgress conn closed locally ignores the router's StateClosed and retransmits forever
+    * [Issue #1037](https://github.com/openziti/sdk-golang/issues/1037) - [Backport-1.8] Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
 
 
 # Release notes 1.8.2
