@@ -550,7 +550,8 @@ func (self *Xgress) releasePayloadChunk(chunk *Payload) {
 
 // processTxPayload handles control logic for a complete payload on the tx path.
 // Returns the payload data and headers, or io.EOF for circuit end.
-// Returns nil data and nil error for payloads consumed internally (capabilities-only, circuit start).
+// Returns nil data and nil error for payloads consumed internally (write-failed, capabilities-only,
+// circuit start).
 func (self *Xgress) processTxPayload(payload *Payload) ([]byte, map[uint8][]byte, error) {
 	log := pfxlog.ContextLogger(self.Label())
 
@@ -559,6 +560,13 @@ func (self *Xgress) processTxPayload(payload *Payload) ([]byte, map[uint8][]byte
 		self.CloseXgToClient()
 		log.Debug("circuit end payload received")
 		return nil, nil, io.EOF
+	}
+
+	// SendPayload has already acted on the flag. Its data is empty, and after crossing a link it
+	// decodes as a non-nil slice, so returning it would write an empty payload to the peer.
+	if payload.IsFlagWriteFailedSet() {
+		log.Debug("write failed payload consumed")
+		return nil, nil, nil
 	}
 
 	if caps, ok := payload.Headers[HeaderKeyCapabilities]; ok {
@@ -1283,4 +1291,3 @@ func readU8ToBytesMap(buf []byte) (map[uint8][]byte, []byte, error) {
 
 	return result, buf, nil
 }
-
