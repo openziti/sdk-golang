@@ -57,6 +57,11 @@
 
 * `edge.Conn` no longer exposes `GetRouterId()` (and `edge.MsgChannel` no longer implements it).
 
+* `network.NewMultiListener` takes the listener's initial cost and precedence, and
+  `network.MultiListener` adds `GetCostAndPrecedence()`, which reports the values new binds carry.
+  A listener's cost and precedence updates now apply to every later bind, not only the routers it
+  was bound to at the time of the update.
+
 ## What's New
 
 * `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
@@ -89,6 +94,7 @@
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1054](https://github.com/openziti/sdk-golang/issues/1054) - Xgress conn closed locally ignores the router's StateClosed and retransmits forever
     * [Issue #977](https://github.com/openziti/sdk-golang/issues/977) - Add DirectE2EE header constants and error enum values
+    * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1004](https://github.com/openziti/sdk-golang/issues/1004) - UnmarshallPacketPayload indexes the buffer without bounds checks
     * [Issue #1006](https://github.com/openziti/sdk-golang/issues/1006) - Chunked payload reassembly trusts the peer's declared size
