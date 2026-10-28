@@ -92,7 +92,7 @@ type OidcAuthResponses struct {
 // OidcAuthorizeResult holds the result of starting an OIDC PKCE authorization flow.
 // It provides the auth request ID, a pre-configured resty client for making raw HTTP calls
 // to the OP login endpoints, and an exchange function that completes the flow by trading
-// an authorization code for OIDC tokens.
+// an authorization code for OIDC tokens and the session certificate.
 type OidcAuthorizeResult struct {
 
 	// AuthRequestId is the auth request identifier returned by the /oidc/authorize endpoint.
@@ -103,8 +103,17 @@ type OidcAuthorizeResult struct {
 	Client *resty.Client
 
 	// Exchange completes the OIDC flow by exchanging an authorization code (extracted from the
-	// callback redirect Location header) for OIDC tokens.
-	Exchange func(code string) (*oidc.Tokens[*oidc.IDTokenClaims], error)
+	// callback redirect Location header) for OIDC tokens and the session certificate.
+	Exchange func(code string) (*OidcTokenResult, error)
+}
+
+// OidcTokenResult holds the tokens returned by the token endpoint along with the session
+// certificate the controller signs when the authorization request carried a CSR. SessionCert
+// is a PEM certificate chain, empty when no CSR was submitted. The tokens are embedded, so
+// their fields are reachable directly on the result.
+type OidcTokenResult struct {
+	*oidc.Tokens[*oidc.IDTokenClaims]
+	SessionCert string
 }
 
 // EdgeOidcAuthConfig represents the options necessary to complete an OAuth 2.0 PKCE authentication flow against an
@@ -423,7 +432,8 @@ func (e *EdgeOidcAuthenticator) AuthenticateWithResponses() (*oidc.Tokens[*oidc.
 
 // Authorize starts the OIDC PKCE authorization flow without completing it, returning an
 // OidcAuthorizeResult for use when tests need to make raw HTTP calls to the OP login endpoints.
-// The Exchange function in the result completes the flow by trading an authorization code for tokens.
+// The Exchange function in the result completes the flow by trading an authorization code for
+// tokens and the session certificate.
 func (e *EdgeOidcAuthenticator) Authorize() (*OidcAuthorizeResult, error) {
 	pkceParams, err := newPkceParameters()
 	if err != nil {
@@ -438,7 +448,7 @@ func (e *EdgeOidcAuthenticator) Authorize() (*OidcAuthorizeResult, error) {
 	return &OidcAuthorizeResult{
 		AuthRequestId: verificationParams.AuthRequestId,
 		Client:        e.restyClient,
-		Exchange: func(code string) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+		Exchange: func(code string) (*OidcTokenResult, error) {
 			return e.exchangeAuthorizationCodeForTokens(code, pkceParams)
 		},
 	}, nil
@@ -473,16 +483,16 @@ func (e *EdgeOidcAuthenticator) finishOAuthFlow(redirectResp *resty.Response, ve
 		return nil, errors.New("authentication failed, no code found in redirect url")
 	}
 
-	tokens, err := e.exchangeAuthorizationCodeForTokens(code, pkceParams)
+	result, err := e.exchangeAuthorizationCodeForTokens(code, pkceParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange authorization code: %w", err)
 	}
 
-	if tokens.IDTokenClaims.Nonce != verificationParams.Nonce {
+	if result.IDTokenClaims.Nonce != verificationParams.Nonce {
 		return nil, errors.New("authentication failed, nonce mismatch")
 	}
 
-	return tokens, nil
+	return result.Tokens, nil
 }
 
 // PrimaryAndSecondaryAuthResponses holds the HTTP responses collected during
@@ -735,8 +745,10 @@ func RedirectUntilUrlPrefix(urlPrefixToStopAt ...string) resty.RedirectPolicy {
 	})
 }
 
-// exchangeAuthorizationCodeForTokens exchanges an authorization code and PKCE verifier for OIDC tokens.
-func (e *EdgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, pkceParams *pkceParameters) (*oidc.Tokens[*oidc.IDTokenClaims], error) {
+// exchangeAuthorizationCodeForTokens exchanges an authorization code and PKCE verifier for OIDC
+// tokens and the session certificate the token endpoint returns when the authorization request
+// carried a CSR.
+func (e *EdgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, pkceParams *pkceParameters) (*OidcTokenResult, error) {
 	tokenEndpoint := "https://" + e.ApiHost + "/oidc/oauth/token"
 
 	tokenResp, err := e.restyClient.R().SetFormData(map[string]string{
@@ -769,6 +781,7 @@ func (e *EdgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, 
 
 	refreshToken, _ := tokenData["refresh_token"].(string)
 	expiresIn, _ := tokenData["expires_in"].(float64)
+	sessionCert, _ := tokenData["session_cert"].(string)
 
 	// Parse ID token
 	idToken, _ := tokenData["id_token"].(string)
@@ -793,7 +806,7 @@ func (e *EdgeOidcAuthenticator) exchangeAuthorizationCodeForTokens(code string, 
 		IDToken:       idToken,
 	}
 
-	return tokens, nil
+	return &OidcTokenResult{Tokens: tokens, SessionCert: sessionCert}, nil
 }
 
 // pkceParameters holds the PKCE parameters used for OAuth 2.0 Proof Key for Public Clients flow.
