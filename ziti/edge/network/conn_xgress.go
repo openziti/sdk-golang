@@ -101,10 +101,11 @@ func (conn *edgeConnXgress) Close() error {
 	return nil
 }
 
-// close performs the full close sequence for an xgress conn: atomic close
-// flip, propagate FIN, cancel pending writes, and signal the xgress that the
-// peer is closed. The mux entry is not removed here — xgress tear-down removes
-// it once the xgress actually finishes, so in-flight payloads stay routable.
+// close marks the conn closed, cancels pending writes, and tells the xgress the
+// peer is closed, so queued data drains before the circuit ends. If the circuit
+// has not started, it closes the xgress outright instead. Either way the mux
+// entry is removed by xgress tear-down, not here, so in-flight payloads stay
+// routable. close is idempotent and ignores its argument.
 func (conn *edgeConnXgress) close(_ bool) {
 	if !conn.beginClose() {
 		return
@@ -114,6 +115,12 @@ func (conn *edgeConnXgress) close(_ bool) {
 	defer log.Debug("close: end")
 
 	_ = conn.writeAdapter.SetWriteDeadline(time.Now())
+	if !conn.xg.IsCircuitStarted() {
+		// A terminator's send buffer only runs once the circuit starts, so the EOF that
+		// PeerClosed sends would block until CircuitStartTimeout.
+		conn.xg.Close()
+		return
+	}
 	conn.xg.PeerClosed()
 }
 
