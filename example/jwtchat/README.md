@@ -6,32 +6,34 @@ A set of three binaries used to demonstrate the OpenZiti GoLang SDK using extern
 
 ## jwtchat-idp
 
-Stands up an OIDC compliant OpenId Provider (OP) that allows all OIDC flows. This example uses Client Credentials.
+Stands up a minimal token issuer that supports the OAuth 2.0 Client Credentials grant. It issues RS256 JWTs
+with issuer `http://localhost:9998` and audience `openziti`, and serves the signing key as a JWKS at
+`http://localhost:9998/keys`. The signing key is regenerated on every start.
 
-It is run without any arguments and host the OPIDC API on `localhost:9998`
+It is run without any arguments and listens on `localhost:9998`
 
 ## jwtchat-client
 
-Attempts to contact a controller listening on `localhost:1280` and an OIDC compliant provider on `localhost:9998`.
+Attempts to contact a controller listening on `localhost:1280` and the `jwtchat-idp` token issuer on `localhost:9998`.
 
 It is run without any arguments and does not open any ports. It attempts to connection/dial a service named `jwtchat`
 
-It will attempt to authenticate with the OIDC provider as:
+It will attempt to authenticate with `jwtchat-idp` as:
 
 - username: `cid1`
-- password: `cid1secreat`
+- password: `cid1secret`
 
 
 ## jwtchat-server
 
-Attempts to contact a controller listening on `localhost:1280` and an OIDC compliant provider on `localhost:9998`.
+Attempts to contact a controller listening on `localhost:1280` and the `jwtchat-idp` token issuer on `localhost:9998`.
 
 It is run without any arguments and does not open any ports. It attempts to host/bind a service named `jwtchat`
 
-It will attempt to authenticate with the OIDC provider as:
+It will attempt to authenticate with `jwtchat-idp` as:
 
 - username: `cid2`
-- password: `cid2secreat`
+- password: `cid2secret`
 
 # Setup
 
