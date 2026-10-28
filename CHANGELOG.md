@@ -172,6 +172,7 @@
 * golang.org/x/sys: v0.45.0 -> v0.49.0
 * google.golang.org/protobuf: v1.36.11 -> v1.36.12
 * github.com/ebitengine/purego: v0.10.0 -> v0.11.1
+* github.com/go-jose/go-jose/v4: v4.1.4 -> v4.1.6
 * github.com/go-logr/logr: v1.4.3 -> v1.4.4
 * github.com/go-ole/go-ole: v1.2.6 -> v1.3.0
 * github.com/go-openapi/analysis: v0.25.0 -> v1.0.0
@@ -195,7 +196,7 @@
 * github.com/go-openapi/swag/yamlutils: v0.26.0 -> v0.29.1
 * github.com/go-openapi/validate: v0.25.2 -> v1.0.0
 * github.com/lufia/plan9stats: v0.0.0-20211012122336-39d0f177ccd0 -> v0.0.0-20260330125221-c963978e514e
-* github.com/mattn/go-colorable: v0.1.14 -> v0.1.15
+* github.com/mattn/go-colorable: v0.1.14 -> v0.1.16
 * github.com/oklog/ulid/v2: v2.1.1 -> v2.1.2
 * github.com/power-devops/perfstat: v0.0.0-20240221224432-82ca36839d55 -> v0.0.0-20260805114148-88456608a4f6
 * github.com/tklauser/go-sysconf: v0.3.16 -> v0.4.0
@@ -204,7 +205,7 @@
 * go.opentelemetry.io/otel/metric: v1.43.0 -> v1.46.0
 * go.opentelemetry.io/otel/trace: v1.43.0 -> v1.46.0
 * go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
-* golang.org/x/net: v0.55.0 -> v0.61.0
+* golang.org/x/net: v0.55.0 -> v0.62.0
 * golang.org/x/sync: v0.20.0 -> v0.24.0
 * golang.org/x/term: v0.43.0 -> v0.47.0
 * golang.org/x/text: v0.37.0 -> v0.43.0

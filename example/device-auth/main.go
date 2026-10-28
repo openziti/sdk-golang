@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/openziti/edge-api/rest_model"
 	"github.com/openziti/edge-api/rest_util"
 	nfx509 "github.com/openziti/foundation/v2/x509"
@@ -120,9 +120,8 @@ func main() {
 	}
 
 	accessToken := token["access_token"].(string)
-	tok, _ := jwt.Parse(accessToken, nil)
-	if claims, ok := tok.Claims.(jwt.MapClaims); ok {
-		for k, v := range claims {
+	if tok, _, err := jwt.NewParser().ParseUnverified(accessToken, jwt.MapClaims{}); err == nil {
+		for k, v := range tok.Claims.(jwt.MapClaims) {
 			fmt.Printf("\t%s: %v\n", k, v)
 		}
 	}
