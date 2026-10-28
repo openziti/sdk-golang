@@ -37,9 +37,9 @@ Selectors are bare names, no prefixes:
 | Selector | Meaning |
 |---|---|
 | `latest` | highest published release (drafts/prereleases excluded) |
-| `active-lts`, `maint-lts` | labels from [versions.yaml](versions.yaml) (a pinned tag or a `vM.m.x` wildcard meaning "highest patch of that minor") |
-| `v1.6.17` (any release version) | that release |
-| `main`, `connect-v2`, a SHA (any other git ref) | built from source — **not yet implemented** |
+| `active-lts`, `maint-lts`, `next` | labels from [versions.yaml](versions.yaml) (a pinned tag or a `vM.m.x` wildcard meaning "highest patch of that minor"); `next` pins the newest pre-release |
+| `v1.6.17`, `v2.1.0-pre2` (any release version) | that release, pre-releases included |
+| `main`, a branch, a SHA (any other git ref) | built from source |
 
 Labels and wildcards re-resolve on every run, but binaries are cached by the
 concrete resolved version, so a moved label is picked up while repeat runs stay
@@ -47,6 +47,23 @@ fast. Narrow to a single test the usual way:
 
 ```bash
 ZITI_ACCEPTANCE_VERSION=maint-lts go test -tags acceptance ./harness/ -run Test_ControllerBringUp -v
+```
+
+## Required ConnectV2 coverage
+
+The dial tests adapt to what the environment offers, so a run against a V2-capable
+controller can still pass on the V1 path. Two switches turn that into the CI
+`connect-v2` job:
+
+- `ZITI_ACCEPTANCE_REQUIRE_V2=true` fails the V2-dependent tests when the router
+  doesn't advertise ConnectV2 or the session isn't OIDC.
+- `ZITI_ACCEPTANCE_BUILD_WITH_LOCAL_SDK=true` builds a source selector against this
+  SDK tree instead of the ref's pinned sdk-golang. Binaries are cached per SDK
+  commit, and a dirty tree always rebuilds.
+
+```bash
+ZITI_ACCEPTANCE_VERSION=main ZITI_ACCEPTANCE_BUILD_WITH_LOCAL_SDK=true \
+  ZITI_ACCEPTANCE_REQUIRE_V2=true go test -tags acceptance -p 1 ./...
 ```
 
 ## Running the whole matrix
@@ -70,7 +87,7 @@ latest       PASS  (1m03s)
 
 ## Binary cache
 
-Downloaded (and, later, source-built) ziti binaries land in
+Downloaded and source-built ziti binaries land in
 `<user cache dir>/ziti-acceptance/bin/ziti-<version>-<goos>-<goarch>`, keyed by the
 concrete resolved version and the platform the binary was produced for. Override the
 location with `ZITI_ACCEPTANCE_CACHE`. Deleting the directory is always safe; the next
