@@ -1,3 +1,11 @@
+# Release notes 1.8.4
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.3 -> v1.8.4](https://github.com/openziti/sdk-golang/compare/v1.8.3...v1.8.4)
+    * [Issue #1066](https://github.com/openziti/sdk-golang/issues/1066) - [Backport-1.8] Hosting listener wedges when a hosting connection closes with a full accept queue
+
+
 # Release notes 1.8.3
 
 ## API Changes

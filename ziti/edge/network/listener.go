@@ -111,10 +111,11 @@ func NewMultiListener(service *rest_model.ServiceDetail, cost uint16, precedence
 			service: service,
 			acceptC: make(chan edge.Conn),
 		},
-		listeners:   map[*edgeHostConn]struct{}{},
-		getSessionF: getSessionF,
-		cost:        cost,
-		precedence:  precedence,
+		listeners:        map[*edgeHostConn]struct{}{},
+		getSessionF:      getSessionF,
+		cost:             cost,
+		precedence:       precedence,
+		establishTimeout: time.Minute,
 	}
 }
 
@@ -130,6 +131,9 @@ type multiListener struct {
 	cost       uint16
 	precedence edge.Precedence
 	updated    bool
+
+	// establishTimeout is how long forward waits for a child's bind to be confirmed before closing it.
+	establishTimeout time.Duration
 }
 
 func (self *multiListener) Id() uint32 {
@@ -296,27 +300,33 @@ func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHan
 		return
 	}
 
-	if self.closed.Load() {
+	self.listenerLock.Lock()
+	// Close sets closed before taking listenerLock, so a child added here is one Close will close.
+	added := !self.closed.Load()
+	if added {
+		self.listeners[listener] = struct{}{}
+
+		// Every confirmation is reconciled, not only one whose bind carried stale values: the router may have
+		// handed the bind an existing terminator for its listener id, or re-created the terminator from the
+		// bind's values. The confirmation may also have arrived before the handler was set.
+		listener.confirmedHandler.Store(func() {
+			self.listenerLock.Lock()
+			defer self.listenerLock.Unlock()
+			self.reconcile(listener)
+		})
+		if listener.established.Load() {
+			self.reconcile(listener)
+		}
+
+		self.notifyOfConnectionChange()
+	}
+	self.listenerLock.Unlock()
+
+	if !added {
 		if err := listener.Close(); err != nil {
 			pfxlog.Logger().WithError(err).Error("error closing listener added after multi-listener was closed")
 		}
 		return
-	}
-
-	self.listenerLock.Lock()
-	defer self.listenerLock.Unlock()
-	self.listeners[listener] = struct{}{}
-
-	// Every confirmation is reconciled, not only one whose bind carried stale values: the router may have
-	// handed the bind an existing terminator for its listener id, or re-created the terminator from the
-	// bind's values. The confirmation may also have arrived before the handler was set.
-	listener.confirmedHandler.Store(func() {
-		self.listenerLock.Lock()
-		defer self.listenerLock.Unlock()
-		self.reconcile(listener)
-	})
-	if listener.established.Load() {
-		self.reconcile(listener)
 	}
 
 	closer := func() {
@@ -327,8 +337,6 @@ func (self *multiListener) AddListener(netListener edge.RouterHostConn, closeHan
 		self.notifyOfConnectionChange()
 		go closeHandler()
 	}
-
-	self.notifyOfConnectionChange()
 
 	go self.forward(listener, closer)
 }
@@ -349,27 +357,37 @@ func (self *multiListener) reconcile(child *edgeHostConn) {
 	}
 }
 
+// forward hands the dials edgeListener accepts to this listener's Accept, until either is closed or
+// edgeListener's bind isn't confirmed within establishTimeout. On exit it closes edgeListener, which refuses
+// the dials still queued, runs closeHandler, and then refuses the dial it was handing over, if any.
 func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func()) {
+	var undelivered edge.Conn
 	defer func() {
 		if err := edgeListener.Close(); err != nil {
 			pfxlog.Logger().Errorf("failure closing edge listener: (%v)", err)
 		}
+		// Refusing a dial can wait on the router, so it mustn't hold up the close handler, which lets the
+		// listener bind again.
 		closeHandler()
+		if undelivered != nil {
+			rejectAccepted(undelivered)
+		}
 	}()
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
-	establishDeadline := time.Now().Add(time.Minute)
+	establishDeadline := time.Now().Add(self.establishTimeout)
 
 	for !self.closed.Load() && !edgeListener.flags.IsSet(hostConnClosedFlag) {
 		select {
-		case conn, ok := <-edgeListener.acceptC:
-			if !ok || conn == nil {
-				// closed, returning
+		case conn := <-edgeListener.acceptC:
+			if !self.accept(conn, ticker, edgeListener.closeNotify) {
+				undelivered = conn
 				return
 			}
-			self.accept(conn, ticker)
+		case <-edgeListener.closeNotify:
+			return
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
 			if !edgeListener.established.Load() && time.Now().After(establishDeadline) {
@@ -384,15 +402,20 @@ func (self *multiListener) forward(edgeListener *edgeHostConn, closeHandler func
 	}
 }
 
-func (self *multiListener) accept(conn edge.Conn, ticker *time.Ticker) {
+// accept waits for the application to take conn, and reports whether it did. It gives up when this
+// listener closes or childClosed is closed.
+func (self *multiListener) accept(conn edge.Conn, ticker *time.Ticker, childClosed <-chan struct{}) bool {
 	for !self.closed.Load() {
 		select {
 		case self.acceptC <- conn:
-			return
+			return true
+		case <-childClosed:
+			return false
 		case <-ticker.C:
 			// lets us check if the listener is closed, and exit if it has
 		}
 	}
+	return false
 }
 
 func (self *multiListener) Close() error {
