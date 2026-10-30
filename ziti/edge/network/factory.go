@@ -187,6 +187,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 		crypto:       options.KeyPair != nil,
 		service:      service,
 		acceptC:      make(chan edge.Conn, 10),
+		closeNotify:  make(chan struct{}),
 		token:        *session.Token,
 		manualStart:  options.ManualStart,
 		eventHandler: options.EventHandler,
