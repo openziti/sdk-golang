@@ -3,6 +3,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.3 -> v1.8.4](https://github.com/openziti/sdk-golang/compare/v1.8.3...v1.8.4)
+    * [Issue #1066](https://github.com/openziti/sdk-golang/issues/1066) - [Backport-1.8] Hosting listener blocks when a hosting connection closes with a full accept queue
     * [Issue #1081](https://github.com/openziti/sdk-golang/issues/1081) - [Backport-1.8] SDK logs every payload, ack, read and write at debug level
 
 

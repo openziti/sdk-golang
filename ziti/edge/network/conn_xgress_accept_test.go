@@ -18,6 +18,7 @@ package network
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -208,8 +209,12 @@ func Test_HostedXgressConn_PreStartCloseSendsAreBounded(t *testing.T) {
 	conn := <-host.acceptC
 	conn.CompleteAcceptFailed(errors.New("target down"))
 	_ = conn.Close()
-
-	req.Contains(ch.sentTypes(), int32(xgress.ContentTypePayloadType))
-	req.Empty(ch.unboundedTypes())
 	requireMuxHasConn(t, mux, 48, false)
+
+	// The end of circuit and close notice are sent after Close returns.
+	req.Eventually(func() bool {
+		sent := ch.sentTypes()
+		return slices.Contains(sent, int32(xgress.ContentTypePayloadType)) && slices.Contains(sent, int32(edge.ContentTypeXgClose))
+	}, 5*time.Second, time.Millisecond)
+	req.Empty(ch.unboundedTypes())
 }
