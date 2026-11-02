@@ -110,10 +110,12 @@
       corrupted on xgress payloads.
     * New messages, each with a nested `Kind` enum so its value names do not collide with
       others in the package: `XgPayloadFlag` (the payload flag bits, which are OR-ed together
-      into the `XgFlags` header), `XgHeaderKey` (the passthrough header keys), `XgControl` (the
-      control message types), `XgControlHeader` (the control message header ids) and
-      `XgPayload` (a local hint selecting which dropped-message meter to mark, never sent on
-      the wire).
+      into the `XgFlags` header), `XgHeaderKey` (the passthrough header keys: `UUID`,
+      `Capabilities` and `EdgeFlags`, which carries the edge message flags), `XgCapability` (the
+      capability bits advertised in the `Capabilities` header, currently `EOF`), `XgControl` (the
+      control message types) and `XgControlHeader` (the control message header ids).
+    * `edgexg.PayloadFlagsHeader` and `xgress.CapabilityEOFIndex` are derived from the generated
+      `XgHeaderKey_EdgeFlags` and `XgCapability_EOF`; `CapabilityEOFIndex` is now a typed `int`.
 
 ## Issues Fixed and Dependency Updates
 

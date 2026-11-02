@@ -37,6 +37,7 @@ import (
 	"github.com/openziti/foundation/v2/concurrenz"
 	"github.com/openziti/foundation/v2/debugz"
 	"github.com/openziti/foundation/v2/info"
+	"github.com/openziti/sdk-golang/v2/pb/edge_client_pb"
 	"github.com/sirupsen/logrus"
 )
 
@@ -50,7 +51,7 @@ const (
 	txPullModeFlag        = 6 // false == push via tx(), true == pull via ReadAdapter
 
 	// bits 8-16 reserved for peer capabilities (same values used in wire format)
-	CapabilityEOFIndex = 8
+	CapabilityEOFIndex = int(edge_client_pb.XgCapability_EOF)
 	CapabilityEOFMask  = 1 << CapabilityEOFIndex
 	capabilitiesMask   = 0x1FF00 // bits 8-16
 )
