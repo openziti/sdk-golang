@@ -778,8 +778,8 @@ func (RouterCapability_Kind) EnumDescriptor() ([]byte, []int) {
 type XgPayloadFlag_Kind int32
 
 const (
-	// XgFlagNone is the zero value: no flags set. It is never OR-ed into a flags field.
-	XgPayloadFlag_XgFlagNone XgPayloadFlag_Kind = 0
+	// None is the zero value: no flags set. It is never OR-ed into a flags field.
+	XgPayloadFlag_None XgPayloadFlag_Kind = 0
 	// CircuitEnd: the sender is ending the circuit. Also sent in place of EOF to a peer that
 	// did not advertise EOF support.
 	XgPayloadFlag_CircuitEnd XgPayloadFlag_Kind = 1
@@ -807,7 +807,7 @@ const (
 // Enum value maps for XgPayloadFlag_Kind.
 var (
 	XgPayloadFlag_Kind_name = map[int32]string{
-		0:  "XgFlagNone",
+		0:  "None",
 		1:  "CircuitEnd",
 		2:  "Originator",
 		4:  "CircuitStart",
@@ -817,7 +817,7 @@ var (
 		64: "WriteFailed",
 	}
 	XgPayloadFlag_Kind_value = map[string]int32{
-		"XgFlagNone":   0,
+		"None":         0,
 		"CircuitEnd":   1,
 		"Originator":   2,
 		"CircuitStart": 4,
@@ -861,20 +861,26 @@ const (
 	// UUID: the uuid of an edge message, present only while a payload is being traced so it can
 	// be correlated across hops
 	XgHeaderKey_UUID XgHeaderKey_Kind = 0
-	// Capabilities: a big-endian uint32 of the sender's capability bits (bits 8-16; EOF is bit 8).
+	// Capabilities: a big-endian uint32 of the sender's capability bits (see XgCapability).
 	// Sent on the circuit start payload and in the capabilities-only response to it.
 	XgHeaderKey_Capabilities XgHeaderKey_Kind = 1
+	// EdgeFlags: a little-endian uint32 of the edge message flags (the HeaderId Flags header, e.g.
+	// the edge FIN), carried through xgress so the far edge endpoint sees them unchanged. This is
+	// also how half-close is signalled to a peer that did not advertise EOF support.
+	XgHeaderKey_EdgeFlags XgHeaderKey_Kind = 16
 )
 
 // Enum value maps for XgHeaderKey_Kind.
 var (
 	XgHeaderKey_Kind_name = map[int32]string{
-		0: "UUID",
-		1: "Capabilities",
+		0:  "UUID",
+		1:  "Capabilities",
+		16: "EdgeFlags",
 	}
 	XgHeaderKey_Kind_value = map[string]int32{
 		"UUID":         0,
 		"Capabilities": 1,
+		"EdgeFlags":    16,
 	}
 )
 
@@ -903,6 +909,57 @@ func (x XgHeaderKey_Kind) Number() protoreflect.EnumNumber {
 // Deprecated: Use XgHeaderKey_Kind.Descriptor instead.
 func (XgHeaderKey_Kind) EnumDescriptor() ([]byte, []int) {
 	return file_edge_client_proto_rawDescGZIP(), []int{18, 0}
+}
+
+type XgCapability_Kind int32
+
+const (
+	// None is the zero value required by proto3. Bit 0 is not an xgress capability and is never
+	// advertised.
+	XgCapability_None XgCapability_Kind = 0
+	// EOF: the endpoint understands the XgPayloadFlag EOF flag, i.e. half-close. A peer that
+	// does not advertise it is sent CircuitEnd (xgress) or an edge FIN (SDK edge connection)
+	// instead.
+	XgCapability_EOF XgCapability_Kind = 8
+)
+
+// Enum value maps for XgCapability_Kind.
+var (
+	XgCapability_Kind_name = map[int32]string{
+		0: "None",
+		8: "EOF",
+	}
+	XgCapability_Kind_value = map[string]int32{
+		"None": 0,
+		"EOF":  8,
+	}
+)
+
+func (x XgCapability_Kind) Enum() *XgCapability_Kind {
+	p := new(XgCapability_Kind)
+	*p = x
+	return p
+}
+
+func (x XgCapability_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (XgCapability_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_edge_client_proto_enumTypes[10].Descriptor()
+}
+
+func (XgCapability_Kind) Type() protoreflect.EnumType {
+	return &file_edge_client_proto_enumTypes[10]
+}
+
+func (x XgCapability_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use XgCapability_Kind.Descriptor instead.
+func (XgCapability_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_edge_client_proto_rawDescGZIP(), []int{19, 0}
 }
 
 type XgControl_Kind int32
@@ -938,11 +995,11 @@ func (x XgControl_Kind) String() string {
 }
 
 func (XgControl_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_edge_client_proto_enumTypes[10].Descriptor()
+	return file_edge_client_proto_enumTypes[11].Descriptor()
 }
 
 func (XgControl_Kind) Type() protoreflect.EnumType {
-	return &file_edge_client_proto_enumTypes[10]
+	return &file_edge_client_proto_enumTypes[11]
 }
 
 func (x XgControl_Kind) Number() protoreflect.EnumNumber {
@@ -951,7 +1008,7 @@ func (x XgControl_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use XgControl_Kind.Descriptor instead.
 func (XgControl_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_edge_client_proto_rawDescGZIP(), []int{19, 0}
+	return file_edge_client_proto_rawDescGZIP(), []int{20, 0}
 }
 
 type XgControlHeader_Kind int32
@@ -1005,11 +1062,11 @@ func (x XgControlHeader_Kind) String() string {
 }
 
 func (XgControlHeader_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_edge_client_proto_enumTypes[11].Descriptor()
+	return file_edge_client_proto_enumTypes[12].Descriptor()
 }
 
 func (XgControlHeader_Kind) Type() protoreflect.EnumType {
-	return &file_edge_client_proto_enumTypes[11]
+	return &file_edge_client_proto_enumTypes[12]
 }
 
 func (x XgControlHeader_Kind) Number() protoreflect.EnumNumber {
@@ -1018,61 +1075,6 @@ func (x XgControlHeader_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use XgControlHeader_Kind.Descriptor instead.
 func (XgControlHeader_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_edge_client_proto_rawDescGZIP(), []int{20, 0}
-}
-
-type XgPayload_Kind int32
-
-const (
-	XgPayload_PayloadNone XgPayload_Kind = 0
-	// Xg: an ordinary payload, sent with a timeout
-	XgPayload_Xg XgPayload_Kind = 1
-	// Rtx: a retransmission, which does not mark the circuit active
-	XgPayload_Rtx XgPayload_Kind = 2
-	// Fwd: a payload forwarded without blocking (zero timeout)
-	XgPayload_Fwd XgPayload_Kind = 3
-)
-
-// Enum value maps for XgPayload_Kind.
-var (
-	XgPayload_Kind_name = map[int32]string{
-		0: "PayloadNone",
-		1: "Xg",
-		2: "Rtx",
-		3: "Fwd",
-	}
-	XgPayload_Kind_value = map[string]int32{
-		"PayloadNone": 0,
-		"Xg":          1,
-		"Rtx":         2,
-		"Fwd":         3,
-	}
-)
-
-func (x XgPayload_Kind) Enum() *XgPayload_Kind {
-	p := new(XgPayload_Kind)
-	*p = x
-	return p
-}
-
-func (x XgPayload_Kind) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (XgPayload_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_edge_client_proto_enumTypes[12].Descriptor()
-}
-
-func (XgPayload_Kind) Type() protoreflect.EnumType {
-	return &file_edge_client_proto_enumTypes[12]
-}
-
-func (x XgPayload_Kind) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use XgPayload_Kind.Descriptor instead.
-func (XgPayload_Kind) EnumDescriptor() ([]byte, []int) {
 	return file_edge_client_proto_rawDescGZIP(), []int{21, 0}
 }
 
@@ -2335,9 +2337,9 @@ func (x *PostureStateChange) GetPolicyStates() []*PostureStateChange_PolicyState
 }
 
 // XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
-// these values are bit positions and are OR-ed together: the flags travel as a single uint32 in
-// the XgFlags header (an absent header means no flags are set), and a receiver tests each bit
-// independently.
+// these values are bit masks (1, 2, 4, ...), not bit positions, and are OR-ed together: the flags
+// travel as a single uint32 in the XgFlags header (an absent header means no flags are set), and
+// a receiver tests each flag with flags & value.
 type XgPayloadFlag struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2413,10 +2415,49 @@ func (*XgHeaderKey) Descriptor() ([]byte, []int) {
 	return file_edge_client_proto_rawDescGZIP(), []int{18}
 }
 
+// XgCapability lists the capability bits an xgress endpoint can advertise to its peer in the
+// Capabilities passthrough header (XgHeaderKey). Unlike XgPayloadFlag, the values are bit
+// positions, not masks: test a capability with caps & (1 << value). Bits 8 through 16 are
+// reserved for these, and a receiver masks off the rest. A sender uses a feature with a peer only
+// if the peer advertised its bit.
+type XgCapability struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *XgCapability) Reset() {
+	*x = XgCapability{}
+	mi := &file_edge_client_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *XgCapability) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*XgCapability) ProtoMessage() {}
+
+func (x *XgCapability) ProtoReflect() protoreflect.Message {
+	mi := &file_edge_client_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use XgCapability.ProtoReflect.Descriptor instead.
+func (*XgCapability) Descriptor() ([]byte, []int) {
+	return file_edge_client_proto_rawDescGZIP(), []int{19}
+}
+
 // XgControl lists the types of xgress control message. The type is the first byte of the body of
-// an XgControlType message, followed by the circuit id. As with the other Xg enums, it is nested
-// so its value names are scoped to the message (e.g. XgControl_TraceRoute in Go). It cannot be a
-// top-level XgControlType enum: ContentType already has a value of that name.
+// an XgControlType message, followed by the circuit id.
 type XgControl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2425,7 +2466,7 @@ type XgControl struct {
 
 func (x *XgControl) Reset() {
 	*x = XgControl{}
-	mi := &file_edge_client_proto_msgTypes[19]
+	mi := &file_edge_client_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2437,7 +2478,7 @@ func (x *XgControl) String() string {
 func (*XgControl) ProtoMessage() {}
 
 func (x *XgControl) ProtoReflect() protoreflect.Message {
-	mi := &file_edge_client_proto_msgTypes[19]
+	mi := &file_edge_client_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2450,7 +2491,7 @@ func (x *XgControl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use XgControl.ProtoReflect.Descriptor instead.
 func (*XgControl) Descriptor() ([]byte, []int) {
-	return file_edge_client_proto_rawDescGZIP(), []int{19}
+	return file_edge_client_proto_rawDescGZIP(), []int{20}
 }
 
 // XgControlHeader lists the message header ids used by xgress control messages (XgControlType),
@@ -2464,7 +2505,7 @@ type XgControlHeader struct {
 
 func (x *XgControlHeader) Reset() {
 	*x = XgControlHeader{}
-	mi := &file_edge_client_proto_msgTypes[20]
+	mi := &file_edge_client_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2476,7 +2517,7 @@ func (x *XgControlHeader) String() string {
 func (*XgControlHeader) ProtoMessage() {}
 
 func (x *XgControlHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_edge_client_proto_msgTypes[20]
+	mi := &file_edge_client_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2489,44 +2530,6 @@ func (x *XgControlHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use XgControlHeader.ProtoReflect.Descriptor instead.
 func (*XgControlHeader) Descriptor() ([]byte, []int) {
-	return file_edge_client_proto_rawDescGZIP(), []int{20}
-}
-
-// XgPayload classifies how an xgress payload is handed to a link. It is a local hint only, used to
-// pick which dropped-message meter to mark, and is never serialized.
-type XgPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *XgPayload) Reset() {
-	*x = XgPayload{}
-	mi := &file_edge_client_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *XgPayload) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*XgPayload) ProtoMessage() {}
-
-func (x *XgPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_edge_client_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use XgPayload.ProtoReflect.Descriptor instead.
-func (*XgPayload) Descriptor() ([]byte, []int) {
 	return file_edge_client_proto_rawDescGZIP(), []int{21}
 }
 
@@ -3452,11 +3455,10 @@ const file_edge_client_proto_rawDesc = "" +
 	"\x17timeoutRemainingSeconds\x18\x04 \x01(\x05R\x17timeoutRemainingSeconds\x1aG\n" +
 	"\vPolicyState\x12\x1a\n" +
 	"\bpolicyId\x18\x01 \x01(\tR\bpolicyId\x12\x1c\n" +
-	"\tisPassing\x18\x02 \x01(\bR\tisPassingJ\x04\b\x03\x10\x04R\x12postureDataVersion\"\x8e\x01\n" +
-	"\rXgPayloadFlag\"}\n" +
-	"\x04Kind\x12\x0e\n" +
-	"\n" +
-	"XgFlagNone\x10\x00\x12\x0e\n" +
+	"\tisPassing\x18\x02 \x01(\bR\tisPassingJ\x04\b\x03\x10\x04R\x12postureDataVersion\"\x88\x01\n" +
+	"\rXgPayloadFlag\"w\n" +
+	"\x04Kind\x12\b\n" +
+	"\x04None\x10\x00\x12\x0e\n" +
 	"\n" +
 	"CircuitEnd\x10\x01\x12\x0e\n" +
 	"\n" +
@@ -3466,11 +3468,16 @@ const file_edge_client_proto_rawDesc = "" +
 	"\n" +
 	"Retransmit\x10\x10\x12\a\n" +
 	"\x03EOF\x10 \x12\x0f\n" +
-	"\vWriteFailed\x10@\"1\n" +
-	"\vXgHeaderKey\"\"\n" +
+	"\vWriteFailed\x10@\"@\n" +
+	"\vXgHeaderKey\"1\n" +
 	"\x04Kind\x12\b\n" +
 	"\x04UUID\x10\x00\x12\x10\n" +
-	"\fCapabilities\x10\x01\"E\n" +
+	"\fCapabilities\x10\x01\x12\r\n" +
+	"\tEdgeFlags\x10\x10\")\n" +
+	"\fXgCapability\"\x19\n" +
+	"\x04Kind\x12\b\n" +
+	"\x04None\x10\x00\x12\a\n" +
+	"\x03EOF\x10\b\"E\n" +
 	"\tXgControl\"8\n" +
 	"\x04Kind\x12\b\n" +
 	"\x04None\x10\x00\x12\x0e\n" +
@@ -3485,13 +3492,7 @@ const file_edge_client_proto_rawDesc = "" +
 	"\x05HopId\x10\x16\x12\r\n" +
 	"\tTimestamp\x10\x17\x12\v\n" +
 	"\aUserVal\x10\x18\x12\t\n" +
-	"\x05Error\x10\x19\">\n" +
-	"\tXgPayload\"1\n" +
-	"\x04Kind\x12\x0f\n" +
-	"\vPayloadNone\x10\x00\x12\x06\n" +
-	"\x02Xg\x10\x01\x12\a\n" +
-	"\x03Rtx\x10\x02\x12\a\n" +
-	"\x03Fwd\x10\x03*\xd0\a\n" +
+	"\x05Error\x10\x19*\xd0\a\n" +
 	"\vContentType\x12\t\n" +
 	"\x05Hello\x10\x00\x12\b\n" +
 	"\x04Ping\x10\x01\x12\n" +
@@ -3664,9 +3665,9 @@ var file_edge_client_proto_goTypes = []any{
 	(RouterCapability_Kind)(0),              // 7: ziti.edge_client.pb.RouterCapability.Kind
 	(XgPayloadFlag_Kind)(0),                 // 8: ziti.edge_client.pb.XgPayloadFlag.Kind
 	(XgHeaderKey_Kind)(0),                   // 9: ziti.edge_client.pb.XgHeaderKey.Kind
-	(XgControl_Kind)(0),                     // 10: ziti.edge_client.pb.XgControl.Kind
-	(XgControlHeader_Kind)(0),               // 11: ziti.edge_client.pb.XgControlHeader.Kind
-	(XgPayload_Kind)(0),                     // 12: ziti.edge_client.pb.XgPayload.Kind
+	(XgCapability_Kind)(0),                  // 10: ziti.edge_client.pb.XgCapability.Kind
+	(XgControl_Kind)(0),                     // 11: ziti.edge_client.pb.XgControl.Kind
+	(XgControlHeader_Kind)(0),               // 12: ziti.edge_client.pb.XgControlHeader.Kind
 	(*RouterCapability)(nil),                // 13: ziti.edge_client.pb.RouterCapability
 	(*ServicePostureStateRequest)(nil),      // 14: ziti.edge_client.pb.ServicePostureStateRequest
 	(*ServicePostureStateResponse)(nil),     // 15: ziti.edge_client.pb.ServicePostureStateResponse
@@ -3686,9 +3687,9 @@ var file_edge_client_proto_goTypes = []any{
 	(*PostureStateChange)(nil),              // 29: ziti.edge_client.pb.PostureStateChange
 	(*XgPayloadFlag)(nil),                   // 30: ziti.edge_client.pb.XgPayloadFlag
 	(*XgHeaderKey)(nil),                     // 31: ziti.edge_client.pb.XgHeaderKey
-	(*XgControl)(nil),                       // 32: ziti.edge_client.pb.XgControl
-	(*XgControlHeader)(nil),                 // 33: ziti.edge_client.pb.XgControlHeader
-	(*XgPayload)(nil),                       // 34: ziti.edge_client.pb.XgPayload
+	(*XgCapability)(nil),                    // 32: ziti.edge_client.pb.XgCapability
+	(*XgControl)(nil),                       // 33: ziti.edge_client.pb.XgControl
+	(*XgControlHeader)(nil),                 // 34: ziti.edge_client.pb.XgControlHeader
 	nil,                                     // 35: ziti.edge_client.pb.ServicePostureStateResponse.StatesEntry
 	nil,                                     // 36: ziti.edge_client.pb.ServicePostureState.PoliciesEntry
 	nil,                                     // 37: ziti.edge_client.pb.Policy.PostureQueriesEntry

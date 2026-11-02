@@ -480,21 +480,19 @@ message PostureStateChange {
   }
 }
 
-// XgPayloadFlag and XgPayload each nest their enum in a message so the generic value names
-// (Chunk, EOF, Xg, Fwd, ...) are scoped to the message and cannot collide with other enum values
-// or messages in this package (proto enum values otherwise share one package-wide namespace),
-// the same way RouterCapability does. Generated Go value names are unchanged (e.g.
-// XgPayloadFlag_CircuitEnd, XgPayload_Xg); only the enum type name becomes XgPayloadFlag_Kind /
-// XgPayload_Kind.
+// The Xg enums below each nest their enum in a message so the generic value names (Chunk, EOF,
+// None, ...) are scoped to the message and cannot collide with other enum values or messages in
+// this package (proto enum values otherwise share one package-wide namespace), the same way
+// RouterCapability does.
 
 // XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
-// these values are bit positions and are OR-ed together: the flags travel as a single uint32 in
-// the XgFlags header (an absent header means no flags are set), and a receiver tests each bit
-// independently.
+// these values are bit masks (1, 2, 4, ...), not bit positions, and are OR-ed together: the flags
+// travel as a single uint32 in the XgFlags header (an absent header means no flags are set), and
+// a receiver tests each flag with flags & value.
 message XgPayloadFlag {
   enum Kind {
-    // XgFlagNone is the zero value: no flags set. It is never OR-ed into a flags field.
-    XgFlagNone   = 0;
+    // None is the zero value: no flags set. It is never OR-ed into a flags field.
+    None         = 0;
     // CircuitEnd: the sender is ending the circuit. Also sent in place of EOF to a peer that
     // did not advertise EOF support.
     CircuitEnd   = 1;
@@ -528,16 +526,35 @@ message XgHeaderKey {
     // UUID: the uuid of an edge message, present only while a payload is being traced so it can
     // be correlated across hops
     UUID         = 0;
-    // Capabilities: a big-endian uint32 of the sender's capability bits (bits 8-16; EOF is bit 8).
+    // Capabilities: a big-endian uint32 of the sender's capability bits (see XgCapability).
     // Sent on the circuit start payload and in the capabilities-only response to it.
     Capabilities = 1;
+    // EdgeFlags: a little-endian uint32 of the edge message flags (the HeaderId Flags header, e.g.
+    // the edge FIN), carried through xgress so the far edge endpoint sees them unchanged. This is
+    // also how half-close is signalled to a peer that did not advertise EOF support.
+    EdgeFlags    = 16;
+  }
+}
+
+// XgCapability lists the capability bits an xgress endpoint can advertise to its peer in the
+// Capabilities passthrough header (XgHeaderKey). Unlike XgPayloadFlag, the values are bit
+// positions, not masks: test a capability with caps & (1 << value). Bits 8 through 16 are
+// reserved for these, and a receiver masks off the rest. A sender uses a feature with a peer only
+// if the peer advertised its bit.
+message XgCapability {
+  enum Kind {
+    // None is the zero value required by proto3. Bit 0 is not an xgress capability and is never
+    // advertised.
+    None = 0;
+    // EOF: the endpoint understands the XgPayloadFlag EOF flag, i.e. half-close. A peer that
+    // does not advertise it is sent CircuitEnd (xgress) or an edge FIN (SDK edge connection)
+    // instead.
+    EOF  = 8;
   }
 }
 
 // XgControl lists the types of xgress control message. The type is the first byte of the body of
-// an XgControlType message, followed by the circuit id. As with the other Xg enums, it is nested
-// so its value names are scoped to the message (e.g. XgControl_TraceRoute in Go). It cannot be a
-// top-level XgControlType enum: ContentType already has a value of that name.
+// an XgControlType message, followed by the circuit id.
 message XgControl {
   enum Kind {
     None               = 0;
@@ -564,19 +581,5 @@ message XgControlHeader {
     UserVal   = 24;
     // Error: string, set on a response when the traceroute failed
     Error     = 25;
-  }
-}
-
-// XgPayload classifies how an xgress payload is handed to a link. It is a local hint only, used to
-// pick which dropped-message meter to mark, and is never serialized.
-message XgPayload {
-  enum Kind {
-    PayloadNone = 0;
-    // Xg: an ordinary payload, sent with a timeout
-    Xg          = 1;
-    // Rtx: a retransmission, which does not mark the circuit active
-    Rtx         = 2;
-    // Fwd: a payload forwarded without blocking (zero timeout)
-    Fwd         = 3;
   }
 }

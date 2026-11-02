@@ -201,12 +201,17 @@ func (ack *Acknowledgement) GetLoggerFields() logrus.Fields {
 	}
 }
 
+// PayloadType classifies how a payload is handed to a link. It is a local hint only, used to pick
+// which dropped-message meter to mark, and is never serialized, so it is not part of the proto.
 type PayloadType byte
 
 const (
-	PayloadTypeXg  = PayloadType(edge_client_pb.XgPayload_Xg)
-	PayloadTypeRtx = PayloadType(edge_client_pb.XgPayload_Rtx)
-	PayloadTypeFwd = PayloadType(edge_client_pb.XgPayload_Fwd)
+	// PayloadTypeXg is an ordinary payload, sent with a timeout
+	PayloadTypeXg PayloadType = 1
+	// PayloadTypeRtx is a retransmission, which does not mark the circuit active
+	PayloadTypeRtx PayloadType = 2
+	// PayloadTypeFwd is a payload forwarded without blocking (zero timeout)
+	PayloadTypeFwd PayloadType = 3
 )
 
 type Payload struct {

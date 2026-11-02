@@ -63,18 +63,22 @@
   was bound to at the time of the update.
 
 * **The xgress wire constants now come from `edge_client.proto`.** The `xgress` header ids,
-  content types, payload flags, passthrough header keys, control types, control headers and
-  payload types are defined in the proto, and the Go constants are taken from the generated
+  content types, payload flags, passthrough header keys, capability bits, control types and
+  control headers are defined in the proto, and the Go constants are taken from the generated
   `edge_client_pb` code. The values are unchanged, so this is wire-compatible.
 
   It is source-breaking for code that relied on the old untyped constants. `HeaderKeyCircuitId`,
   `HeaderKeySequence`, `HeaderKeyFlags`, `HeaderKeyRecvBufferSize`, `HeaderKeyRTT`,
   `HeaderPayloadRaw`, the `ContentType*` constants and the `ControlHopCount`, `ControlHopType`,
   `ControlHopId`, `ControlTimestamp`, `ControlUserVal` and `ControlError` headers are now typed
-  `int32`, and `HeaderKeyUUID` is now a typed `uint8`. Code that mixed them with other integer
-  types, such as `var k uint8 = xgress.HeaderKeyCircuitId`, needs a conversion. In particular,
-  indexing a `channel.Headers` (an `int32` key) with `HeaderKeyUUID` now needs
-  `int32(xgress.HeaderKeyUUID)`.
+  `int32`, `HeaderKeyUUID` is now a typed `uint8` and `CapabilityEOFIndex`, which shipped untyped
+  in 1.8.0, is now a typed `int`. Code that mixed them with other integer types, such as
+  `var k int = xgress.HeaderKeyCircuitId`, needs a conversion.
+
+  Indexing a `channel.Headers` (an `int32` key) with `HeaderKeyUUID` no longer compiles, and it
+  was never the right index: `HeaderKeyUUID` is a passthrough key, an index into
+  `Payload.Headers`, so that lookup read channel header 0 (`ConnectionIdHeader`). The message
+  header that carries the UUID is `xgress.MinHeaderKey + int32(xgress.HeaderKeyUUID)`.
 
 ## What's New
 
@@ -110,10 +114,10 @@
       corrupted on xgress payloads.
     * New messages, each with a nested `Kind` enum so its value names do not collide with
       others in the package: `XgPayloadFlag` (the payload flag bits, which are OR-ed together
-      into the `XgFlags` header), `XgHeaderKey` (the passthrough header keys), `XgControl` (the
-      control message types), `XgControlHeader` (the control message header ids) and
-      `XgPayload` (a local hint selecting which dropped-message meter to mark, never sent on
-      the wire).
+      into the `XgFlags` header), `XgHeaderKey` (the passthrough header keys: `UUID`,
+      `Capabilities` and `EdgeFlags`, which carries the edge message flags), `XgCapability` (the
+      capability bits advertised in the `Capabilities` header, currently `EOF`), `XgControl` (the
+      control message types) and `XgControlHeader` (the control message header ids).
 
 ## Issues Fixed and Dependency Updates
 
