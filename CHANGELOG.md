@@ -62,6 +62,20 @@
   A listener's cost and precedence updates now apply to every later bind, not only the routers it
   was bound to at the time of the update.
 
+* **The xgress wire constants now come from `edge_client.proto`.** The `xgress` header ids,
+  content types, payload flags, passthrough header keys, control types, control headers and
+  payload types are defined in the proto, and the Go constants are taken from the generated
+  `edge_client_pb` code. The values are unchanged, so this is wire-compatible.
+
+  It is source-breaking for code that relied on the old untyped constants. `HeaderKeyCircuitId`,
+  `HeaderKeySequence`, `HeaderKeyFlags`, `HeaderKeyRecvBufferSize`, `HeaderKeyRTT`,
+  `HeaderPayloadRaw`, the `ContentType*` constants and the `ControlHopCount`, `ControlHopType`,
+  `ControlHopId`, `ControlTimestamp`, `ControlUserVal` and `ControlError` headers are now typed
+  `int32`, and `HeaderKeyUUID` is now a typed `uint8`. Code that mixed them with other integer
+  types, such as `var k uint8 = xgress.HeaderKeyCircuitId`, needs a conversion. In particular,
+  indexing a `channel.Headers` (an `int32` key) with `HeaderKeyUUID` now needs
+  `int32(xgress.HeaderKeyUUID)`.
+
 ## What's New
 
 * `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
@@ -88,9 +102,23 @@
   then reported an unsynchronized snapshot. Such a buffer is no longer being mutated, so its
   state is now read directly.
 
+* `edge_client.proto` now defines the xgress wire constants, so the C and JVM SDKs and other
+  proto consumers can use them when they regenerate:
+    * `HeaderId` gains the xgress payload headers `XgCircuitId` through `XgPayloadRaw`
+      (2256-2261). Ids 2000-2255 are now `reserved`, because that window is the xgress
+      application-header passthrough range: a header allocated there would be swallowed or
+      corrupted on xgress payloads.
+    * New messages, each with a nested `Kind` enum so its value names do not collide with
+      others in the package: `XgPayloadFlag` (the payload flag bits, which are OR-ed together
+      into the `XgFlags` header), `XgHeaderKey` (the passthrough header keys), `XgControl` (the
+      control message types), `XgControlHeader` (the control message header ids) and
+      `XgPayload` (a local hint selecting which dropped-message meter to mark, never sent on
+      the wire).
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang/v2: [v1.8.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v2.0.0)
+    * [Issue #1070](https://github.com/openziti/sdk-golang/issues/1070) - Move xgress wire constants into edge_client.proto
     * [Issue #1036](https://github.com/openziti/sdk-golang/issues/1036) - Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
     * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less

@@ -124,6 +124,21 @@ enum HeaderId {
   // DirectE2EECircuitTokenHeader carries the controller-signed circuit token. Sent on
   // StateConnected to the dialer and on Dial to the host.
   DirectE2EECircuitTokenHeader = 1042;
+
+  // 2000-2255 is the xgress application-header passthrough window (xgress.MinHeaderKey ..
+  // xgress.MaxHeaderKey): UnmarshallPayload copies any message header in this range into
+  // Payload.Headers[key-2000] and re-emits it, so no HeaderId may be allocated here. Keep this
+  // range in sync with those Go constants. The keys currently in use are listed in XgHeaderKey.
+  reserved 2000 to 2255;
+
+  // xgress protocol headers, allocated just above the passthrough window
+  XgCircuitId      = 2256;
+  XgSequence       = 2257;
+  // XgFlags carries a uint32 bitmask of XgPayloadFlag.Kind values
+  XgFlags          = 2258;
+  XgRecvBufferSize = 2259;
+  XgRTT            = 2260;
+  XgPayloadRaw     = 2261;
 }
 
 enum Error {
@@ -462,5 +477,106 @@ message PostureStateChange {
   message PolicyState {
     string policyId  = 1;
     bool   isPassing = 2;
+  }
+}
+
+// XgPayloadFlag and XgPayload each nest their enum in a message so the generic value names
+// (Chunk, EOF, Xg, Fwd, ...) are scoped to the message and cannot collide with other enum values
+// or messages in this package (proto enum values otherwise share one package-wide namespace),
+// the same way RouterCapability does. Generated Go value names are unchanged (e.g.
+// XgPayloadFlag_CircuitEnd, XgPayload_Xg); only the enum type name becomes XgPayloadFlag_Kind /
+// XgPayload_Kind.
+
+// XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
+// these values are bit positions and are OR-ed together: the flags travel as a single uint32 in
+// the XgFlags header (an absent header means no flags are set), and a receiver tests each bit
+// independently.
+message XgPayloadFlag {
+  enum Kind {
+    // XgFlagNone is the zero value: no flags set. It is never OR-ed into a flags field.
+    XgFlagNone   = 0;
+    // CircuitEnd: the sender is ending the circuit. Also sent in place of EOF to a peer that
+    // did not advertise EOF support.
+    CircuitEnd   = 1;
+    // Originator: set when the sender is the Terminator end of the circuit, clear when it is the
+    // Initiator. Present on both payloads and acknowledgements.
+    Originator   = 2;
+    // CircuitStart: the first payload of a circuit. It carries the sender's capabilities in the
+    // xgress capabilities passthrough header, which the peer uses to negotiate features such
+    // as EOF.
+    CircuitStart = 4;
+    // Chunk: the payload holds one piece of a larger message that the receiver reassembles. The
+    // first chunk's data is prefixed with the total size of the reassembled message.
+    Chunk        = 8;
+    // Retransmit: the payload is a retransmission of one already sent.
+    Retransmit   = 16;
+    // EOF: the sender will write no more data (half-close). The circuit stays open for data in
+    // the other direction. Only sent to a peer that advertised EOF support.
+    EOF          = 32;
+    // WriteFailed: the sender stopped writing to its client without having received an end of
+    // circuit (typically a failed write), so the receiver should stop sending. The payload carries
+    // no data; the receiver closes its send buffer and consumes it rather than delivering it.
+    WriteFailed  = 64;
+  }
+}
+
+// XgHeaderKey lists the keys of the xgress passthrough headers in use. A key indexes a payload's
+// application headers (a uint8 key to a byte array); on the wire, key k travels as the message
+// header with id 2000+k, inside the window reserved in HeaderId.
+message XgHeaderKey {
+  enum Kind {
+    // UUID: the uuid of an edge message, present only while a payload is being traced so it can
+    // be correlated across hops
+    UUID         = 0;
+    // Capabilities: a big-endian uint32 of the sender's capability bits (bits 8-16; EOF is bit 8).
+    // Sent on the circuit start payload and in the capabilities-only response to it.
+    Capabilities = 1;
+  }
+}
+
+// XgControl lists the types of xgress control message. The type is the first byte of the body of
+// an XgControlType message, followed by the circuit id. As with the other Xg enums, it is nested
+// so its value names are scoped to the message (e.g. XgControl_TraceRoute in Go). It cannot be a
+// top-level XgControlType enum: ContentType already has a value of that name.
+message XgControl {
+  enum Kind {
+    None               = 0;
+    TraceRoute         = 1;
+    TraceRouteResponse = 2;
+  }
+}
+
+// XgControlHeader lists the message header ids used by xgress control messages (XgControlType),
+// such as a traceroute request or response. They are separate from HeaderId, which holds the edge
+// and xgress payload headers. The type of each value is noted below.
+message XgControlHeader {
+  enum Kind {
+    None      = 0;
+    // HopCount: uint32
+    HopCount  = 20;
+    // HopType: string
+    HopType   = 21;
+    // HopId: string
+    HopId     = 22;
+    // Timestamp: uint64
+    Timestamp = 23;
+    // UserVal: uint32, echoed back unchanged in the response
+    UserVal   = 24;
+    // Error: string, set on a response when the traceroute failed
+    Error     = 25;
+  }
+}
+
+// XgPayload classifies how an xgress payload is handed to a link. It is a local hint only, used to
+// pick which dropped-message meter to mark, and is never serialized.
+message XgPayload {
+  enum Kind {
+    PayloadNone = 0;
+    // Xg: an ordinary payload, sent with a timeout
+    Xg          = 1;
+    // Rtx: a retransmission, which does not mark the circuit active
+    Rtx         = 2;
+    // Fwd: a payload forwarded without blocking (zero timeout)
+    Fwd         = 3;
   }
 }
