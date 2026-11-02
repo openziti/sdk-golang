@@ -41,8 +41,6 @@ import (
 )
 
 const (
-	HeaderKeyUUID = 0
-
 	closedFlag            = 0
 	rxerStartedFlag       = 1
 	endOfCircuitRecvdFlag = 2

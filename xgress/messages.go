@@ -25,6 +25,7 @@ import (
 	"github.com/openziti/channel/v5"
 	"github.com/openziti/foundation/v2/info"
 	"github.com/openziti/foundation/v2/uuidz"
+	"github.com/openziti/sdk-golang/v2/pb/edge_client_pb"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -33,16 +34,16 @@ const (
 	MinHeaderKey = 2000
 	MaxHeaderKey = MinHeaderKey + int32(math.MaxUint8)
 
-	HeaderKeyCircuitId      = 2256
-	HeaderKeySequence       = 2257
-	HeaderKeyFlags          = 2258
-	HeaderKeyRecvBufferSize = 2259
-	HeaderKeyRTT            = 2260
-	HeaderPayloadRaw        = 2261
+	HeaderKeyCircuitId      = int32(edge_client_pb.HeaderId_XgCircuitId)
+	HeaderKeySequence       = int32(edge_client_pb.HeaderId_XgSequence)
+	HeaderKeyFlags          = int32(edge_client_pb.HeaderId_XgFlags)
+	HeaderKeyRecvBufferSize = int32(edge_client_pb.HeaderId_XgRecvBufferSize)
+	HeaderKeyRTT            = int32(edge_client_pb.HeaderId_XgRTT)
+	HeaderPayloadRaw        = int32(edge_client_pb.HeaderId_XgPayloadRaw)
 
-	ContentTypePayloadType         = 1100
-	ContentTypeAcknowledgementType = 1101
-	ContentTypeControlType         = 1102
+	ContentTypePayloadType         = int32(edge_client_pb.ContentType_XgPayloadType)
+	ContentTypeAcknowledgementType = int32(edge_client_pb.ContentType_XgAcknowledgementType)
+	ContentTypeControlType         = int32(edge_client_pb.ContentType_XgControlType)
 )
 
 var ContentTypeValue = map[string]int32{
@@ -75,17 +76,18 @@ func (o Originator) Invert() Originator {
 type Flag uint32
 
 const (
-	PayloadFlagCircuitEnd   Flag = 1
-	PayloadFlagOriginator   Flag = 2
-	PayloadFlagCircuitStart Flag = 4
-	PayloadFlagChunk        Flag = 8
-	PayloadFlagRetransmit   Flag = 16
-	PayloadFlagEOF          Flag = 32
-	PayloadFlagWriteFailed  Flag = 64
+	PayloadFlagCircuitEnd   = Flag(edge_client_pb.XgPayloadFlag_CircuitEnd)
+	PayloadFlagOriginator   = Flag(edge_client_pb.XgPayloadFlag_Originator)
+	PayloadFlagCircuitStart = Flag(edge_client_pb.XgPayloadFlag_CircuitStart)
+	PayloadFlagChunk        = Flag(edge_client_pb.XgPayloadFlag_Chunk)
+	PayloadFlagRetransmit   = Flag(edge_client_pb.XgPayloadFlag_Retransmit)
+	PayloadFlagEOF          = Flag(edge_client_pb.XgPayloadFlag_EOF)
+	PayloadFlagWriteFailed  = Flag(edge_client_pb.XgPayloadFlag_WriteFailed)
 )
 
 const (
-	HeaderKeyCapabilities uint8 = 1
+	HeaderKeyUUID         = uint8(edge_client_pb.XgHeaderKey_UUID)
+	HeaderKeyCapabilities = uint8(edge_client_pb.XgHeaderKey_Capabilities)
 )
 
 func NewAcknowledgement(circuitId string, originator Originator) *Acknowledgement {
@@ -202,9 +204,9 @@ func (ack *Acknowledgement) GetLoggerFields() logrus.Fields {
 type PayloadType byte
 
 const (
-	PayloadTypeXg  PayloadType = 1
-	PayloadTypeRtx PayloadType = 2
-	PayloadTypeFwd PayloadType = 3
+	PayloadTypeXg  = PayloadType(edge_client_pb.XgPayload_Xg)
+	PayloadTypeRtx = PayloadType(edge_client_pb.XgPayload_Rtx)
+	PayloadTypeFwd = PayloadType(edge_client_pb.XgPayload_Fwd)
 )
 
 type Payload struct {
@@ -380,17 +382,17 @@ func (self ControlType) String() string {
 }
 
 const (
-	ControlTypeTraceRoute         ControlType = 1
-	ControlTypeTraceRouteResponse ControlType = 2
+	ControlTypeTraceRoute         = ControlType(edge_client_pb.XgControl_TraceRoute)
+	ControlTypeTraceRouteResponse = ControlType(edge_client_pb.XgControl_TraceRouteResponse)
 )
 
 const (
-	ControlHopCount  = 20
-	ControlHopType   = 21
-	ControlHopId     = 22
-	ControlTimestamp = 23
-	ControlUserVal   = 24
-	ControlError     = 25
+	ControlHopCount  = int32(edge_client_pb.XgControlHeader_HopCount)
+	ControlHopType   = int32(edge_client_pb.XgControlHeader_HopType)
+	ControlHopId     = int32(edge_client_pb.XgControlHeader_HopId)
+	ControlTimestamp = int32(edge_client_pb.XgControlHeader_Timestamp)
+	ControlUserVal   = int32(edge_client_pb.XgControlHeader_UserVal)
+	ControlError     = int32(edge_client_pb.XgControlHeader_Error)
 )
 
 type Control struct {
@@ -451,7 +453,7 @@ func (self *Control) GetLoggerFields() logrus.Fields {
 		"type":      self.Type,
 	}
 
-	if uuidVal, found := self.Headers[HeaderKeyUUID]; found {
+	if uuidVal, found := self.Headers[int32(HeaderKeyUUID)]; found {
 		result["uuid"] = uuidz.ToString(uuidVal)
 	}
 
