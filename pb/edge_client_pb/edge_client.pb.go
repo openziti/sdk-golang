@@ -2337,9 +2337,9 @@ func (x *PostureStateChange) GetPolicyStates() []*PostureStateChange_PolicyState
 }
 
 // XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
-// these values are bit positions and are OR-ed together: the flags travel as a single uint32 in
-// the XgFlags header (an absent header means no flags are set), and a receiver tests each bit
-// independently.
+// these values are bit masks (1, 2, 4, ...), not bit positions, and are OR-ed together: the flags
+// travel as a single uint32 in the XgFlags header (an absent header means no flags are set), and
+// a receiver tests each flag with flags & value.
 type XgPayloadFlag struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2416,9 +2416,10 @@ func (*XgHeaderKey) Descriptor() ([]byte, []int) {
 }
 
 // XgCapability lists the capability bits an xgress endpoint can advertise to its peer in the
-// Capabilities passthrough header (XgHeaderKey). The values are bit positions in that uint32;
-// bits 8 through 16 are reserved for these, and a receiver masks off the rest. A sender uses a
-// feature with a peer only if the peer advertised its bit.
+// Capabilities passthrough header (XgHeaderKey). Unlike XgPayloadFlag, the values are bit
+// positions, not masks: test a capability with caps & (1 << value). Bits 8 through 16 are
+// reserved for these, and a receiver masks off the rest. A sender uses a feature with a peer only
+// if the peer advertised its bit.
 type XgCapability struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2456,9 +2457,7 @@ func (*XgCapability) Descriptor() ([]byte, []int) {
 }
 
 // XgControl lists the types of xgress control message. The type is the first byte of the body of
-// an XgControlType message, followed by the circuit id. As with the other Xg enums, it is nested
-// so its value names are scoped to the message (e.g. XgControl_TraceRoute in Go). It cannot be a
-// top-level XgControlType enum: ContentType already has a value of that name.
+// an XgControlType message, followed by the circuit id.
 type XgControl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

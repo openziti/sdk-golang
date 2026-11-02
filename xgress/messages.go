@@ -88,7 +88,6 @@ const (
 const (
 	HeaderKeyUUID         = uint8(edge_client_pb.XgHeaderKey_UUID)
 	HeaderKeyCapabilities = uint8(edge_client_pb.XgHeaderKey_Capabilities)
-	HeaderKeyEdgeFlags    = uint8(edge_client_pb.XgHeaderKey_EdgeFlags)
 )
 
 func NewAcknowledgement(circuitId string, originator Originator) *Acknowledgement {

@@ -483,13 +483,12 @@ message PostureStateChange {
 // The Xg enums below each nest their enum in a message so the generic value names (Chunk, EOF,
 // None, ...) are scoped to the message and cannot collide with other enum values or messages in
 // this package (proto enum values otherwise share one package-wide namespace), the same way
-// RouterCapability does. Generated Go value names are unchanged (e.g. XgPayloadFlag_CircuitEnd);
-// only the enum type name becomes XgPayloadFlag_Kind.
+// RouterCapability does.
 
 // XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
-// these values are bit positions and are OR-ed together: the flags travel as a single uint32 in
-// the XgFlags header (an absent header means no flags are set), and a receiver tests each bit
-// independently.
+// these values are bit masks (1, 2, 4, ...), not bit positions, and are OR-ed together: the flags
+// travel as a single uint32 in the XgFlags header (an absent header means no flags are set), and
+// a receiver tests each flag with flags & value.
 message XgPayloadFlag {
   enum Kind {
     // None is the zero value: no flags set. It is never OR-ed into a flags field.
@@ -538,9 +537,10 @@ message XgHeaderKey {
 }
 
 // XgCapability lists the capability bits an xgress endpoint can advertise to its peer in the
-// Capabilities passthrough header (XgHeaderKey). The values are bit positions in that uint32;
-// bits 8 through 16 are reserved for these, and a receiver masks off the rest. A sender uses a
-// feature with a peer only if the peer advertised its bit.
+// Capabilities passthrough header (XgHeaderKey). Unlike XgPayloadFlag, the values are bit
+// positions, not masks: test a capability with caps & (1 << value). Bits 8 through 16 are
+// reserved for these, and a receiver masks off the rest. A sender uses a feature with a peer only
+// if the peer advertised its bit.
 message XgCapability {
   enum Kind {
     // None is the zero value required by proto3. Bit 0 is not an xgress capability and is never
@@ -554,9 +554,7 @@ message XgCapability {
 }
 
 // XgControl lists the types of xgress control message. The type is the first byte of the body of
-// an XgControlType message, followed by the circuit id. As with the other Xg enums, it is nested
-// so its value names are scoped to the message (e.g. XgControl_TraceRoute in Go). It cannot be a
-// top-level XgControlType enum: ContentType already has a value of that name.
+// an XgControlType message, followed by the circuit id.
 message XgControl {
   enum Kind {
     None               = 0;
