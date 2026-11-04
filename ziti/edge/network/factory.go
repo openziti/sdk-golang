@@ -121,7 +121,7 @@ func (conn *routerConn) NewDialConn(service *rest_model.ServiceDetail) *edgeConn
 	edgeCh := &edgeConn{
 		closeNotify: closeNotify,
 		MsgChannel:  *edge.NewEdgeMsgChannel(conn.ch, id),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify),
 		msgMux:      conn.mux,
 		serviceName: *service.Name,
 		marker:      newMarker(),

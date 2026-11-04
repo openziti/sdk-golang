@@ -104,7 +104,7 @@ func newXgressCloseTestConn(t *testing.T) (*edgeConn, edge.ConnMux[any]) {
 	testChannel := edge.NewSingleSdkChannel(newUnackedTestChannel())
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify),
 		msgMux:      mux,
 		serviceName: "test",
 		closeNotify: closeNotify,
