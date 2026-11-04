@@ -119,6 +119,18 @@
       capability bits advertised in the `Capabilities` header, currently `EOF`), `XgControl` (the
       control message types) and `XgControlHeader` (the control message header ids).
 
+* An xgress connection that ends abruptly is now relayed to the far end as an abort, not as a
+  graceful close. Until now an abort, an unrouted circuit and a lost router all reached the far SDK
+  as a FIN followed by a close, the same as a normal close. A graceful end is now the explicit
+  signal, and the absence of one is an abort: a connection that ends with the new
+  `xgress.ErrPeerAborted` (it wraps `ErrPeerClosed`) sends a `CircuitEnd` with no EOF, and the
+  receiver closes without a half-close. Peers that do not support EOF are unchanged. There is no
+  wire change, and a router without the matching change keeps the old behavior.
+
+* The legacy edge conn's `Close()` now sends a FIN first, bounded to 5 seconds so a stuck channel
+  cannot hang it. An SDK that closes without a FIN, including older versions, looks like an abort
+  to a receiver that tells the two apart, such as the C SDK with the change for openziti/c#1207.
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang/v2: [v1.8.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v2.0.0)
