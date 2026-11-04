@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"io"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func BenchmarkConnWrite(b *testing.B) {
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
-		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:        NewNoopSequencer[*channel.Message](closeNotify),
 	}
 	conn.initChunkReader()
 
@@ -63,7 +64,7 @@ func BenchmarkConnRead(b *testing.B) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify)
 	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
@@ -73,19 +74,22 @@ func BenchmarkConnRead(b *testing.B) {
 	conn.initChunkReader()
 
 	var stop atomic.Bool
-	defer stop.Store(true)
+	producerDone := make(chan struct{})
+	defer func() {
+		stop.Store(true)
+		<-producerDone
+	}()
 
 	go func() {
-		counter := uint32(0)
+		defer close(producerDone)
 		for !stop.Load() {
-			counter += 1
-			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, data)
-			err := readQ.PutSequenced(msg)
-			if err != nil {
-				panic(err)
+			// readQ doesn't hold the producer back, so stay a few messages ahead of the reader
+			if conn.backlogBytes.Load() >= 4*877 {
+				runtime.Gosched()
+				continue
 			}
-			// mux.HandleReceive(msg, testChannel)
+			data := make([]byte, 877)
+			conn.queueMessage(edge.NewDataMsg(1, data))
 		}
 	}()
 
@@ -141,7 +145,7 @@ func TestReadMultipart(t *testing.T) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify)
 	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),

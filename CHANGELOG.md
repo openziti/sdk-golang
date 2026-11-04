@@ -123,6 +123,7 @@
 
 * github.com/openziti/sdk-golang/v2: [v1.8.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v2.0.0)
     * [Issue #1070](https://github.com/openziti/sdk-golang/issues/1070) - Move xgress wire constants into edge_client.proto
+    * [Issue #1074](https://github.com/openziti/sdk-golang/issues/1074) - Legacy conn with a slow reader blocks every connection on its router channel
     * [Issue #1036](https://github.com/openziti/sdk-golang/issues/1036) - Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
     * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
