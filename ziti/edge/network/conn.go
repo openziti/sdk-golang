@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/bits"
 	"net"
 	"strconv"
 	"strings"
@@ -81,10 +82,14 @@ type edgeConn struct {
 	// for sending messages back to the edge router (data, state changes, acks, etc.)
 	edge.MsgChannel
 
-	// readQ sequences incoming messages for ordered delivery to the application.
-	// Ensures data messages are delivered in the correct order even with
-	// concurrent message processing.
+	// readQ holds incoming messages, in order, until the application reads them. Messages from the
+	// router channel never wait for room, so without SDK flow control one slow reader costs memory
+	// rather than stalling the other connections on the channel. The xgress path waits at
+	// xgReadQueueDepth, which holds back its acks.
 	readQ *noopSeq[*channel.Message]
+
+	// backlogBytes is the data queued in readQ and not yet read.
+	backlogBytes atomic.Int64
 
 	// inBuffer stores message data that has been received but not yet read
 	// by the application. Acts as a buffer between network messages and Read() calls.
@@ -382,12 +387,34 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		return
 	}
 
+	size := int64(len(msg.Body))
+	backlog := conn.backlogBytes.Add(size)
 	if err := conn.readQ.PutSequenced(msg); err != nil {
+		conn.backlogBytes.Add(-size)
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("error pushing edge message to sequencer")
-	} else {
-		logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+		return
 	}
+
+	if backlogWarningCrossed(backlog-size, backlog) {
+		pfxlog.Logger().WithField("connId", conn.Id()).
+			WithField("marker", conn.marker).
+			WithField("circuitId", conn.circuitId).
+			WithField("backlogBytes", backlog).
+			Warnf("%s of received data is waiting to be read; without sdk flow control the router can't slow "+
+				"this connection, so the backlog grows until the reader catches up", info.ByteCount(backlog))
+	}
+	logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+}
+
+// legacyBacklogWarnBytes is the read backlog at which a conn without SDK flow control logs a warning.
+// It logs again each time the backlog doubles past that.
+const legacyBacklogWarnBytes = 16 * 1024 * 1024
+
+// backlogWarningCrossed reports whether a read backlog growing from before to after bytes passed
+// legacyBacklogWarnBytes or one of its doublings.
+func backlogWarningCrossed(before, after int64) bool {
+	return bits.Len64(uint64(max(after, 0)/legacyBacklogWarnBytes)) > bits.Len64(uint64(max(before, 0)/legacyBacklogWarnBytes))
 }
 
 func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
@@ -786,6 +813,9 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		}
 
 		msg, err := conn.readQ.GetNext()
+		if err == nil {
+			conn.backlogBytes.Add(-int64(len(msg.Body)))
+		}
 		if errors.Is(err, ErrClosed) {
 			log.Debug("sequencer closed, marking readFIN")
 			conn.readFIN.Store(true)

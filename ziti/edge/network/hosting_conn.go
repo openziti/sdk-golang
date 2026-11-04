@@ -308,7 +308,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	edgeCh := &edgeConn{
 		closeNotify:    closeNotify,
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:          NewNoopSequencer[*channel.Message](closeNotify),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,

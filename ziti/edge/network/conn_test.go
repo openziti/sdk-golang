@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"io"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func BenchmarkConnWrite(b *testing.B) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:       NewNoopSequencer[*channel.Message](closeNotify),
 		msgMux:      mux,
 		serviceName: "test",
 	}
@@ -62,7 +63,7 @@ func BenchmarkConnRead(b *testing.B) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,
@@ -71,25 +72,28 @@ func BenchmarkConnRead(b *testing.B) {
 	}
 
 	var stop atomic.Bool
-	defer stop.Store(true)
-
-	go func() {
-		counter := uint32(0)
-		for !stop.Load() {
-			counter += 1
-			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, data)
-			err := readQ.PutSequenced(msg)
-			if err != nil {
-				panic(err)
-			}
-			// mux.HandleReceive(msg, testChannel)
-		}
+	producerDone := make(chan struct{})
+	defer func() {
+		stop.Store(true)
+		<-producerDone
 	}()
 
 	req := require.New(b)
 
 	req.NoError(mux.Add(conn))
+
+	go func() {
+		defer close(producerDone)
+		for !stop.Load() {
+			// readQ doesn't hold the producer back, so stay a few messages ahead of the reader
+			if conn.backlogBytes.Load() >= 4*877 {
+				runtime.Gosched()
+				continue
+			}
+			data := make([]byte, 877)
+			conn.AcceptMessage(edge.NewDataMsg(1, data))
+		}
+	}()
 
 	data := make([]byte, 1024)
 
@@ -139,7 +143,7 @@ func TestReadMultipart(t *testing.T) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := NewNoopSequencer[*channel.Message](closeNotify)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,
