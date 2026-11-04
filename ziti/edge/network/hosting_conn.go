@@ -462,7 +462,7 @@ func (conn *edgeHostConn) buildChildConn(p childConnParams, useXg bool, message 
 		},
 		msgCh: *msgCh,
 		mux:   conn.msgMux,
-		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ: NewNoopSequencer[*channel.Message](closeNotify),
 	}
 	ec.initChunkReader()
 	return ec, nil

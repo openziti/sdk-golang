@@ -36,7 +36,7 @@ func newLegacyCloseTestConn(t *testing.T) (*edgeConnLegacy, edge.ConnMux[any], e
 		edgeConnBase: edgeConnBase{serviceName: "test", closeNotify: closeNotify},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
-		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:        NewNoopSequencer[*channel.Message](closeNotify),
 	}
 	conn.initChunkReader()
 	require.NoError(t, mux.Add(conn))

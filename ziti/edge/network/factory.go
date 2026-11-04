@@ -530,7 +530,7 @@ func (conn *routerConn) buildV1LegacyConn(
 		},
 		msgCh: *msgCh,
 		mux:   conn.mux,
-		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ: NewNoopSequencer[*channel.Message](closeNotify),
 	}
 	ec.initChunkReader()
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)
