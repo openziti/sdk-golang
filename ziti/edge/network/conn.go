@@ -872,7 +872,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			}
 
 			log.Tracef("%d chunks in incoming buffer", len(conn.inBuffer))
-			log.Debugf("read %v bytes", n)
+			log.Tracef("read %v bytes", n)
 			return n, nil
 
 		default:
