@@ -3,7 +3,7 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.3 -> v1.8.4](https://github.com/openziti/sdk-golang/compare/v1.8.3...v1.8.4)
-    * [Issue #1081](https://github.com/openziti/sdk-golang/issues/1081) - [Backport-1.8] Xgress logs every payload and acknowledgement at debug level
+    * [Issue #1081](https://github.com/openziti/sdk-golang/issues/1081) - [Backport-1.8] SDK logs every payload, ack, read and write at debug level
 
 
 # Release notes 1.8.3
