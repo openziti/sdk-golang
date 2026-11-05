@@ -712,7 +712,7 @@ func (self *Xgress) nextTxPayload(deadlineNotify <-chan struct{}) ([]byte, map[u
 		payloadComplete := uint64(len(self.txChunkPayload.Data)) == self.txChunkSize
 
 		payloadLogger := log.WithFields(self.txChunkPayload.GetLoggerFields())
-		payloadLogger.Debugf("received payload chunk. seq: %d, first: %v, complete: %v, chunk size: %d, payload size: %d, writeOffset: %d",
+		payloadLogger.Tracef("received payload chunk. seq: %d, first: %v, complete: %v, chunk size: %d, payload size: %d, writeOffset: %d",
 			payloadChunk.Sequence, payloadReadOffset > 0, payloadComplete, len(payloadChunk.Data), self.txChunkSize, len(self.txChunkPayload.Data))
 
 		if !payloadComplete {
