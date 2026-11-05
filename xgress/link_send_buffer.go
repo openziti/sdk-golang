@@ -135,7 +135,7 @@ func (buffer *LinkSendBuffer) BufferPayload(payload *Payload) (func(), error) {
 
 	select {
 	case buffer.newlyBuffered <- txPayload:
-		pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
+		pfxlog.ContextLogger(buffer.x.Label()).Tracef("buffered [%d]", payload.GetSequence())
 		return txPayload.markSent, nil
 	case <-buffer.closeNotify:
 		return nil, ErrWriteClosed
@@ -150,7 +150,7 @@ func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ctx co
 		case <-ctx.Done():
 			return nil, os.ErrDeadlineExceeded
 		case buffer.newlyBuffered <- txPayload:
-			pfxlog.ContextLogger(buffer.x.Label()).Debugf("buffered [%d]", payload.GetSequence())
+			pfxlog.ContextLogger(buffer.x.Label()).Tracef("buffered [%d]", payload.GetSequence())
 			return txPayload.markSent, nil
 		case <-buffer.closeNotify:
 			return nil, ErrWriteClosed
@@ -160,10 +160,10 @@ func (buffer *LinkSendBuffer) BufferPayloadWithDeadline(payload *Payload, ctx co
 
 func (buffer *LinkSendBuffer) ReceiveAcknowledgement(ack *Acknowledgement) {
 	log := pfxlog.ContextLogger(buffer.x.Label()).WithFields(ack.GetLoggerFields())
-	log.Debug("ack received")
+	log.Trace("ack received")
 	select {
 	case buffer.newlyReceivedAcks <- ack:
-		log.Debug("ack processed")
+		log.Trace("ack processed")
 	case <-buffer.closeNotify:
 		// if end of circuit was received, we've cleanly shutdown and can ignore any trailing acks
 		if buffer.x.IsEndOfCircuitReceived() {
@@ -220,7 +220,7 @@ func (buffer *LinkSendBuffer) isBlocked() bool {
 		if !wasBlocked {
 			buffer.blockedSince = time.Now()
 		}
-		pfxlog.ContextLogger(buffer.x.Label()).Debugf("blocked=%v win_size=%v tx_buffer_size=%v rx_buffer_size=%v", blocked, buffer.windowsSize, buffer.linkSendBufferSize, buffer.linkRecvBufferSize)
+		pfxlog.ContextLogger(buffer.x.Label()).Tracef("blocked=%v win_size=%v tx_buffer_size=%v rx_buffer_size=%v", blocked, buffer.windowsSize, buffer.linkSendBufferSize, buffer.linkRecvBufferSize)
 	} else if wasBlocked {
 		buffer.metrics().BufferUnblocked(time.Since(buffer.blockedSince))
 	}
@@ -356,7 +356,7 @@ func (buffer *LinkSendBuffer) receiveAcknowledgement(ack *Acknowledgement) {
 			delete(buffer.buffer, sequence)
 			buffer.metrics().SendPayloadDelivered(int64(payloadSize))
 			buffer.linkSendBufferSize -= payloadSize
-			log.Debugf("removing payload %v with size %v. payload buffer size: %v",
+			log.Tracef("removing payload %v with size %v. payload buffer size: %v",
 				txPayload.payload.Sequence, len(txPayload.payload.Data), buffer.linkSendBufferSize)
 
 			if buffer.successfulAcks >= buffer.x.Options.TxPortalIncreaseThresh {

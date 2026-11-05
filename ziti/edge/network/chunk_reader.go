@@ -164,7 +164,7 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			return 0, err
 		}
 		log.Tracef("%d chunks in incoming buffer", len(r.inBuffer))
-		log.Debugf("read %d bytes", n)
+		log.Tracef("read %d bytes", n)
 		return n, nil
 	}
 }

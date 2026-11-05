@@ -127,6 +127,7 @@
     * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1054](https://github.com/openziti/sdk-golang/issues/1054) - Xgress conn closed locally ignores the router's StateClosed and retransmits forever
+    * [Issue #1079](https://github.com/openziti/sdk-golang/issues/1079) - SDK logs every payload, ack, read and write at debug level
     * [Issue #977](https://github.com/openziti/sdk-golang/issues/977) - Add DirectE2EE header constants and error enum values
     * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
     * [Issue #1048](https://github.com/openziti/sdk-golang/issues/1048) - Write-failed payload is written to the peer as empty data, failing encrypted reads with invalid input
