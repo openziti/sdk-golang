@@ -263,7 +263,7 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 		msg.PutUint32Header(FlagsHeader, flags)
 	}
 	ec.TraceMsg("write", msg)
-	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Debugf("writing %v bytes", len(data))
+	pfxlog.Logger().WithFields(GetLoggerFields(msg)).Tracef("writing %v bytes", len(data))
 
 	// NOTE: We need to wait for the buffer to be on the wire before returning. The Writer contract
 	//       states that buffers are not allowed be retained, and if we have it queued asynchronously
