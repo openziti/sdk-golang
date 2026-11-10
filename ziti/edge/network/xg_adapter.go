@@ -118,7 +118,7 @@ func (self *XgAdapter) WritePayload(bytes []byte, headers map[uint8][]byte) (int
 		return 0, err
 	}
 
-	logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+	logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 	return len(msg.Body), nil
 }
 

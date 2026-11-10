@@ -386,7 +386,7 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			Error("error pushing edge message to sequencer")
 	} else {
-		logrus.WithFields(edge.GetLoggerFields(msg)).Debugf("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+		logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 	}
 }
 
@@ -872,7 +872,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 			}
 
 			log.Tracef("%d chunks in incoming buffer", len(conn.inBuffer))
-			log.Debugf("read %v bytes", n)
+			log.Tracef("read %v bytes", n)
 			return n, nil
 
 		default:
