@@ -178,8 +178,22 @@ func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// closeFinTimeout bounds how long Close waits for the FIN it sends ahead of the close. Close must
+// not hang on a stuck channel, and the StateClosed that follows is bounded the same way.
+var closeFinTimeout = 5 * time.Second
+
 func (conn *edgeConnLegacy) Close() error {
-	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn")
+	logger := pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId)
+	logger.Debug("closing edge conn")
+
+	// A close with no FIN before it is how an abort looks to the peer, so end the data first. This
+	// has to come before close, which marks the FIN as sent. It is a no-op if the FIN already went
+	// out, and a failure to send it is not worth failing the close for: the close follows regardless.
+	// The conn is going away, so its write deadline is free to bound the wait for the FIN.
+	_ = conn.SetWriteDeadline(time.Now().Add(closeFinTimeout))
+	if err := conn.CloseWrite(); err != nil {
+		logger.WithError(err).Debug("failed to send FIN before close")
+	}
 	conn.close(true)
 	return nil
 }
