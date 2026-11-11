@@ -122,15 +122,16 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang/v2: [v1.8.0 -> v2.0.0](https://github.com/openziti/sdk-golang/compare/v1.8.0...v2.0.0)
+    * [Issue #1052](https://github.com/openziti/sdk-golang/issues/1052) - Hosting listener blocks when a hosting connection closes with a full accept queue
+    * [Issue #1079](https://github.com/openziti/sdk-golang/issues/1079) - SDK logs every payload, ack, read and write at debug level
     * [Issue #1070](https://github.com/openziti/sdk-golang/issues/1070) - Move xgress wire constants into edge_client.proto
+    * [Issue #1048](https://github.com/openziti/sdk-golang/issues/1048) - Write-failed payload is written to the peer as empty data, failing encrypted reads with invalid input
     * [Issue #1036](https://github.com/openziti/sdk-golang/issues/1036) - Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
     * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
     * [Issue #1054](https://github.com/openziti/sdk-golang/issues/1054) - Xgress conn closed locally ignores the router's StateClosed and retransmits forever
-    * [Issue #1079](https://github.com/openziti/sdk-golang/issues/1079) - SDK logs every payload, ack, read and write at debug level
     * [Issue #977](https://github.com/openziti/sdk-golang/issues/977) - Add DirectE2EE header constants and error enum values
     * [Issue #1018](https://github.com/openziti/sdk-golang/issues/1018) - Legacy edge conn ignores a StateClosed that arrives after a FIN
-    * [Issue #1048](https://github.com/openziti/sdk-golang/issues/1048) - Write-failed payload is written to the peer as empty data, failing encrypted reads with invalid input
     * [Issue #1004](https://github.com/openziti/sdk-golang/issues/1004) - UnmarshallPacketPayload indexes the buffer without bounds checks
     * [Issue #1006](https://github.com/openziti/sdk-golang/issues/1006) - Chunked payload reassembly trusts the peer's declared size
     * [Issue #1011](https://github.com/openziti/sdk-golang/issues/1011) - secretstream: rekey is not implemented, so streams diverge from libsodium peers
@@ -147,9 +148,10 @@
     * [Issue #948](https://github.com/openziti/sdk-golang/issues/948) - AddControllerUrlsUpdateListener remover unsubscribes the wrong event
     * [Issue #941](https://github.com/openziti/sdk-golang/issues/941) - Prep for channel v5: explicit receive handler registration, drop send priorities
 
-* github.com/go-openapi/runtime: v0.32.2 -> v0.33.3
+* github.com/go-openapi/runtime: v0.32.2 -> v0.33.4
 * github.com/go-openapi/strfmt: v0.26.2 -> v0.27.4
-* github.com/openziti/channel/v5: [v4.3.11 -> v5.0.36](https://github.com/openziti/channel/compare/v4.3.11...v5.0.36)
+* github.com/openziti/channel/v5: [v4.3.11 -> v5.0.40](https://github.com/openziti/channel/compare/v4.3.11...v5.0.40)
+    * [Issue #315](https://github.com/openziti/channel/issues/315) - Hellos with a value other than 4 bytes under the ReplyFor header key are rejected
     * [Issue #311](https://github.com/openziti/channel/issues/311) - A queued message can be discarded unwritten after Send reports success
     * [Issue #301](https://github.com/openziti/channel/issues/301) - ReplyFor header with a length other than 4 causes a nil pointer dereference on the rx path
     * [Issue #303](https://github.com/openziti/channel/issues/303) - Crafted frame lengths panic the decoder: int truncation on 32-bit, uint32 wrap everywhere
@@ -179,7 +181,8 @@
 * github.com/openziti/edge-api: [v0.31.0 -> v0.36.1](https://github.com/openziti/edge-api/compare/v0.31.0...v0.36.1)
     * [Issue #198](https://github.com/openziti/edge-api/issues/198) - Advertise edge router capabilities in the service edge-router list
 
-* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.105](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.105)
+* github.com/openziti/foundation/v2: [v2.0.91 -> v2.0.106](https://github.com/openziti/foundation/compare/v2.0.91...v2.0.106)
+    * [Issue #505](https://github.com/openziti/foundation/issues/505) - Add pfxlog-shaped output handlers to the logging package
     * [Issue #502](https://github.com/openziti/foundation/issues/502) - logging registry forwards records its root handler would decline
     * [Issue #499](https://github.com/openziti/foundation/issues/499) - AtomicBitSet has no set-and-return-previous operation
     * [Issue #494](https://github.com/openziti/foundation/issues/494) - Add package-level Panic logging helper
@@ -187,61 +190,63 @@
     * [Issue #488](https://github.com/openziti/foundation/issues/488) - Add package-level Fatal and SyncEmit helpers to logging
     * [Issue #484](https://github.com/openziti/foundation/issues/484) - Add slog logging core (foundation/v2/logging) for upstream libraries
 
-* github.com/openziti/identity: [v1.0.129 -> v1.0.144](https://github.com/openziti/identity/compare/v1.0.129...v1.0.144)
+* github.com/openziti/identity: [v1.0.129 -> v1.0.145](https://github.com/openziti/identity/compare/v1.0.129...v1.0.145)
     * [Issue #72](https://github.com/openziti/identity/issues/72) - Convert logging from pfxlog/logrus to foundation slog logging
     * [Issue #74](https://github.com/openziti/identity/issues/74) - golangci-lint CI fails on go 1.25 module (action installs golangci-lint v1.x)
 
-* github.com/openziti/transport/v2: [v2.0.215 -> v2.0.226](https://github.com/openziti/transport/compare/v2.0.215...v2.0.226)
+* github.com/openziti/transport/v2: [v2.0.215 -> v2.0.229](https://github.com/openziti/transport/compare/v2.0.215...v2.0.229)
     * [Issue #176](https://github.com/openziti/transport/issues/176) - tcp.Connection hides CloseWrite, so callers cannot half-close a TCP transport connection
     * [Issue #173](https://github.com/openziti/transport/issues/173) - Convert logging from pfxlog/logrus to foundation slog logging
 
-* github.com/shirou/gopsutil/v4: v4.26.4 -> v4.26.9
+* github.com/shirou/gopsutil/v4: v4.26.4 -> v4.26.10
 * github.com/sirupsen/logrus: v1.9.4 -> v1.10.2
 * github.com/stretchr/testify: v1.11.1 -> v1.12.1
-* github.com/zitadel/oidc/v3: v3.47.5 -> v3.51.16
+* github.com/zitadel/oidc/v3: v3.47.5 -> v3.52.0
 * go.mozilla.org/pkcs7: v0.9.0 -> v0.10.0
 * golang.org/x/crypto: v0.52.0 -> v0.58.0
-* golang.org/x/oauth2: v0.36.0 -> v0.37.0
-* golang.org/x/sys: v0.45.0 -> v0.49.0
+* golang.org/x/oauth2: v0.36.0 -> v0.38.0
+* golang.org/x/sys: v0.45.0 -> v0.50.0
 * google.golang.org/protobuf: v1.36.11 -> v1.36.12
-* github.com/ebitengine/purego: v0.10.0 -> v0.11.1
-* github.com/go-jose/go-jose/v4: v4.1.4 -> v4.1.6
+* github.com/ebitengine/purego: v0.10.0 -> v0.11.3
+* github.com/go-jose/go-jose/v4: v4.1.4 -> v4.1.9
 * github.com/go-logr/logr: v1.4.3 -> v1.4.4
 * github.com/go-ole/go-ole: v1.2.6 -> v1.3.0
-* github.com/go-openapi/analysis: v0.25.0 -> v1.0.0
+* github.com/go-openapi/analysis: v0.25.0 -> v1.0.1
 * github.com/go-openapi/errors: v0.22.7 -> v0.22.9
-* github.com/go-openapi/jsonpointer: v0.23.1 -> v1.0.1
-* github.com/go-openapi/jsonreference: v0.21.5 -> v1.0.2
+* github.com/go-openapi/jsonpointer: v0.23.1 -> v1.0.2
+* github.com/go-openapi/jsonreference: v0.21.5 -> v1.0.3
 * github.com/go-openapi/loads: v0.23.3 -> v0.25.3
-* github.com/go-openapi/runtime/server-middleware: v0.30.0 -> v0.33.3
+* github.com/go-openapi/runtime/server-middleware: v0.30.0 -> v0.33.4
 * github.com/go-openapi/spec: v0.22.4 -> v1.0.1
-* github.com/go-openapi/swag: v0.25.5 -> v0.29.1
-* github.com/go-openapi/swag/cmdutils: v0.25.5 -> v0.29.1
+* github.com/go-openapi/swag: v0.25.5 -> v0.29.2
+* github.com/go-openapi/swag/cmdutils: v0.25.5 -> v0.29.2
 * github.com/go-openapi/swag/conv: v0.26.0 -> v0.29.2
 * github.com/go-openapi/swag/fileutils: v0.26.0 -> v0.29.2
 * github.com/go-openapi/swag/jsonutils: v0.26.0 -> v0.29.2
-* github.com/go-openapi/swag/loading: v0.26.0 -> v0.29.1
-* github.com/go-openapi/swag/mangling: v0.26.0 -> v0.29.1
-* github.com/go-openapi/swag/netutils: v0.25.5 -> v0.29.1
+* github.com/go-openapi/swag/loading: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/mangling: v0.26.0 -> v0.29.2
+* github.com/go-openapi/swag/netutils: v0.25.5 -> v0.29.2
 * github.com/go-openapi/swag/pools: v0.29.2 (new)
 * github.com/go-openapi/swag/stringutils: v0.26.0 -> v0.29.2
 * github.com/go-openapi/swag/typeutils: v0.26.0 -> v0.29.2
-* github.com/go-openapi/swag/yamlutils: v0.26.0 -> v0.29.1
-* github.com/go-openapi/validate: v0.25.2 -> v1.0.0
-* github.com/lufia/plan9stats: v0.0.0-20211012122336-39d0f177ccd0 -> v0.0.0-20260330125221-c963978e514e
+* github.com/go-openapi/swag/yamlutils: v0.26.0 -> v0.29.2
+* github.com/go-openapi/validate: v0.25.2 -> v1.0.1
+* github.com/lufia/plan9stats: v0.0.0-20211012122336-39d0f177ccd0 -> v0.0.0-20261101121723-be84dd9509a0
 * github.com/mattn/go-colorable: v0.1.14 -> v0.1.16
+* github.com/mattn/go-isatty: v0.0.22 -> v0.0.24
 * github.com/oklog/ulid/v2: v2.1.1 -> v2.1.2
-* github.com/power-devops/perfstat: v0.0.0-20240221224432-82ca36839d55 -> v0.0.0-20260805114148-88456608a4f6
+* github.com/power-devops/perfstat: v0.0.0-20240221224432-82ca36839d55 -> v0.0.0-20260916203055-22a1a467d9f0
 * github.com/tklauser/go-sysconf: v0.3.16 -> v0.4.0
 * github.com/tklauser/numcpus: v0.11.0 -> v0.12.0
-* go.opentelemetry.io/otel: v1.43.0 -> v1.46.0
-* go.opentelemetry.io/otel/metric: v1.43.0 -> v1.46.0
-* go.opentelemetry.io/otel/trace: v1.43.0 -> v1.46.0
-* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.5
+* go.opentelemetry.io/otel: v1.43.0 -> v1.47.0
+* go.opentelemetry.io/otel/log: v1.47.0 (new)
+* go.opentelemetry.io/otel/metric: v1.43.0 -> v1.47.0
+* go.opentelemetry.io/otel/trace: v1.43.0 -> v1.47.0
+* go.yaml.in/yaml/v3: v3.0.4 -> v3.0.6
 * golang.org/x/net: v0.55.0 -> v0.62.0
-* golang.org/x/sync: v0.20.0 -> v0.24.0
-* golang.org/x/term: v0.43.0 -> v0.47.0
-* golang.org/x/text: v0.37.0 -> v0.43.0
+* golang.org/x/sync: v0.20.0 -> v0.25.0
+* golang.org/x/term: v0.43.0 -> v0.48.0
+* golang.org/x/text: v0.37.0 -> v0.44.0
 
 # Release notes 1.9.0
 
