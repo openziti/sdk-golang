@@ -3,8 +3,46 @@
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.3 -> v1.8.4](https://github.com/openziti/sdk-golang/compare/v1.8.3...v1.8.4)
+    * [Issue #1066](https://github.com/openziti/sdk-golang/issues/1066) - [Backport-1.8] Hosting listener blocks when a hosting connection closes with a full accept queue
     * [Issue #1081](https://github.com/openziti/sdk-golang/issues/1081) - [Backport-1.8] SDK logs every payload, ack, read and write at debug level
 
+* github.com/go-openapi/runtime: v0.33.3 -> v0.33.4
+* github.com/openziti/channel/v4: [v4.3.14 -> v4.3.15](https://github.com/openziti/channel/compare/v4.3.14...v4.3.15)
+    * [Issue #317](https://github.com/openziti/channel/issues/317) - [Backport-4.x] Hellos with a value other than 4 bytes under the ReplyFor header key are rejected
+
+* github.com/openziti/foundation/v2: [v2.0.105 -> v2.0.106](https://github.com/openziti/foundation/compare/v2.0.105...v2.0.106)
+    * [Issue #505](https://github.com/openziti/foundation/issues/505) - Add pfxlog-shaped output handlers to the logging package
+
+* github.com/openziti/identity: [v1.0.144 -> v1.0.145](https://github.com/openziti/identity/compare/v1.0.144...v1.0.145)
+* github.com/openziti/transport/v2: [v2.0.226 -> v2.0.229](https://github.com/openziti/transport/compare/v2.0.226...v2.0.229)
+* github.com/shirou/gopsutil/v4: v4.26.9 -> v4.26.10
+* github.com/zitadel/oidc/v3: v3.51.16 -> v3.52.0
+* golang.org/x/oauth2: v0.37.0 -> v0.38.0
+* golang.org/x/sys: v0.49.0 -> v0.50.0
+* github.com/ebitengine/purego: v0.11.1 -> v0.11.3
+* github.com/go-jose/go-jose/v4: v4.1.6 -> v4.1.9
+* github.com/go-ole/go-ole: v1.2.6 -> v1.3.0
+* github.com/go-openapi/analysis: v1.0.0 -> v1.0.1
+* github.com/go-openapi/jsonpointer: v1.0.1 -> v1.0.2
+* github.com/go-openapi/jsonreference: v1.0.2 -> v1.0.3
+* github.com/go-openapi/runtime/server-middleware: v0.33.3 -> v0.33.4
+* github.com/go-openapi/swag: v0.29.1 -> v0.29.2
+* github.com/go-openapi/swag/cmdutils: v0.29.1 -> v0.29.2
+* github.com/go-openapi/swag/loading: v0.29.1 -> v0.29.2
+* github.com/go-openapi/swag/mangling: v0.29.1 -> v0.29.2
+* github.com/go-openapi/swag/netutils: v0.29.1 -> v0.29.2
+* github.com/go-openapi/swag/yamlutils: v0.29.1 -> v0.29.2
+* github.com/go-openapi/validate: v1.0.0 -> v1.0.1
+* github.com/lufia/plan9stats: v0.0.0-20211012122336-39d0f177ccd0 -> v0.0.0-20261101121723-be84dd9509a0
+* github.com/power-devops/perfstat: v0.0.0-20260805114148-88456608a4f6 -> v0.0.0-20260916203055-22a1a467d9f0
+* go.opentelemetry.io/otel: v1.46.0 -> v1.47.0
+* go.opentelemetry.io/otel/log: v1.47.0 (new)
+* go.opentelemetry.io/otel/metric: v1.46.0 -> v1.47.0
+* go.opentelemetry.io/otel/trace: v1.46.0 -> v1.47.0
+* go.yaml.in/yaml/v3: v3.0.5 -> v3.0.6
+* golang.org/x/sync: v0.24.0 -> v0.25.0
+* golang.org/x/term: v0.47.0 -> v0.48.0
+* golang.org/x/text: v0.43.0 -> v0.44.0
 
 # Release notes 1.8.3
 

@@ -21,15 +21,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
+	"io"
+	"testing"
+	"time"
+
 	"github.com/openziti/channel/v4"
 	"github.com/openziti/metrics"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	metrics2 "github.com/rcrowley/go-metrics"
 	"github.com/sirupsen/logrus"
-	"io"
-	"testing"
-	"time"
 )
 
 func newTestXgConn(bufferSize int, targetSends uint32, targetReceives uint32) *testXgConn {
@@ -269,10 +269,6 @@ func (self *testAcker) SendAck(ack *Acknowledgement, address Address) {
 }
 
 func Test_MinimalPayloadMarshalling(t *testing.T) {
-	logOptions := pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").NoColor()
-	pfxlog.GlobalInit(logrus.InfoLevel, logOptions)
-	pfxlog.SetFormatter(pfxlog.NewFormatter(pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").StartingToday()))
-
 	closeNotify := make(chan struct{})
 	defer func() {
 		close(closeNotify)
@@ -324,10 +320,6 @@ func Test_MinimalPayloadMarshalling(t *testing.T) {
 }
 
 func Test_PayloadSize(t *testing.T) {
-	logOptions := pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").NoColor()
-	pfxlog.GlobalInit(logrus.InfoLevel, logOptions)
-	pfxlog.SetFormatter(pfxlog.NewFormatter(pfxlog.DefaultOptions().SetTrimPrefix("github.com/openziti/").StartingToday()))
-
 	metricsRegistry := metrics.NewRegistry("test", nil)
 
 	closeNotify := make(chan struct{})

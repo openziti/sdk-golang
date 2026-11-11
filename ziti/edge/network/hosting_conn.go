@@ -91,7 +91,10 @@ type edgeHostConn struct {
 
 	flags   concurrenz.AtomicBitSet
 	service *rest_model.ServiceDetail
+	// acceptC queues accepted dials for multiListener.forward. close refuses whatever is left in it.
 	acceptC chan edge.Conn
+	// closeNotify is closed by close, so nothing waits on acceptC after this conn has closed.
+	closeNotify chan struct{}
 
 	routerInfo   edge.EdgeRouterInfo
 	token        string
@@ -403,7 +406,46 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 
 	newConnLogger.Debug("dial succeeded")
 
-	conn.acceptC <- edgeCh
+	conn.queueAccepted(edgeCh)
+}
+
+// errHostConnClosed is reported for a dial that was accepted but never handed to the application.
+var errHostConnClosed = errors.New("hosting connection closed before the dial was accepted")
+
+// queueAccepted hands edgeCh to the listener, or refuses it if this conn closes first. It waits while the
+// queue is full, so it must not run on a receive goroutine.
+func (conn *edgeHostConn) queueAccepted(edgeCh edge.Conn) {
+	select {
+	case conn.acceptC <- edgeCh:
+		// A close that landed before the send may already have drained the queue.
+		if conn.flags.IsSet(hostConnClosedFlag) {
+			conn.rejectQueued()
+		}
+	case <-conn.closeNotify:
+		rejectAccepted(edgeCh)
+	}
+}
+
+// rejectQueued refuses every dial still waiting in the accept queue. Call it only once this conn is closed,
+// since a dial refused here never reaches the application.
+func (conn *edgeHostConn) rejectQueued() {
+	for {
+		select {
+		case edgeCh := <-conn.acceptC:
+			rejectAccepted(edgeCh)
+		default:
+			return
+		}
+	}
+}
+
+// rejectAccepted refuses a dial that will not reach the application: it fails a pending manual-start accept
+// and closes the conn.
+func rejectAccepted(edgeCh edge.Conn) {
+	edgeCh.CompleteAcceptFailed(errHostConnClosed)
+	if err := edgeCh.Close(); err != nil {
+		pfxlog.Logger().WithError(err).WithField("connId", edgeCh.Id()).Error("failed to close refused connection")
+	}
 }
 
 func (conn *edgeHostConn) HandleMuxClose() error {
@@ -427,11 +469,10 @@ func (conn *edgeHostConn) close(closedByRemote bool) error {
 		return nil
 	}
 
+	close(conn.closeNotify)
+	// Refusing a dial can wait on the router, and close can run on the router's receive goroutine.
+	go conn.rejectQueued()
 	conn.msgMux.Remove(conn)
-
-	defer func() {
-		conn.acceptC <- nil // signal listeners that listener is closed
-	}()
 
 	log := pfxlog.Logger().
 		WithField("connId", conn.Id()).
