@@ -30,14 +30,21 @@ import (
 // the SDK's own enrollment; that flow has its own dedicated test.
 func (h *Harness) NewSdkContext(t testing.TB, id *Identity) ziti.Context {
 	t.Helper()
-	return h.newSdkContext(t, id, false)
+	return h.newSdkContext(t, id, false, nil)
+}
+
+// NewSdkContextWithOptions is NewSdkContext with the given context options. Fields
+// left zero are not defaulted, so start from a copy of *ziti.DefaultOptions.
+func (h *Harness) NewSdkContextWithOptions(t testing.TB, id *Identity, options *ziti.Options) ziti.Context {
+	t.Helper()
+	return h.newSdkContext(t, id, false, options)
 }
 
 // NewLegacySdkContext is NewSdkContext with OIDC disabled, forcing the legacy
 // authentication path, for tests exercising the legacy/OIDC split.
 func (h *Harness) NewLegacySdkContext(t testing.TB, id *Identity) ziti.Context {
 	t.Helper()
-	return h.newSdkContext(t, id, true)
+	return h.newSdkContext(t, id, true, nil)
 }
 
 // NewSdkContextWithConfigTypes is NewSdkContext that also requests the given
@@ -64,7 +71,7 @@ func (h *Harness) NewSdkContextWithConfigTypes(t testing.TB, id *Identity, confi
 	return ctx
 }
 
-func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) ziti.Context {
+func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool, options *ziti.Options) ziti.Context {
 	t.Helper()
 
 	cfg, err := ziti.NewConfigFromFile(id.ConfigPath())
@@ -72,7 +79,7 @@ func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) zi
 		t.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
 	}
 
-	ctx, err := ziti.NewContext(cfg)
+	ctx, err := ziti.NewContextWithOpts(cfg, options)
 	if err != nil {
 		t.Fatalf("creating sdk context for %s: %v", id.Name(), err)
 	}

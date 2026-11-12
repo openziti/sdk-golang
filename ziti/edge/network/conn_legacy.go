@@ -39,15 +39,30 @@ var unsupportedCrypto = pkgerrors.New("unsupported crypto")
 
 var _ edge.Conn = &edgeConnLegacy{}
 
-// edgeConnLegacy is an edge connection in "legacy" flow-control mode: data
-// is carried as discrete ContentTypeData messages on the edge channel, with
-// acks/backpressure handled at the channel layer. It has no xgress plumbing.
+// edgeConnLegacy is an edge connection without SDK flow control: data is carried as discrete
+// ContentTypeData messages on the edge channel, and the router doesn't limit what it sends per
+// connection. readQ holds up to its MaxSize the reader hasn't taken; past that, delivery to every
+// connection on the edge channel waits for this conn's reader. It has no xgress plumbing.
 type edgeConnLegacy struct {
 	edgeConnBase
 
 	msgCh edge.MsgChannel
 	mux   edge.ConnMux[any]
 	readQ *noopSeq[*channel.Message]
+}
+
+// legacyMsgOverhead approximates the memory a queued data message holds beyond its body.
+const legacyMsgOverhead = 512
+
+// legacyMsgSize is a received message's share of a legacy read queue's size.
+func legacyMsgSize(msg *channel.Message) int64 {
+	return int64(len(msg.Body)) + legacyMsgOverhead
+}
+
+// newLegacyReadQ returns a legacy conn's read queue, which holds up to maxSize and closes with
+// closeNotify.
+func newLegacyReadQ(closeNotify <-chan struct{}, maxSize int64) *noopSeq[*channel.Message] {
+	return NewNoopSequencer(closeNotify, maxSize, legacyMsgSize)
 }
 
 // --- edgeConnOps implementation ---
@@ -143,13 +158,24 @@ func (conn *edgeConnLegacy) HandleClose(channel.Channel) {
 	conn.close(false)
 }
 
+// queueMessage queues msg for the reader. Once readQ is full it logs at debug and waits for the
+// reader, holding up the edge channel's receive goroutine. A message for a closed conn is dropped.
 func (conn *edgeConnLegacy) queueMessage(msg *channel.Message) {
+	if conn.readQ.Size() >= conn.readQ.MaxSize() {
+		pfxlog.Logger().WithField("connId", conn.Id()).
+			WithField("marker", conn.marker).
+			WithField("circuitId", conn.circuitId).
+			Debugf("%s of received data is waiting to be read; until this connection's reader catches up, "+
+				"data for every connection on its router channel waits. SDK flow control avoids this",
+				info.ByteCount(conn.readQ.MaxSize()))
+	}
+
 	if err := conn.readQ.PutSequenced(msg); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			Error("error pushing edge message to sequencer")
-	} else {
-		logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+			Debug("dropping message received for closed conn")
+		return
 	}
+	logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
 }
 
 func (conn *edgeConnLegacy) GetCircuitDetail() *xgress.CircuitDetail {
@@ -185,12 +211,14 @@ func (conn *edgeConnLegacy) Close() error {
 }
 
 // close performs the full close sequence for a legacy conn: atomic close flip,
-// propagate FIN, optionally notify the router, and remove this sink from the
-// mux. Safe to call multiple times — only the first call does work.
+// propagate FIN, drop what is queued for the reader, optionally notify the
+// router, and remove this sink from the mux. Safe to call multiple times; only
+// the first call does work.
 func (conn *edgeConnLegacy) close(notifyCtrl bool) {
 	if !conn.beginClose() {
 		return
 	}
+	conn.readQ.Discard()
 	log := pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("marker", conn.marker).WithField("circuitId", conn.circuitId)
 	log.Debug("close: begin")
 	defer log.Debug("close: end")

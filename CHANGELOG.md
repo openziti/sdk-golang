@@ -57,6 +57,9 @@
 
 * `edge.Conn` no longer exposes `GetRouterId()` (and `edge.MsgChannel` no longer implements it).
 
+* `network.NewRouterConn` takes a `network.RouterConnOptions`, which configures the connections it
+  creates.
+
 * `network.NewMultiListener` takes the listener's initial cost and precedence, and
   `network.MultiListener` adds `GetCostAndPrecedence()`, which reports the values new binds carry.
   A listener's cost and precedence updates now apply to every later bind, not only the routers it
@@ -106,6 +109,12 @@
   then reported an unsynchronized snapshot. Such a buffer is no longer being mutated, so its
   state is now read directly.
 
+* A connection without SDK flow control (the default for listens and V1 dials) queues up to
+  4 MiB of received data its application hasn't read, set with
+  `Options.RxBufferSizeWithoutSdkFlowControl`. Below that, a slow reader no longer holds up the
+  other connections on its router channel; past it, they wait for that reader as before. Closing
+  a connection releases what it had queued.
+
 * `edge_client.proto` now defines the xgress wire constants, so the C and JVM SDKs and other
   proto consumers can use them when they regenerate:
     * `HeaderId` gains the xgress payload headers `XgCircuitId` through `XgPayloadRaw`
@@ -126,6 +135,7 @@
     * [Issue #1079](https://github.com/openziti/sdk-golang/issues/1079) - SDK logs every payload, ack, read and write at debug level
     * [Issue #1070](https://github.com/openziti/sdk-golang/issues/1070) - Move xgress wire constants into edge_client.proto
     * [Issue #1048](https://github.com/openziti/sdk-golang/issues/1048) - Write-failed payload is written to the peer as empty data, failing encrypted reads with invalid input
+    * [Issue #1074](https://github.com/openziti/sdk-golang/issues/1074) - Legacy conn with a slow reader blocks every connection on its router channel
     * [Issue #1036](https://github.com/openziti/sdk-golang/issues/1036) - Closing an SDK-hosted xgress conn before its circuit starts blocks for the circuit start timeout
     * [Issue #1041](https://github.com/openziti/sdk-golang/issues/1041) - Cost and precedence updates on a hosted service are lost when its listener rebinds
     * [Issue #1031](https://github.com/openziti/sdk-golang/issues/1031) - Service refresh retry panics in rand.Int63n when RefreshInterval is 10s or less
