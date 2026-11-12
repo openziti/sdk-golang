@@ -134,6 +134,7 @@ type dialEventRecorder struct {
 }
 
 func recordDialEvents(t *testing.T, ctx ziti.Context) *dialEventRecorder {
+	t.Helper()
 	recorder := &dialEventRecorder{}
 	t.Cleanup(ctx.Events().AddDialListener(func(_ ziti.Context, evt ziti.DialEvent) {
 		recorder.lock.Lock()

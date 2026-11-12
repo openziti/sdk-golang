@@ -5,8 +5,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_SignAndVerifyRsa(t *testing.T) {
@@ -25,6 +26,7 @@ func Test_SignAndVerifyEcdsa(t *testing.T) {
 }
 
 func testKeyPair(t *testing.T, privateKey interface{}, publicKey interface{}) {
+	t.Helper()
 	req := require.New(t)
 	sig, err := AssertIdentityWithSecret(privateKey)
 	req.NoError(err)

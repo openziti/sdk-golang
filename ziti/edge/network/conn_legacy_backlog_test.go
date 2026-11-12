@@ -32,6 +32,7 @@ import (
 // newLegacyTestConn builds a legacy conn with connId and registers it on mux, the way the dial path
 // does, so messages reach it through mux.HandleReceive as they do from a router channel.
 func newLegacyTestConn(t *testing.T, mux edge.ConnMux[any], sdkCh edge.SdkChannel, connId uint32) *edgeConnLegacy {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test", closeNotify: closeNotify},

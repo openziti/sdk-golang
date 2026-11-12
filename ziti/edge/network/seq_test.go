@@ -150,6 +150,7 @@ func Test_SeqPutWakesWaitingReader(t *testing.T) {
 
 // requireBlocked fails unless done stays open for a short while.
 func requireBlocked(t *testing.T, done <-chan error, msg string) {
+	t.Helper()
 	select {
 	case err := <-done:
 		require.FailNow(t, msg, "returned %v", err)
@@ -159,6 +160,7 @@ func requireBlocked(t *testing.T, done <-chan error, msg string) {
 
 // requirePutReturns waits for done and returns what it delivered.
 func requirePutReturns(t *testing.T, done <-chan error, msg string) error {
+	t.Helper()
 	select {
 	case err := <-done:
 		return err

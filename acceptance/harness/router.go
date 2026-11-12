@@ -51,15 +51,15 @@ func (r *Router) Name() string {
 
 // AddRouter creates, enrolls, and runs an additional edge router as its own child
 // process, uniquely named per the isolation contract, registering stop and
-// best-effort entity deletion with t.
-func (h *Harness) AddRouter(t testing.TB, base string) *Router {
-	t.Helper()
-	name := uniqueName(t, base)
+// best-effort entity deletion with tb.
+func (h *Harness) AddRouter(tb testing.TB, base string) *Router {
+	tb.Helper()
+	name := uniqueName(tb, base)
 	r, err := h.addRouter(name)
 	if err != nil {
-		t.Fatalf("adding router %s: %v", name, err)
+		tb.Fatalf("adding router %s: %v", name, err)
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		r.stopProcess()
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "edge-router", name)
 	})
@@ -129,10 +129,10 @@ func (h *Harness) addRouter(name string) (*Router, error) {
 
 // Start relaunches the router process and waits for it to be ready again, e.g.
 // after a Stop in a failover test.
-func (r *Router) Start(t testing.TB) {
-	t.Helper()
+func (r *Router) Start(tb testing.TB) {
+	tb.Helper()
 	if err := r.start(); err != nil {
-		t.Fatalf("router %s: %v", r.name, err)
+		tb.Fatalf("router %s: %v", r.name, err)
 	}
 }
 
@@ -163,8 +163,8 @@ func (r *Router) start() error {
 }
 
 // Stop kills the router process, e.g. to exercise SDK reconnect/failover.
-func (r *Router) Stop(t testing.TB) {
-	t.Helper()
+func (r *Router) Stop(tb testing.TB) {
+	tb.Helper()
 	r.stopProcess()
 }
 

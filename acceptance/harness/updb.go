@@ -52,14 +52,14 @@ func (i *UpdbIdentity) Password() string { return i.password }
 // identity name. roleAttributes, if given, are set for use in targeted policies.
 // The identity is uniquely named per the isolation contract, with best-effort
 // cleanup.
-func (h *Harness) CreateUpdbIdentity(t testing.TB, base string, roleAttributes ...string) *UpdbIdentity {
-	t.Helper()
-	unique := uniqueName(t, base)
-	password := randomPassword(t)
+func (h *Harness) CreateUpdbIdentity(tb testing.TB, base string, roleAttributes ...string) *UpdbIdentity {
+	tb.Helper()
+	unique := uniqueName(tb, base)
+	password := randomPassword(tb)
 
 	idDir := filepath.Join(h.home, "identities")
 	if err := os.MkdirAll(idDir, 0o700); err != nil {
-		t.Fatalf("creating identities dir: %v", err)
+		tb.Fatalf("creating identities dir: %v", err)
 	}
 	jwtPath := filepath.Join(idDir, unique+".jwt")
 
@@ -67,27 +67,27 @@ func (h *Harness) CreateUpdbIdentity(t testing.TB, base string, roleAttributes .
 	if len(roleAttributes) > 0 {
 		args = append(args, "--role-attributes", strings.Join(roleAttributes, ","))
 	}
-	h.Cli(t, args...)
-	t.Cleanup(func() {
+	h.Cli(tb, args...)
+	tb.Cleanup(func() {
 		// best-effort; the whole environment is discarded at teardown regardless
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "identity", unique)
 	})
 
 	// complete the UPDB enrollment, which sets the password on the controller
-	h.Cli(t, "edge", "enroll", jwtPath, "--username", unique, "--password", password)
+	h.Cli(tb, "edge", "enroll", jwtPath, "--username", unique, "--password", password)
 
 	return &UpdbIdentity{name: unique, username: unique, password: password}
 }
 
 // NewUpdbSdkContext builds an authenticated ziti.Context for a UPDB identity,
 // using its username/password as the primary credential, registering close with
-// t.
-func (h *Harness) NewUpdbSdkContext(t testing.TB, id *UpdbIdentity) ziti.Context {
-	t.Helper()
+// tb.
+func (h *Harness) NewUpdbSdkContext(tb testing.TB, id *UpdbIdentity) ziti.Context {
+	tb.Helper()
 
 	ctrlURL := "https://" + h.ctrl.hostPort
 	caPool, err := ziti.GetControllerWellKnownCaPool(ctrlURL)
-	require.NoError(t, err, "fetching controller ca pool")
+	require.NoError(tb, err, "fetching controller ca pool")
 
 	creds := edgeApis.NewUpdbCredentials(id.username, id.password)
 	creds.CaPool = caPool
@@ -96,20 +96,20 @@ func (h *Harness) NewUpdbSdkContext(t testing.TB, id *UpdbIdentity) ziti.Context
 		ZtAPI:       ctrlURL + "/edge/client/v1",
 		Credentials: creds,
 	})
-	require.NoError(t, err, "creating updb sdk context")
-	t.Cleanup(ctx.Close)
+	require.NoError(tb, err, "creating updb sdk context")
+	tb.Cleanup(ctx.Close)
 
-	require.NoError(t, ctx.Authenticate(), "authenticating with updb")
+	require.NoError(tb, ctx.Authenticate(), "authenticating with updb")
 	return ctx
 }
 
 // randomPassword returns a password meeting typical complexity requirements
 // (mixed case, digit, symbol) with random entropy.
-func randomPassword(t testing.TB) string {
-	t.Helper()
+func randomPassword(tb testing.TB) string {
+	tb.Helper()
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
-		t.Fatalf("generating password: %v", err)
+		tb.Fatalf("generating password: %v", err)
 	}
 	return "Pw1!" + hex.EncodeToString(b)
 }

@@ -28,20 +28,20 @@ import (
 )
 
 // apiSessionToken returns the current api-session token for ctx.
-func apiSessionToken(t testing.TB, ctx ziti.Context) string {
-	t.Helper()
+func apiSessionToken(tb testing.TB, ctx ziti.Context) string {
+	tb.Helper()
 	apiSession := ctx.(*ziti.ContextImpl).CtrlClt.GetCurrentApiSession()
-	require.NotNil(t, apiSession, "context has no current api session")
+	require.NotNil(tb, apiSession, "context has no current api session")
 	return string(apiSession.GetToken())
 }
 
 // refreshApiSession refreshes ctx's api session, failing on a functional refresh
 // error or an edge-router token propagation error.
-func refreshApiSession(t testing.TB, ctx ziti.Context) {
-	t.Helper()
+func refreshApiSession(tb testing.TB, ctx ziti.Context) {
+	tb.Helper()
 	refreshErr, erErr := ctx.(*ziti.ContextImpl).RefreshApiSession()
-	require.NoError(t, refreshErr, "api-session refresh should succeed")
-	require.NoError(t, erErr, "edge-router token propagation should succeed after refresh")
+	require.NoError(tb, refreshErr, "api-session refresh should succeed")
+	require.NoError(tb, erErr, "edge-router token propagation should succeed after refresh")
 }
 
 // Test_TokenRefresh_DialContinuity covers acceptance batch item #6: across

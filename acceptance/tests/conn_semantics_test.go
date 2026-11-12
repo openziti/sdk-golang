@@ -41,16 +41,16 @@ type acceptedConnInfo struct {
 // accepted connection, records the dialer metadata the host can observe
 // (caller id, app data, dialer identity) before echoing and closing. The
 // captured info is delivered on the returned channel.
-func startMetadataCapturingServer(t testing.TB, hostCtx ziti.Context, service string) <-chan acceptedConnInfo {
-	t.Helper()
+func startMetadataCapturingServer(tb testing.TB, hostCtx ziti.Context, service string) <-chan acceptedConnInfo {
+	tb.Helper()
 	sdkXgress := true
 	listener, err := hostCtx.ListenWithOptions(service, &ziti.ListenOptions{
 		WaitForNEstablishedListeners: 1,
 		ConnectTimeout:               30 * time.Second,
 		SdkFlowControl:               &sdkXgress,
 	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
+	require.NoError(tb, err)
+	tb.Cleanup(func() { _ = listener.Close() })
 
 	infoC := make(chan acceptedConnInfo, 1)
 	go func() {

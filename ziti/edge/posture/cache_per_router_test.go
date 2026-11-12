@@ -160,6 +160,7 @@ func domainOnlyInfo(queryId string) *QueryInfo {
 // newPerRouterTestCache builds a cache in per-router submission mode with deterministic device
 // data providers, returning the cache, the controller-bound submitter, and a cleanup func.
 func newPerRouterTestCache(t *testing.T, dest *stubDestinations) (*Cache, *recordingSubmitter) {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	t.Cleanup(func() { close(closeNotify) })
 

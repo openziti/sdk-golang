@@ -51,22 +51,22 @@ type stallingServer struct {
 	stalledData chan []byte
 }
 
-func startStallingServer(t testing.TB, hostCtx ziti.Context, service string) *stallingServer {
-	t.Helper()
+func startStallingServer(tb testing.TB, hostCtx ziti.Context, service string) *stallingServer {
+	tb.Helper()
 	sdkFlowControl := false
 	listener, err := hostCtx.ListenWithOptions(service, &ziti.ListenOptions{
 		WaitForNEstablishedListeners: 1,
 		ConnectTimeout:               30 * time.Second,
 		SdkFlowControl:               &sdkFlowControl,
 	})
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	s := &stallingServer{
 		release:     make(chan struct{}),
 		received:    make(chan string, 16),
 		stalledData: make(chan []byte, 1),
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		s.releaseStalled()
 		_ = listener.Close()
 	})
@@ -117,27 +117,27 @@ func (s *stallingServer) echo(conn edge.Conn) {
 }
 
 // requireReceived waits up to timeout for the server's echo conn to receive expected.
-func (s *stallingServer) requireReceived(t testing.TB, expected string, timeout time.Duration, msg string) {
-	t.Helper()
+func (s *stallingServer) requireReceived(tb testing.TB, expected string, timeout time.Duration, msg string) {
+	tb.Helper()
 	select {
 	case got := <-s.received:
-		require.Equal(t, expected, got)
+		require.Equal(tb, expected, got)
 	case <-time.After(timeout):
-		t.Fatal(msg)
+		tb.Fatal(msg)
 	}
 }
 
 // requireStalledDataIntact releases the stalled conn's reader and checks it gets every byte sent,
 // in order.
-func (s *stallingServer) requireStalledDataIntact(t testing.TB, sent []byte) {
-	t.Helper()
+func (s *stallingServer) requireStalledDataIntact(tb testing.TB, sent []byte) {
+	tb.Helper()
 	s.releaseStalled()
 	select {
 	case got := <-s.stalledData:
-		require.Equal(t, len(sent), len(got), "the stalled conn's reader got a short read")
-		require.True(t, bytes.Equal(sent, got), "the stalled conn's data arrived corrupted or out of order")
+		require.Equal(tb, len(sent), len(got), "the stalled conn's reader got a short read")
+		require.True(tb, bytes.Equal(sent, got), "the stalled conn's data arrived corrupted or out of order")
 	case <-time.After(60 * time.Second):
-		t.Fatal("the stalled conn's reader never finished reading")
+		tb.Fatal("the stalled conn's reader never finished reading")
 	}
 }
 
@@ -173,8 +173,8 @@ func startStallTest(t *testing.T, hostOptions *ziti.Options) (stalled, echo edge
 
 // writeStalledPayload sends stalledPayloadSize bytes on conn, whose host-side reader is stalled,
 // and returns them.
-func writeStalledPayload(t testing.TB, conn edge.Conn) []byte {
-	t.Helper()
+func writeStalledPayload(tb testing.TB, conn edge.Conn) []byte {
+	tb.Helper()
 	payload := make([]byte, stalledPayloadSize)
 	for i := range payload {
 		payload[i] = byte(i % 251)
@@ -192,9 +192,9 @@ func writeStalledPayload(t testing.TB, conn edge.Conn) []byte {
 	}()
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		require.NoError(tb, err)
 	case <-time.After(30 * time.Second):
-		t.Fatal("writing to the stalled conn didn't finish; the data never left the client")
+		tb.Fatal("writing to the stalled conn didn't finish; the data never left the client")
 	}
 	return payload
 }

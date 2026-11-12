@@ -1,3 +1,5 @@
+//go:build acceptance
+
 /*
 	Copyright NetFoundry Inc.
 
@@ -14,8 +16,6 @@
 	limitations under the License.
 */
 
-//go:build acceptance
-
 package tests
 
 import (
@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/openziti/sdk-golang/acceptance/harness"
+	edgeApis "github.com/openziti/sdk-golang/v2/edge-apis"
 	"github.com/openziti/sdk-golang/v2/ziti"
 	"github.com/openziti/sdk-golang/v2/ziti/edge"
 	"github.com/stretchr/testify/require"
@@ -32,9 +32,9 @@ import (
 
 // startEchoServer hosts service on hostCtx with an echo handler, advertising
 // SDK-hosted xgress on the bind (see startEchoServerFC).
-func startEchoServer(t testing.TB, hostCtx ziti.Context, service string) {
-	t.Helper()
-	startEchoServerFC(t, hostCtx, service, true)
+func startEchoServer(tb testing.TB, hostCtx ziti.Context, service string) {
+	tb.Helper()
+	startEchoServerFC(tb, hostCtx, service, true)
 }
 
 // startEchoServerFC hosts service on hostCtx with an echo handler: each accepted
@@ -43,16 +43,16 @@ func startEchoServer(t testing.TB, hostCtx ziti.Context, service string) {
 // router supports it, dials to this terminator run SDK xgress on both ends (the
 // path the suite primarily exercises); otherwise the host is a legacy terminator
 // and the router bridges xgress to it. Returns once the terminator is
-// established; the listener closes with t.
-func startEchoServerFC(t testing.TB, hostCtx ziti.Context, service string, sdkXgress bool) {
-	t.Helper()
+// established; the listener closes with tb.
+func startEchoServerFC(tb testing.TB, hostCtx ziti.Context, service string, sdkXgress bool) {
+	tb.Helper()
 	listener, err := hostCtx.ListenWithOptions(service, &ziti.ListenOptions{
 		WaitForNEstablishedListeners: 1,
 		ConnectTimeout:               30 * time.Second,
 		SdkFlowControl:               &sdkXgress,
 	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
+	require.NoError(tb, err)
+	tb.Cleanup(func() { _ = listener.Close() })
 
 	go func() {
 		for {
@@ -75,35 +75,35 @@ func startEchoServerFC(t testing.TB, hostCtx ziti.Context, service string, sdkXg
 
 // requireEchoRoundTrip dials service from ctx and proves the data plane: write,
 // half-close, read the echo to EOF, compare.
-func requireEchoRoundTrip(t testing.TB, ctx ziti.Context, service string, payload string) {
-	t.Helper()
-	conn := dialWithRetry(t, ctx, service)
+func requireEchoRoundTrip(tb testing.TB, ctx ziti.Context, service string, payload string) {
+	tb.Helper()
+	conn := dialWithRetry(tb, ctx, service)
 	defer func() { _ = conn.Close() }()
 
 	_, err := conn.Write([]byte(payload))
-	require.NoError(t, err)
-	require.NoError(t, conn.CloseWrite(), "half-close the send side")
+	require.NoError(tb, err)
+	require.NoError(tb, conn.CloseWrite(), "half-close the send side")
 
 	// bound the read so a data-plane failure surfaces as a directed error in
 	// seconds rather than a test-binary timeout with a goroutine dump
-	require.NoError(t, conn.SetReadDeadline(time.Now().Add(30*time.Second)))
+	require.NoError(tb, conn.SetReadDeadline(time.Now().Add(30*time.Second)))
 	echoed, err := io.ReadAll(conn)
-	require.NoError(t, err,
+	require.NoError(tb, err,
 		"no echo within 30s: the data plane delivered nothing back (write accepted, read starved)")
-	require.Equal(t, payload, string(echoed))
+	require.Equal(tb, payload, string(echoed))
 }
 
 // dialWithRetry performs the first dial after setup with a bounded retry, per the
 // design: router readiness can precede full dial readiness (terminator and policy
 // propagation), so the first dial must not assert on a single attempt.
-func dialWithRetry(t testing.TB, ctx ziti.Context, service string) edge.Conn {
-	t.Helper()
-	return dialWithOptionsRetry(t, ctx, service, nil)
+func dialWithRetry(tb testing.TB, ctx ziti.Context, service string) edge.Conn {
+	tb.Helper()
+	return dialWithOptionsRetry(tb, ctx, service, nil)
 }
 
 // dialWithOptionsRetry is dialWithRetry with explicit dial options.
-func dialWithOptionsRetry(t testing.TB, ctx ziti.Context, service string, options *ziti.DialOptions) edge.Conn {
-	t.Helper()
+func dialWithOptionsRetry(tb testing.TB, ctx ziti.Context, service string, options *ziti.DialOptions) edge.Conn {
+	tb.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
@@ -120,17 +120,17 @@ func dialWithOptionsRetry(t testing.TB, ctx ziti.Context, service string, option
 		lastErr = err
 		time.Sleep(time.Second)
 	}
-	t.Fatalf("dialing %s never succeeded: %v", service, lastErr)
+	tb.Fatalf("dialing %s never succeeded: %v", service, lastErr)
 	return nil
 }
 
 // expectedDialProtocol computes which protocol a dial from ctx through the named
 // router should negotiate, from capability and auth mode observed independently
 // of any dial outcome.
-func expectedDialProtocol(t testing.TB, ctx ziti.Context, routerName string) edge.DialProtocol {
-	t.Helper()
-	isOidc := harness.ApiSessionType(t, ctx) == edgeApis.ApiSessionTypeOidc
-	if harness.RouterSupportsConnectV2(t, ctx, routerName) && isOidc {
+func expectedDialProtocol(tb testing.TB, ctx ziti.Context, routerName string) edge.DialProtocol {
+	tb.Helper()
+	isOidc := harness.ApiSessionType(tb, ctx) == edgeApis.ApiSessionTypeOidc
+	if harness.RouterSupportsConnectV2(tb, ctx, routerName) && isOidc {
 		return edge.DialProtocolConnectV2
 	}
 	return edge.DialProtocolConnectV1

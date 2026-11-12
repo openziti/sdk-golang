@@ -31,6 +31,7 @@ import (
 )
 
 func newRouterViewTestContext(t *testing.T) *ContextImpl {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	t.Cleanup(func() { close(closeNotify) })
 	ctx := &ContextImpl{
@@ -50,6 +51,7 @@ func newRouterViewTestContext(t *testing.T) *ContextImpl {
 // pushedSnapshot is a full-reset ServiceChangeSet with one service granted by one dial policy
 // carrying one MAC posture check.
 func pushedSnapshot(t *testing.T) *channel.Message {
+	t.Helper()
 	body, err := proto.Marshal(&edge_client_pb.ServiceChangeSet{
 		Index:         1,
 		PreviousIndex: -1,
@@ -68,6 +70,7 @@ func pushedSnapshot(t *testing.T) *channel.Message {
 }
 
 func pushedPostureState(t *testing.T, seq uint64, checkPassing, policyPassing bool) *channel.Message {
+	t.Helper()
 	body, err := proto.Marshal(&edge_client_pb.PostureStateChange{
 		Seq: seq,
 		CheckStates: []*edge_client_pb.PostureStateChange_CheckState{

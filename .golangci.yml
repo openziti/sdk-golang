@@ -1,5 +1,7 @@
 version: "2"
 linters:
+  enable:
+    - thelper
   settings:
     staticcheck:
       checks: [ "all", "-ST1000", "-ST1003", "-ST1006", "-ST1020", "-ST1021", "-QF1012" ]
