@@ -29,6 +29,7 @@ import (
 // newCloseTestConn builds a legacy conn with connId 1 wired to its own mux and test channel, the
 // way the dial path does, so AcceptMessage and close behave as they do in production.
 func newCloseTestConn(t *testing.T) (*edgeConn, edge.ConnMux[any]) {
+	t.Helper()
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	return newLegacyTestConn(t, mux, testChannel, 1), mux
@@ -41,6 +42,7 @@ func finMsg(connId uint32) *channel.Message {
 }
 
 func requireMuxHasConn(t *testing.T, mux edge.ConnMux[any], connId uint32, expected bool) {
+	t.Helper()
 	_, found := mux.GetSinks()[connId]
 	require.Equal(t, expected, found)
 }

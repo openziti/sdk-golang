@@ -74,6 +74,7 @@ type multiListenerTest struct {
 }
 
 func newMultiListenerTest(t *testing.T) *multiListenerTest {
+	t.Helper()
 	ch := newSendCapturingChannel()
 	serviceId, serviceName := "svc-id", "svc"
 	service := &rest_model.ServiceDetail{Name: &serviceName}
@@ -138,6 +139,7 @@ func (noopListenerEventHandler) NotifyStartOver()    {}
 func (noopListenerEventHandler) NotifyNotRetriable() {}
 
 func requireUpdateBind(t *testing.T, msg *channel.Message, cost *uint16, precedence *edge.Precedence) {
+	t.Helper()
 	actualCost, hasCost := msg.GetUint16Header(edge.CostHeader)
 	require.Equal(t, cost != nil, hasCost)
 	if cost != nil {

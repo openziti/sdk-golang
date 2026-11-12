@@ -27,6 +27,7 @@ import (
 const startTimeoutWarning = "xgress circuit not started in time, closing"
 
 func newUnstartedTerminator(t *testing.T) *Xgress {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	conn := &testConn{ch: make(chan uint64, 1), closeNotify: make(chan struct{})}
 	x := NewXgress("test", "ctrl", "test", conn, Terminator, DefaultOptions(), nil)

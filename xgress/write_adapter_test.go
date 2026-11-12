@@ -201,11 +201,11 @@ func (c *capturingAdapter) ForwardPayload(payload *Payload, _ *Xgress, _ context
 	}
 }
 
-func (c *capturingAdapter) RetransmitPayload(Address, *Payload) error { return nil }
-func (c *capturingAdapter) ForwardControlMessage(*Control, *Xgress)   {}
+func (c *capturingAdapter) RetransmitPayload(Address, *Payload) error        { return nil }
+func (c *capturingAdapter) ForwardControlMessage(*Control, *Xgress)          {}
 func (c *capturingAdapter) ForwardAcknowledgement(*Acknowledgement, Address) {}
-func (c *capturingAdapter) GetMetrics() Metrics                  { return noopMetrics{} }
-func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester { return c.payloadIngester }
+func (c *capturingAdapter) GetMetrics() Metrics                              { return noopMetrics{} }
+func (c *capturingAdapter) GetPayloadIngester() *PayloadIngester             { return c.payloadIngester }
 
 func TestWriteAdapterPushOrdering(t *testing.T) {
 	closeNotify := make(chan struct{})
@@ -397,6 +397,7 @@ func TestWriteAdapterDeadlineWhileWindowBlocked(t *testing.T) {
 // Write parks in BufferPayloadWithDeadline, along with its write adapter and the
 // sequence of the single unacked payload holding the window.
 func blockWriteAdapterWindow(t *testing.T, req *require.Assertions) (*Xgress, *WriteAdapter, int32) {
+	t.Helper()
 	closeNotify := make(chan struct{})
 
 	conn := &testConn{

@@ -31,6 +31,7 @@ import (
 // way the dial path does, so messages reach it through mux.HandleReceive as they do from a router
 // channel.
 func newLegacyTestConn(t *testing.T, mux edge.ConnMux[any], sdkCh edge.SdkChannel, connId uint32) *edgeConn {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(sdkCh, connId),

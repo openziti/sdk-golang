@@ -84,6 +84,7 @@ func (e *acceptTestEnv) GetMetrics() xgress.Metrics                  { return e.
 // newAcceptTestHost builds a hosting conn wired to a mux and a test channel, so dials handed to
 // newChildConnection build and start hosted xgress conns the way they do in production.
 func newAcceptTestHost(t *testing.T, manualStart bool) (*edgeHostConn, *acceptTestChannel, edge.ConnMux[any]) {
+	t.Helper()
 	closeNotify := make(chan struct{})
 	t.Cleanup(func() { close(closeNotify) })
 	env := &acceptTestEnv{
@@ -118,7 +119,11 @@ func newXgressDialMsg(connId uint32) *channel.Message {
 	return msg
 }
 
+// requireReturnsWithin fails the test if f doesn't return within d. Pick d well short of any timeout f
+// could wait out, so an f that blocks until that timeout fails rather than passing late. An f that never
+// returns is left blocked.
 func requireReturnsWithin(t *testing.T, d time.Duration, what string, f func()) {
+	t.Helper()
 	done := make(chan struct{})
 	go func() {
 		f()
