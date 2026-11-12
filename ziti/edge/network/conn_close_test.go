@@ -26,21 +26,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newCloseTestConn builds a legacy conn wired to a mux and a test channel, the way the dial
-// path does, so AcceptMessage and close behave as they do in production.
+// newCloseTestConn builds a legacy conn with connId 1 wired to its own mux and test channel, the
+// way the dial path does, so AcceptMessage and close behave as they do in production.
 func newCloseTestConn(t *testing.T) (*edgeConn, edge.ConnMux[any]) {
-	closeNotify := make(chan struct{})
+	t.Helper()
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
-	conn := &edgeConn{
-		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
-		msgMux:      mux,
-		serviceName: "test",
-		closeNotify: closeNotify,
-	}
-	require.NoError(t, mux.Add(conn))
-	return conn, mux
+	return newLegacyTestConn(t, mux, testChannel, 1), mux
 }
 
 func finMsg(connId uint32) *channel.Message {
@@ -50,6 +42,7 @@ func finMsg(connId uint32) *channel.Message {
 }
 
 func requireMuxHasConn(t *testing.T, mux edge.ConnMux[any], connId uint32, expected bool) {
+	t.Helper()
 	_, found := mux.GetSinks()[connId]
 	require.Equal(t, expected, found)
 }

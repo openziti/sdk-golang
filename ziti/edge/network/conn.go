@@ -81,9 +81,9 @@ type edgeConn struct {
 	// for sending messages back to the edge router (data, state changes, acks, etc.)
 	edge.MsgChannel
 
-	// readQ sequences incoming messages for ordered delivery to the application.
-	// Ensures data messages are delivered in the correct order even with
-	// concurrent message processing.
+	// readQ holds incoming messages, in order, until the application reads them. Messages from the
+	// router channel wait for the reader once its MaxSize is queued, which holds up every
+	// connection on the channel. The xgress path waits at xgReadQueueDepth, which holds back its acks.
 	readQ *noopSeq[*channel.Message]
 
 	// inBuffer stores message data that has been received but not yet read
@@ -113,9 +113,9 @@ type edgeConn struct {
 	// When true, no more data can be sent to the client.
 	sentFIN atomic.Bool
 
-	// closeFlags coordinates the two events that together end a legacy conn: the read side
-	// reaching EOF and the router's StateClosed. Each side records its bit and closes if the
-	// other's is already present, so whichever comes second performs the close.
+	// closeFlags coordinates the two events that together end a conn: the read side reaching EOF
+	// and the router's StateClosed. Each side records its bit and closes if the other's is
+	// already present, so whichever comes second performs the close.
 	closeFlags concurrenz.AtomicBitSet
 
 	// serviceName is the name of the service this connection is accessing.
@@ -360,16 +360,25 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		// routing is not accepting more data, so nothing left in the send buffer can be delivered.
 		// That holds after a local close too, which leaves the xgress draining the buffer until
 		// it empties: unless it's closed here, the xgress retransmits forever and stays in the mux.
+		// Closing it before the conn closes below also keeps that close from sending an EOF, which
+		// would wait for the wire on this receive goroutine.
 		if conn.xgCircuit != nil {
-			go conn.xgCircuit.xg.CloseSendBuffer()
+			conn.xgCircuit.xg.CloseSendBuffer()
 		}
 		if conn.IsClosed() {
 			return
 		}
 		conn.sentFIN.Store(true) // if we're not closing until all reads are done, at least prevent more writes
 
-		if conn.xgCircuit == nil && conn.closeFlags.GetAndSet(closeFlagStateClosedReceived).IsSet(closeFlagFinRead) {
+		if conn.closeFlags.GetAndSet(closeFlagStateClosedReceived).IsSet(closeFlagFinRead) {
 			conn.closeOnStateClosed("received ConnState_CLOSED message after the FIN was read, closing connection")
+			return
+		}
+
+		if conn.xgCircuit != nil {
+			// The xgress may still hold payloads it has acknowledged, which a queued StateClosed would
+			// overtake. Ending its delivery instead has it hand them over and then close the read queue.
+			conn.xgCircuit.xg.CloseXgToClient()
 			return
 		}
 
@@ -382,12 +391,40 @@ func (conn *edgeConn) AcceptMessage(msg *channel.Message) {
 		return
 	}
 
+	conn.queueMessage(msg)
+}
+
+// queueMessage queues msg for the reader. Once readQ is full it logs at debug and waits for the
+// reader, holding up the edge channel's receive goroutine. A message for a closed conn is dropped.
+func (conn *edgeConn) queueMessage(msg *channel.Message) {
+	if conn.readQ.Size() >= conn.readQ.MaxSize() {
+		pfxlog.Logger().WithField("connId", conn.Id()).
+			WithField("marker", conn.marker).
+			WithField("circuitId", conn.circuitId).
+			Debugf("%s of received data is waiting to be read; until this connection's reader catches up, "+
+				"data for every connection on its router channel waits. SDK flow control avoids this",
+				info.ByteCount(conn.readQ.MaxSize()))
+	}
+
 	if err := conn.readQ.PutSequenced(msg); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
-			Error("error pushing edge message to sequencer")
-	} else {
-		logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+			Debug("dropping message received for closed conn")
+		return
 	}
+	logrus.WithFields(edge.GetLoggerFields(msg)).Tracef("received %v bytes (msg type: %v)", len(msg.Body), msg.ContentType)
+}
+
+// legacyMsgOverhead approximates the memory a queued data message holds beyond its body.
+const legacyMsgOverhead = 512
+
+// legacyMsgSize is a received message's share of a read queue's size.
+func legacyMsgSize(msg *channel.Message) int64 {
+	return int64(len(msg.Body)) + legacyMsgOverhead
+}
+
+// newConnReadQ returns a conn's read queue, which holds up to maxSize and closes with closeNotify.
+func newConnReadQ(closeNotify <-chan struct{}, maxSize int64) *noopSeq[*channel.Message] {
+	return NewNoopSequencer(closeNotify, maxSize, legacyMsgSize)
 }
 
 func (conn *edgeConn) HandleXgPayload(msg *channel.Message) {
@@ -734,17 +771,17 @@ const (
 	closeFlagStateClosedReceived
 )
 
-// finEOF is the Read result once the read stream has ended. On a legacy conn it also closes
-// the conn if the router's StateClosed has already arrived; reads stop draining the queue at
-// the FIN, so a StateClosed behind or after it is never dequeued and is applied from here.
+// finEOF is the Read result once the read stream has ended. It also closes the conn if the
+// router's StateClosed has already arrived, since reads go no further: a legacy conn's StateClosed
+// queued behind the end of the stream is never dequeued, and an xgress conn never queues one.
 func (conn *edgeConn) finEOF() (int, error) {
-	if conn.xgCircuit == nil && conn.closeFlags.GetAndSet(closeFlagFinRead).IsSet(closeFlagStateClosedReceived) {
+	if conn.closeFlags.GetAndSet(closeFlagFinRead).IsSet(closeFlagStateClosedReceived) {
 		conn.closeOnStateClosed("read reached EOF with ConnState_CLOSED already received, closing connection")
 	}
 	return 0, io.EOF
 }
 
-// closeOnStateClosed closes a legacy conn in response to the router's StateClosed, logging which
+// closeOnStateClosed closes the conn in response to the router's StateClosed, logging which
 // of the three paths got there: the message dequeued in order, the message arriving after the FIN
 // was read, or the read reaching EOF with the message already received.
 func (conn *edgeConn) closeOnStateClosed(reason string) {
@@ -805,17 +842,7 @@ func (conn *edgeConn) Read(p []byte) (int, error) {
 		switch msg.ContentType {
 
 		case edge.ContentTypeStateClosed:
-			if conn.xgCircuit != nil {
-				conn.readFIN.Store(true)
-				if conn.sentFIN.Load() {
-					log.Debug("received ConnState_CLOSED message, fin sent, closing connection")
-					conn.close(false)
-				} else {
-					log.Debug("received ConnState_CLOSED message, fin not yet sent")
-				}
-			} else {
-				conn.closeOnStateClosed("received ConnState_CLOSED message, closing connection")
-			}
+			conn.closeOnStateClosed("received ConnState_CLOSED message, closing connection")
 			continue
 
 		case edge.ContentTypeData:
@@ -895,6 +922,7 @@ func (conn *edgeConn) close(notifyCtrl bool) {
 	}
 
 	close(conn.closeNotify)
+	conn.readQ.Discard()
 
 	conn.readFIN.Store(true)
 	conn.sentFIN.Store(true)
