@@ -39,3 +39,18 @@ jobs:
 
           # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
+
+      # acquire and the acceptance suite are their own modules, so the root run doesn't reach
+      # them. Most of the acceptance tests build only with the acceptance tag.
+      - name: golangci-lint (acquire)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: acquire
+
+      - name: golangci-lint (acceptance)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: acceptance
+          args: --build-tags acceptance

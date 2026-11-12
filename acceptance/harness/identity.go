@@ -54,32 +54,32 @@ func (i *Identity) ConfigPath() string {
 // CreateIdentity creates an identity via the versioned CLI and enrolls it via the
 // CLI as well (per the setup contract, SDK enrollment is exercised only by its
 // dedicated test). The identity is uniquely named per the isolation contract and
-// best-effort deleted via t.Cleanup. roleAttributes, if given, are set on the
+// best-effort deleted via tb.Cleanup. roleAttributes, if given, are set on the
 // identity for use in targeted policies.
-func (h *Harness) CreateIdentity(t testing.TB, name string, roleAttributes ...string) *Identity {
-	t.Helper()
-	unique, jwtPath := h.createUnenrolledIdentity(t, name, roleAttributes)
+func (h *Harness) CreateIdentity(tb testing.TB, name string, roleAttributes ...string) *Identity {
+	tb.Helper()
+	unique, jwtPath := h.createUnenrolledIdentity(tb, name, roleAttributes)
 
 	jsonPath := strings.TrimSuffix(jwtPath, ".jwt") + ".json"
-	h.Cli(t, "edge", "enroll", jwtPath, "--out", jsonPath)
+	h.Cli(tb, "edge", "enroll", jwtPath, "--out", jsonPath)
 	return &Identity{name: unique, jsonPath: jsonPath}
 }
 
 // CreateUnenrolledIdentity creates an identity via the versioned CLI and returns
 // its unique name and enrollment JWT path without enrolling it, for the test that
 // exercises the SDK's own enrollment.
-func (h *Harness) CreateUnenrolledIdentity(t testing.TB, name string, roleAttributes ...string) (string, string) {
-	t.Helper()
-	return h.createUnenrolledIdentity(t, name, roleAttributes)
+func (h *Harness) CreateUnenrolledIdentity(tb testing.TB, name string, roleAttributes ...string) (string, string) {
+	tb.Helper()
+	return h.createUnenrolledIdentity(tb, name, roleAttributes)
 }
 
-func (h *Harness) createUnenrolledIdentity(t testing.TB, name string, roleAttributes []string) (string, string) {
-	t.Helper()
-	unique := uniqueName(t, name)
+func (h *Harness) createUnenrolledIdentity(tb testing.TB, name string, roleAttributes []string) (string, string) {
+	tb.Helper()
+	unique := uniqueName(tb, name)
 
 	idDir := filepath.Join(h.home, "identities")
 	if err := os.MkdirAll(idDir, 0o700); err != nil {
-		t.Fatalf("creating identities dir: %v", err)
+		tb.Fatalf("creating identities dir: %v", err)
 	}
 	jwtPath := filepath.Join(idDir, unique+".jwt")
 
@@ -87,8 +87,8 @@ func (h *Harness) createUnenrolledIdentity(t testing.TB, name string, roleAttrib
 	if len(roleAttributes) > 0 {
 		args = append(args, "--role-attributes", strings.Join(roleAttributes, ","))
 	}
-	h.Cli(t, args...)
-	t.Cleanup(func() {
+	h.Cli(tb, args...)
+	tb.Cleanup(func() {
 		// best-effort; the whole environment is discarded at teardown regardless
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "identity", unique)
 	})
@@ -99,8 +99,9 @@ var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 // uniqueName builds a per-test unique resource name: the test name, the given
 // base, and a short random suffix, so tests sharing an environment cannot collide.
-func uniqueName(t testing.TB, base string) string {
-	prefix := nameSanitizer.ReplaceAllString(t.Name(), "-")
+func uniqueName(tb testing.TB, base string) string {
+	tb.Helper()
+	prefix := nameSanitizer.ReplaceAllString(tb.Name(), "-")
 	const maxPrefix = 40
 	if len(prefix) > maxPrefix {
 		prefix = prefix[len(prefix)-maxPrefix:]

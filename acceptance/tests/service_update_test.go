@@ -29,8 +29,8 @@ import (
 
 // requireServiceEvent waits for an event naming service on ch, draining events
 // for other services until it matches or the deadline elapses.
-func requireServiceEvent(t testing.TB, ch <-chan string, service, desc string) {
-	t.Helper()
+func requireServiceEvent(tb testing.TB, ch <-chan string, service, desc string) {
+	tb.Helper()
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
@@ -39,7 +39,7 @@ func requireServiceEvent(t testing.TB, ch <-chan string, service, desc string) {
 				return
 			}
 		case <-deadline:
-			t.Fatalf("%s: never observed event for service %s", desc, service)
+			tb.Fatalf("%s: never observed event for service %s", desc, service)
 		}
 	}
 }

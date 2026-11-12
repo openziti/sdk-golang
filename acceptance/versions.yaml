@@ -21,7 +21,7 @@
 # covers it.
 labels:
   active-lts: v2.0.x   # highest 2.0 patch (minor wildcard)
-  maint-lts: v1.6.17   # pinned concrete tag
+  maint-lts: v1.6.22   # pinned concrete tag
   next: v2.1.0-pre2    # pinned pre-release
 
 source:

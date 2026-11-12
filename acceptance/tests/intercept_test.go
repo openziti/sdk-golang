@@ -39,8 +39,8 @@ const (
 // dials it with DialAddr, then proves the data plane with a write/half-close/
 // read-to-EOF echo. It retries the initial dial like dialWithRetry, since
 // terminator/policy propagation can lag router readiness.
-func requireEchoViaAddr(t testing.TB, ctx ziti.Context, network, addr, payload string) {
-	t.Helper()
+func requireEchoViaAddr(tb testing.TB, ctx ziti.Context, network, addr, payload string) {
+	tb.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
@@ -53,15 +53,15 @@ func requireEchoViaAddr(t testing.TB, ctx ziti.Context, network, addr, payload s
 		defer func() { _ = conn.Close() }()
 
 		_, err = conn.Write([]byte(payload))
-		require.NoError(t, err)
-		require.NoError(t, conn.CloseWrite(), "half-close the send side")
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(30*time.Second)))
+		require.NoError(tb, err)
+		require.NoError(tb, conn.CloseWrite(), "half-close the send side")
+		require.NoError(tb, conn.SetReadDeadline(time.Now().Add(30*time.Second)))
 		echoed, err := io.ReadAll(conn)
-		require.NoError(t, err, "no echo within 30s on DialAddr conn")
-		require.Equal(t, payload, string(echoed))
+		require.NoError(tb, err, "no echo within 30s on DialAddr conn")
+		require.Equal(tb, payload, string(echoed))
 		return
 	}
-	t.Fatalf("DialAddr %s/%s never succeeded: %v", network, addr, lastErr)
+	tb.Fatalf("DialAddr %s/%s never succeeded: %v", network, addr, lastErr)
 }
 
 // Test_InterceptDial covers acceptance batch item #6f for an intercept.v1

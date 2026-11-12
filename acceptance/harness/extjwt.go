@@ -59,8 +59,8 @@ func (s *ExtJwtSigner) Id() string {
 
 // MintToken signs a JWT for the given subject, accepted by this signer's
 // controller registration: correct issuer, audience, kid, and lifetime.
-func (s *ExtJwtSigner) MintToken(t testing.TB, subject string, ttl time.Duration) string {
-	t.Helper()
+func (s *ExtJwtSigner) MintToken(tb testing.TB, subject string, ttl time.Duration) string {
+	tb.Helper()
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss": s.issuer,
@@ -72,7 +72,7 @@ func (s *ExtJwtSigner) MintToken(t testing.TB, subject string, ttl time.Duration
 	token.Header["kid"] = s.kid
 
 	signed, err := token.SignedString(s.key)
-	require.NoError(t, err, "signing ext jwt")
+	require.NoError(tb, err, "signing ext jwt")
 	return signed
 }
 
@@ -80,12 +80,12 @@ func (s *ExtJwtSigner) MintToken(t testing.TB, subject string, ttl time.Duration
 // registers them as an external JWT signer via the versioned CLI, uniquely named
 // per the isolation contract, with best-effort cleanup. The signer matches the
 // token's sub claim against identity external ids (the CLI default).
-func (h *Harness) CreateExtJwtSigner(t testing.TB, base string) *ExtJwtSigner {
-	t.Helper()
-	name := uniqueName(t, base)
+func (h *Harness) CreateExtJwtSigner(tb testing.TB, base string) *ExtJwtSigner {
+	tb.Helper()
+	name := uniqueName(tb, base)
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err, "generating signer key")
+	require.NoError(tb, err, "generating signer key")
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
@@ -94,7 +94,7 @@ func (h *Harness) CreateExtJwtSigner(t testing.TB, base string) *ExtJwtSigner {
 		NotAfter:     time.Now().Add(24 * time.Hour),
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	require.NoError(t, err, "creating signer certificate")
+	require.NoError(tb, err, "creating signer certificate")
 	certPem := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 
 	kidBytes := make([]byte, 4)
@@ -107,11 +107,11 @@ func (h *Harness) CreateExtJwtSigner(t testing.TB, base string) *ExtJwtSigner {
 		key:      key,
 	}
 
-	signer.id = strings.TrimSpace(h.Cli(t, "edge", "create", "ext-jwt-signer", name, signer.issuer,
+	signer.id = strings.TrimSpace(h.Cli(tb, "edge", "create", "ext-jwt-signer", name, signer.issuer,
 		"--cert-pem", certPem,
 		"--audience", signer.audience,
 		"--kid", signer.kid))
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "ext-jwt-signer", signer.id)
 	})
 	return signer
@@ -120,13 +120,13 @@ func (h *Harness) CreateExtJwtSigner(t testing.TB, base string) *ExtJwtSigner {
 // CreateExtJwtAuthPolicy creates an auth policy allowing the signer's JWTs as a
 // primary credential, returning the policy name, uniquely named with best-effort
 // cleanup.
-func (h *Harness) CreateExtJwtAuthPolicy(t testing.TB, base string, signer *ExtJwtSigner) string {
-	t.Helper()
-	name := uniqueName(t, base)
-	h.Cli(t, "edge", "create", "auth-policy", name,
+func (h *Harness) CreateExtJwtAuthPolicy(tb testing.TB, base string, signer *ExtJwtSigner) string {
+	tb.Helper()
+	name := uniqueName(tb, base)
+	h.Cli(tb, "edge", "create", "auth-policy", name,
 		"--primary-ext-jwt-allowed",
 		"--primary-ext-jwt-allowed-signers", signer.Id())
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "auth-policy", name)
 	})
 	return name
@@ -135,26 +135,26 @@ func (h *Harness) CreateExtJwtAuthPolicy(t testing.TB, base string, signer *ExtJ
 // CreateExtJwtIdentity creates an identity authenticating via the given auth
 // policy with the given external id; ext-JWT identities need no enrollment.
 // Returns the identity's unique name.
-func (h *Harness) CreateExtJwtIdentity(t testing.TB, base, externalId, authPolicy string) string {
-	t.Helper()
-	name := uniqueName(t, base)
-	h.Cli(t, "edge", "create", "identity", name,
+func (h *Harness) CreateExtJwtIdentity(tb testing.TB, base, externalId, authPolicy string) string {
+	tb.Helper()
+	name := uniqueName(tb, base)
+	h.Cli(tb, "edge", "create", "identity", name,
 		"--external-id", externalId,
 		"--auth-policy", authPolicy)
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		_, _ = h.cli.Run(context.Background(), "edge", "delete", "identity", name)
 	})
 	return name
 }
 
 // NewExtJwtSdkContext builds an authenticated ziti.Context using jwtToken as the
-// primary credential (the SDK's JwtCredentials path), registering close with t.
-func (h *Harness) NewExtJwtSdkContext(t testing.TB, jwtToken string) ziti.Context {
-	t.Helper()
+// primary credential (the SDK's JwtCredentials path), registering close with tb.
+func (h *Harness) NewExtJwtSdkContext(tb testing.TB, jwtToken string) ziti.Context {
+	tb.Helper()
 
 	ctrlURL := "https://" + h.ctrl.hostPort
 	caPool, err := ziti.GetControllerWellKnownCaPool(ctrlURL)
-	require.NoError(t, err, "fetching controller ca pool")
+	require.NoError(tb, err, "fetching controller ca pool")
 
 	creds := edgeApis.NewJwtCredentials(jwtToken)
 	creds.CaPool = caPool
@@ -163,9 +163,9 @@ func (h *Harness) NewExtJwtSdkContext(t testing.TB, jwtToken string) ziti.Contex
 		ZtAPI:       ctrlURL + "/edge/client/v1",
 		Credentials: creds,
 	})
-	require.NoError(t, err, "creating ext-jwt sdk context")
-	t.Cleanup(ctx.Close)
+	require.NoError(tb, err, "creating ext-jwt sdk context")
+	tb.Cleanup(ctx.Close)
 
-	require.NoError(t, ctx.Authenticate(), "authenticating with ext jwt")
+	require.NoError(tb, ctx.Authenticate(), "authenticating with ext jwt")
 	return ctx
 }

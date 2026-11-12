@@ -81,6 +81,7 @@ func (self *recordingConn) getWrites() [][]byte {
 // overLink returns payload as a link delivers it: marshalled to the channel wire format and
 // decoded again.
 func overLink(t *testing.T, payload *Payload) *Payload {
+	t.Helper()
 	encoded, err := channel.MarshalV2(payload.Marshall())
 	require.NoError(t, err)
 	msg, err := channel.ReadV2(bytes.NewReader(encoded))

@@ -39,7 +39,7 @@ func BenchmarkConnWrite(b *testing.B) {
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
 		mux:          mux,
-		readQ:        NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:        newLegacyReadQ(closeNotify, defaultLegacyRxBufferSize),
 	}
 	conn.initChunkReader()
 
@@ -58,12 +58,12 @@ func BenchmarkConnWrite(b *testing.B) {
 
 func BenchmarkConnRead(b *testing.B) {
 	closeNotify := make(chan struct{})
-	defer close(closeNotify)
 
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	// room for four messages keeps the producer just ahead of the reader
+	readQ := NewNoopSequencer(closeNotify, 4*(877+legacyMsgOverhead), legacyMsgSize)
 	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),
@@ -72,20 +72,19 @@ func BenchmarkConnRead(b *testing.B) {
 	}
 	conn.initChunkReader()
 
-	var stop atomic.Bool
-	defer stop.Store(true)
+	producerDone := make(chan struct{})
+	defer func() {
+		close(closeNotify)
+		<-producerDone
+	}()
 
 	go func() {
-		counter := uint32(0)
-		for !stop.Load() {
-			counter += 1
+		defer close(producerDone)
+		for {
 			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, data)
-			err := readQ.PutSequenced(msg)
-			if err != nil {
-				panic(err)
+			if err := readQ.PutSequenced(edge.NewDataMsg(1, data)); err != nil {
+				return
 			}
-			// mux.HandleReceive(msg, testChannel)
 		}
 	}()
 
@@ -141,7 +140,7 @@ func TestReadMultipart(t *testing.T) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := newLegacyReadQ(closeNotify, defaultLegacyRxBufferSize)
 	conn := &edgeConnLegacy{
 		edgeConnBase: edgeConnBase{serviceName: "test"},
 		msgCh:        *edge.NewEdgeMsgChannel(testChannel, 1),

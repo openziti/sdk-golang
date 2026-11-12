@@ -15,6 +15,7 @@ func TestEncodeDecode(t *testing.T) {
 func common_test(t *testing.T,
 	makeEnc func([]byte) (Encryptor, []byte, error),
 	makeDec func(k, h []byte) (Decryptor, error)) {
+	t.Helper()
 	key, err := NewStreamKey()
 	if err != nil {
 		t.Fatal(err)

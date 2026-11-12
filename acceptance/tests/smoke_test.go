@@ -1,3 +1,5 @@
+//go:build acceptance
+
 /*
 	Copyright NetFoundry Inc.
 
@@ -13,8 +15,6 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
-
-//go:build acceptance
 
 package tests
 
@@ -109,11 +109,11 @@ func Test_DialHostEcho(t *testing.T) {
 
 // requireServicePermissions asserts the context's service list contains the named
 // service with exactly the given permissions, and that lookup by name agrees.
-func requireServicePermissions(t testing.TB, ctx ziti.Context, serviceName string, perms ...rest_model.DialBind) {
-	t.Helper()
+func requireServicePermissions(tb testing.TB, ctx ziti.Context, serviceName string, perms ...rest_model.DialBind) {
+	tb.Helper()
 
 	services, err := ctx.GetServices()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	var found *rest_model.ServiceDetail
 	for i := range services {
@@ -122,12 +122,11 @@ func requireServicePermissions(t testing.TB, ctx ziti.Context, serviceName strin
 			break
 		}
 	}
-	require.NotNil(t, found, "service %s must appear in GetServices", serviceName)
-	require.ElementsMatch(t, perms, []rest_model.DialBind(found.Permissions),
+	require.NotNil(tb, found, "service %s must appear in GetServices", serviceName)
+	require.ElementsMatch(tb, perms, []rest_model.DialBind(found.Permissions),
 		"service %s permissions", serviceName)
 
 	byName, ok := ctx.GetService(serviceName)
-	require.True(t, ok, "GetService(%s) must find the service", serviceName)
-	require.Equal(t, *found.ID, *byName.ID)
+	require.True(tb, ok, "GetService(%s) must find the service", serviceName)
+	require.Equal(tb, *found.ID, *byName.ID)
 }
-

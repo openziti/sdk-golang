@@ -324,12 +324,13 @@ var archAliases = map[string][]string{
 }
 
 // assetNameTokens splits an asset name into the tokens platform matching compares
-// against: runs of letters, digits and underscores, so "ziti-linux-x86_64-2.0.8.tar.gz"
-// yields "linux" and "x86_64" among others. The underscore stays inside a token
-// because arch names such as x86_64 contain one.
+// against: runs of lowercase letters, digits and underscores, so
+// "ziti-linux-x86_64-2.0.8.tar.gz" yields "linux" and "x86_64" among others. The
+// underscore stays inside a token because arch names such as x86_64 contain one.
+// Uppercase letters split tokens, so callers lowercase name first.
 func assetNameTokens(name string) []string {
 	return strings.FieldsFunc(name, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_'
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_'
 	})
 }
 

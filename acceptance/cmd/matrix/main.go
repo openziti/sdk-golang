@@ -41,8 +41,11 @@ import (
 
 func main() {
 	failFast := flag.Bool("fail-fast", false, "stop after the first failing version")
-	flag.Parse()
-	selectors, extraArgs := splitArgs(flag.Args())
+	// split before parsing: flag.Parse consumes a leading "--", which would turn the go test
+	// arguments after it into selectors
+	args, extraArgs := splitArgs(os.Args[1:])
+	_ = flag.CommandLine.Parse(args) // exits on error
+	selectors := flag.Args()
 
 	cfgPath, err := acquire.FindVersionsFile()
 	if err != nil {
@@ -115,9 +118,9 @@ func defaultSelectors(cfg acquire.Versions) []string {
 	return append(sels, "latest")
 }
 
-// splitArgs separates selector arguments from pass-through go test arguments at
-// the "--" marker.
-func splitArgs(args []string) (selectors, extra []string) {
+// splitArgs separates the matrix's own arguments from pass-through go test
+// arguments at the first "--".
+func splitArgs(args []string) (own, extra []string) {
 	for i, a := range args {
 		if a == "--" {
 			return args[:i], args[i+1:]

@@ -27,8 +27,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/openziti/sdk-golang/acquire"
 	"github.com/openziti/sdk-golang/acceptance/internal/ziticli"
+	"github.com/openziti/sdk-golang/acquire"
 )
 
 // VersionEnv selects the ziti version under test. Empty means "latest".
@@ -125,16 +125,16 @@ func (h *Harness) DefaultRouter() *Router {
 }
 
 // Start brings up an environment scoped to a single test, registering teardown
-// with t. Use it for a test that wants its own environment rather than the
+// with tb. Use it for a test that wants its own environment rather than the
 // package-shared one from StartShared; tests that stop or restart components must
 // use their own environment.
-func Start(t testing.TB) *Harness {
-	t.Helper()
+func Start(tb testing.TB) *Harness {
+	tb.Helper()
 	h, teardown, err := StartShared()
 	if err != nil {
-		t.Fatalf("starting harness: %v", err)
+		tb.Fatalf("starting harness: %v", err)
 	}
-	t.Cleanup(teardown)
+	tb.Cleanup(teardown)
 	return h
 }
 
@@ -145,20 +145,20 @@ func (h *Harness) Version() Version {
 
 // RequireMinVersion skips the test unless the version under test is at least
 // minVersion; source-built refs satisfy every minimum.
-func (h *Harness) RequireMinVersion(t testing.TB, minVersion string) {
-	t.Helper()
+func (h *Harness) RequireMinVersion(tb testing.TB, minVersion string) {
+	tb.Helper()
 	if !h.version.AtLeast(minVersion) {
-		t.Skipf("requires ziti >= %s, testing against %s", minVersion, h.version)
+		tb.Skipf("requires ziti >= %s, testing against %s", minVersion, h.version)
 	}
 }
 
 // Cli runs a ziti CLI command against this harness with the admin login already in
-// place, returning stdout and failing t on error.
-func (h *Harness) Cli(t testing.TB, args ...string) string {
-	t.Helper()
+// place, returning stdout and failing tb on error.
+func (h *Harness) Cli(tb testing.TB, args ...string) string {
+	tb.Helper()
 	out, err := h.cli.Run(context.Background(), args...)
 	if err != nil {
-		t.Fatalf("%v", err)
+		tb.Fatalf("%v", err)
 	}
 	return out
 }
@@ -167,4 +167,3 @@ func (h *Harness) Cli(t testing.TB, args ...string) string {
 func (h *Harness) ControllerHostPort() string {
 	return h.ctrl.hostPort
 }
-

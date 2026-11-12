@@ -37,12 +37,32 @@ type RouterConnOwner interface {
 	OnClose(factory edge.RouterConn)
 }
 
+// RouterConnOptions configures the conns a router conn creates.
+type RouterConnOptions struct {
+	// RxBufferSizeWithoutSdkFlowControl is how many bytes a conn without SDK flow control queues
+	// for its reader before delivery on the router channel waits for that reader. Each message
+	// counts 512 bytes beyond its body. Zero means 4 MiB.
+	RxBufferSizeWithoutSdkFlowControl uint32
+}
+
+// defaultLegacyRxBufferSize is the read queue size of a conn without SDK flow control when
+// RouterConnOptions doesn't set one.
+const defaultLegacyRxBufferSize = 4 * 1024 * 1024
+
+func (o RouterConnOptions) legacyRxBufferSize() int64 {
+	if o.RxBufferSizeWithoutSdkFlowControl == 0 {
+		return defaultLegacyRxBufferSize
+	}
+	return int64(o.RxBufferSizeWithoutSdkFlowControl)
+}
+
 type routerConn struct {
 	routerName string
 	routerAddr string
 	ch         edge.SdkChannel
 	mux        edge.ConnMux[any]
 	owner      RouterConnOwner
+	options    RouterConnOptions
 
 	subscriptionHandlerMu sync.RWMutex
 	subscriptionHandler   edge.ServiceSubscriptionHandler
@@ -121,12 +141,13 @@ func (conn *routerConn) HandleClose(channel.Channel) {
 	}
 }
 
-func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspectF func() *inspect.ContextInspectResult) edge.RouterConn {
+func NewRouterConn(routerName, routerAddr string, owner RouterConnOwner, inspectF func() *inspect.ContextInspectResult, options RouterConnOptions) edge.RouterConn {
 	conn := &routerConn{
 		routerAddr: routerAddr,
 		routerName: routerName,
 		mux:        edge.NewChannelConnMapMux[any](inspectF),
 		owner:      owner,
+		options:    options,
 	}
 
 	return conn
@@ -277,6 +298,7 @@ func (conn *routerConn) NewListenConn(service *rest_model.ServiceDetail, session
 		manualStart:  options.ManualStart,
 		eventHandler: options.EventHandler,
 		envF:         envF,
+		connOptions:  conn.options,
 	}
 
 	if options.DoNotSaveDialerIdentity {
@@ -531,7 +553,7 @@ func (conn *routerConn) buildV1LegacyConn(
 		},
 		msgCh: *msgCh,
 		mux:   conn.mux,
-		readQ: NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ: newLegacyReadQ(closeNotify, conn.options.legacyRxBufferSize()),
 	}
 	ec.initChunkReader()
 	applyReplyState(&ec.edgeConnBase, replyMsg, circuitId)

@@ -25,58 +25,65 @@ import (
 )
 
 // NewSdkContext builds an authenticated ziti.Context for id using the SDK under
-// test (this tree, via the module replace directive), registering close with t.
+// test (this tree, via the module replace directive), registering close with tb.
 // The identity was enrolled by the versioned CLI, so test setup never depends on
 // the SDK's own enrollment; that flow has its own dedicated test.
-func (h *Harness) NewSdkContext(t testing.TB, id *Identity) ziti.Context {
-	t.Helper()
-	return h.newSdkContext(t, id, false)
+func (h *Harness) NewSdkContext(tb testing.TB, id *Identity) ziti.Context {
+	tb.Helper()
+	return h.newSdkContext(tb, id, false, nil)
+}
+
+// NewSdkContextWithOptions is NewSdkContext with the given context options. Fields
+// left zero are not defaulted, so start from a copy of *ziti.DefaultOptions.
+func (h *Harness) NewSdkContextWithOptions(tb testing.TB, id *Identity, options *ziti.Options) ziti.Context {
+	tb.Helper()
+	return h.newSdkContext(tb, id, false, options)
 }
 
 // NewLegacySdkContext is NewSdkContext with OIDC disabled, forcing the legacy
 // authentication path, for tests exercising the legacy/OIDC split.
-func (h *Harness) NewLegacySdkContext(t testing.TB, id *Identity) ziti.Context {
-	t.Helper()
-	return h.newSdkContext(t, id, true)
+func (h *Harness) NewLegacySdkContext(tb testing.TB, id *Identity) ziti.Context {
+	tb.Helper()
+	return h.newSdkContext(tb, id, true, nil)
 }
 
 // NewSdkContextWithConfigTypes is NewSdkContext that also requests the given
 // service config types, so the context populates per-service config (e.g.
 // intercept.v1) used by GetServiceForAddr/DialAddr.
-func (h *Harness) NewSdkContextWithConfigTypes(t testing.TB, id *Identity, configTypes ...string) ziti.Context {
-	t.Helper()
+func (h *Harness) NewSdkContextWithConfigTypes(tb testing.TB, id *Identity, configTypes ...string) ziti.Context {
+	tb.Helper()
 
 	cfg, err := ziti.NewConfigFromFile(id.ConfigPath())
 	if err != nil {
-		t.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
+		tb.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
 	}
 	cfg.ConfigTypes = append(cfg.ConfigTypes, configTypes...)
 
 	ctx, err := ziti.NewContext(cfg)
 	if err != nil {
-		t.Fatalf("creating sdk context for %s: %v", id.Name(), err)
+		tb.Fatalf("creating sdk context for %s: %v", id.Name(), err)
 	}
-	t.Cleanup(ctx.Close)
+	tb.Cleanup(ctx.Close)
 
 	if err := ctx.Authenticate(); err != nil {
-		t.Fatalf("authenticating %s: %v", id.Name(), err)
+		tb.Fatalf("authenticating %s: %v", id.Name(), err)
 	}
 	return ctx
 }
 
-func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) ziti.Context {
-	t.Helper()
+func (h *Harness) newSdkContext(tb testing.TB, id *Identity, forceLegacy bool, options *ziti.Options) ziti.Context {
+	tb.Helper()
 
 	cfg, err := ziti.NewConfigFromFile(id.ConfigPath())
 	if err != nil {
-		t.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
+		tb.Fatalf("loading identity config %s: %v", id.ConfigPath(), err)
 	}
 
-	ctx, err := ziti.NewContext(cfg)
+	ctx, err := ziti.NewContextWithOpts(cfg, options)
 	if err != nil {
-		t.Fatalf("creating sdk context for %s: %v", id.Name(), err)
+		tb.Fatalf("creating sdk context for %s: %v", id.Name(), err)
 	}
-	t.Cleanup(ctx.Close)
+	tb.Cleanup(ctx.Close)
 
 	if forceLegacy {
 		impl := ctx.(*ziti.ContextImpl)
@@ -85,18 +92,18 @@ func (h *Harness) newSdkContext(t testing.TB, id *Identity, forceLegacy bool) zi
 	}
 
 	if err := ctx.Authenticate(); err != nil {
-		t.Fatalf("authenticating %s: %v", id.Name(), err)
+		tb.Fatalf("authenticating %s: %v", id.Name(), err)
 	}
 	return ctx
 }
 
 // ApiSessionType reports the type (legacy vs oidc) of the context's current API
 // session.
-func ApiSessionType(t testing.TB, ctx ziti.Context) edgeApis.ApiSessionType {
-	t.Helper()
+func ApiSessionType(tb testing.TB, ctx ziti.Context) edgeApis.ApiSessionType {
+	tb.Helper()
 	apiSession := ctx.(*ziti.ContextImpl).CtrlClt.GetCurrentApiSession()
 	if apiSession == nil {
-		t.Fatal("context has no current api session")
+		tb.Fatal("context has no current api session")
 	}
 	return apiSession.GetType()
 }
@@ -106,15 +113,15 @@ func ApiSessionType(t testing.TB, ctx ziti.Context) edgeApis.ApiSessionType {
 // dial path any dial took, so a test can compute the expected protocol and check
 // it against the observed dial event. The context must have connected to the
 // router (e.g. by dialing) first.
-func RouterSupportsConnectV2(t testing.TB, ctx ziti.Context, routerName string) bool {
-	t.Helper()
+func RouterSupportsConnectV2(tb testing.TB, ctx ziti.Context, routerName string) bool {
+	tb.Helper()
 	insp := ctx.(*ziti.ContextImpl).Inspect()
 	for _, rc := range insp.RouterConnections {
 		if rc.RouterName == routerName {
 			return rc.SupportsConnectV2
 		}
 	}
-	t.Fatalf("context has no router connection to %s", routerName)
+	tb.Fatalf("context has no router connection to %s", routerName)
 	return false
 }
 

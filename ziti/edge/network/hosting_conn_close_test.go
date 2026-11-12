@@ -185,6 +185,7 @@ const testHostToken = "test-token"
 
 // newTestHostConn builds a hosting conn the way the listen path does.
 func newTestHostConn(t *testing.T) *edgeHostConn {
+	t.Helper()
 	return newTestHostConnOn(t, newWireTestChannel())
 }
 
@@ -246,22 +247,6 @@ func fillAcceptQueue(hostConn *edgeHostConn) []*queuedTestConn {
 	return queued
 }
 
-// requireReturns fails the test if f doesn't return within two seconds, well short of the five-second send
-// bounds a blocked f could otherwise wait out. An f that never returns is left blocked.
-func requireReturns(t *testing.T, what string, f func()) {
-	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		f()
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		require.FailNow(t, what+" did not return")
-	}
-}
-
 func waitFor(t *testing.T, c <-chan struct{}, msg string) {
 	t.Helper()
 	select {
@@ -293,7 +278,7 @@ func Test_HostConn_RouterCloseWithFullAcceptQueueReturns(t *testing.T) {
 	hostConn := newTestHostConn(t)
 	fillAcceptQueue(hostConn)
 
-	requireReturns(t, "the router's close", func() {
+	requireReturnsWithin(t, 2*time.Second, "the router's close", func() {
 		_ = hostConn.HandleMuxClose()
 	})
 }
@@ -309,7 +294,7 @@ func Test_MultiListener_ForwardExitWithFullAcceptQueueRunsCloseHandler(t *testin
 	listener.closed.Store(true) // makes forward exit before reading the queue
 
 	closeHandlerRan := make(chan struct{})
-	requireReturns(t, "forward", func() {
+	requireReturnsWithin(t, 2*time.Second, "forward", func() {
 		listener.forward(hostConn, func() { close(closeHandlerRan) })
 	})
 
@@ -335,7 +320,7 @@ func Test_MultiListener_CloseWithFullChildAcceptQueueReturns(t *testing.T) {
 	require.Eventually(t, func() bool { return len(hostConn.acceptC) == 0 }, 5*time.Second, time.Millisecond)
 	queued := fillAcceptQueue(hostConn)
 
-	requireReturns(t, "the listener's Close", func() {
+	requireReturnsWithin(t, 2*time.Second, "the listener's Close", func() {
 		_ = listener.Close()
 	})
 
@@ -362,7 +347,7 @@ func Test_MultiListener_CloseHandlerRunsBeforeDialsAreRefused(t *testing.T) {
 		conn.closeGate = closeGate
 	}
 
-	requireReturns(t, "the listener's Close", func() {
+	requireReturnsWithin(t, 2*time.Second, "the listener's Close", func() {
 		_ = listener.Close()
 	})
 	waitFor(t, closeHandlerRan, "the close handler must not wait for the dials to be refused")
@@ -400,7 +385,7 @@ func newStalledRouterXgressConn(t *testing.T) (*edgeHostConn, *edgeConnXgress, *
 func requireClosedOnReturn(t *testing.T, what string, xgConn *edgeConnXgress, f func()) {
 	t.Helper()
 	var closedOnReturn atomic.Bool
-	requireReturns(t, what, func() {
+	requireReturnsWithin(t, 2*time.Second, what, func() {
 		f()
 		closedOnReturn.Store(xgConn.xg.IsClosed())
 	})
@@ -501,7 +486,7 @@ func Test_XgAdapter_CircuitEndWaitsForItsWriteOnlyWhileOpen(t *testing.T) {
 		_, xgConn, _ := newStalledRouterXgressConn(t)
 		xgConn.xgAdapter.sendTimeout = 100 * time.Millisecond
 
-		requireReturns(t, "the end of circuit once the send timeout passes", func() {
+		requireReturnsWithin(t, 2*time.Second, "the end of circuit once the send timeout passes", func() {
 			xgConn.xgAdapter.ForwardPayload(xgConn.xg.GetEndCircuit(), xgConn.xg, context.Background())
 		})
 	})
@@ -510,7 +495,7 @@ func Test_XgAdapter_CircuitEndWaitsForItsWriteOnlyWhileOpen(t *testing.T) {
 		_, xgConn, _ := newStalledRouterXgressConn(t)
 		xgConn.xg.Close()
 
-		requireReturns(t, "the end of circuit from a closed xgress", func() {
+		requireReturnsWithin(t, 2*time.Second, "the end of circuit from a closed xgress", func() {
 			xgConn.xgAdapter.ForwardPayload(xgConn.xg.GetEndCircuit(), xgConn.xg, context.Background())
 		})
 	})
@@ -570,7 +555,7 @@ func Test_XgAdapter_RetransmitIsBounded(t *testing.T) {
 		xgConn.xgAdapter.sendTimeout = 100 * time.Millisecond
 
 		var err error
-		requireReturns(t, "the retransmission", func() {
+		requireReturnsWithin(t, 2*time.Second, "the retransmission", func() {
 			err = xgConn.xgAdapter.RetransmitPayload("test-address", payload())
 		})
 		require.Error(t, err)
@@ -581,7 +566,7 @@ func Test_XgAdapter_RetransmitIsBounded(t *testing.T) {
 		xgConn.xg.Close()
 
 		var err error
-		requireReturns(t, "the retransmission for a closed xgress", func() {
+		requireReturnsWithin(t, 2*time.Second, "the retransmission for a closed xgress", func() {
 			err = xgConn.xgAdapter.RetransmitPayload("test-address", payload())
 		})
 		require.ErrorIs(t, err, errXgressClosed)
@@ -786,7 +771,7 @@ func runDialsRacingClose(t *testing.T, acceptLimit, closeAt int, closeChild func
 
 	waitFor(t, closeNow, "the application must take its dials")
 	closeChild(listener, hostConn)
-	requireReturns(t, "every dial's hand-off", dialing.Wait)
+	requireReturnsWithin(t, 2*time.Second, "every dial's hand-off", dialing.Wait)
 	waitFor(t, closeHandlerRan, "the close handler must run")
 	close(stopApp)
 	waitFor(t, appDone, "the application must stop accepting")
@@ -838,7 +823,7 @@ func Test_MultiListener_ConcurrentClosesTearDownChildOnce(t *testing.T) {
 			}()
 		}
 		close(start)
-		requireReturns(t, "the closes", closing.Wait)
+		requireReturnsWithin(t, 2*time.Second, "the closes", closing.Wait)
 
 		waitFor(t, closeHandlerRan, "the close handler must run")
 		requireAllRefused(t, append(queued, inHand))
@@ -873,7 +858,7 @@ func Test_XgressConn_ConcurrentClosesTearDownOnce(t *testing.T) {
 			xgConn.AcceptMessage(channel.NewMessage(edge.ContentTypeXgPayload, nil), hostConn.SdkChannel)
 		}()
 		close(start)
-		requireReturns(t, "the closes", closing.Wait)
+		requireReturnsWithin(t, 2*time.Second, "the closes", closing.Wait)
 
 		require.Eventually(t, func() bool {
 			return routerCh.writeIndex(isXgClose) >= 0

@@ -82,6 +82,7 @@ func TestPendingDeadlineDoesNotRetainXgress(t *testing.T) {
 // newDeadlineBenchXgress builds an xgress with a running send buffer and a no-op close
 // handler, so tearing it down doesn't log a warning into the benchmark output.
 func newDeadlineBenchXgress(b *testing.B) *Xgress {
+	b.Helper()
 	closeNotify := make(chan struct{})
 	conn := &testConn{
 		ch:          make(chan uint64, 1),
