@@ -1,8 +1,29 @@
 # Release notes 1.8.4
 
+## What's New
+
+* A connection without SDK flow control (the default) queues up to 4 MiB of received data its
+  application hasn't read, set with `Options.RxBufferSizeWithoutSdkFlowControl`. Below that, a
+  slow reader no longer holds up the other connections on its router channel; past it, they wait
+  for that reader as before. Closing a connection releases what it had queued.
+* A connection with SDK flow control closes once its reader has reached the end of the stream and
+  the router has reported the connection closed, in either order. It could stay open until the
+  application closed it when the router's report came after the reader had reached the end.
+* When the router reports a connection with SDK flow control closed, the connection hands its
+  application the data it is still holding for a slow reader before ending the stream. That data
+  was dropped.
+
+## API Changes
+
+* `network.NewNoopSequencer` takes a size limit and a function giving each value's size in place of
+  a channel depth. It is used only by the SDK's own connections.
+* `network.NewRouterConn` takes a `network.RouterConnOptions`, which configures the connections it
+  creates.
+
 ## Issues Fixed and Dependency Updates
 
 * github.com/openziti/sdk-golang: [v1.8.3 -> v1.8.4](https://github.com/openziti/sdk-golang/compare/v1.8.3...v1.8.4)
+    * [Issue #1076](https://github.com/openziti/sdk-golang/issues/1076) - [Backport-1.8] Legacy conn with a slow reader blocks every connection on its router channel
     * [Issue #1066](https://github.com/openziti/sdk-golang/issues/1066) - [Backport-1.8] Hosting listener blocks when a hosting connection closes with a full accept queue
     * [Issue #1081](https://github.com/openziti/sdk-golang/issues/1081) - [Backport-1.8] SDK logs every payload, ack, read and write at debug level
 

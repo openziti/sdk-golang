@@ -22,6 +22,11 @@ const defaultSendTimeout = 5 * time.Second
 // errXgressClosed is returned for a retransmission requested after the xgress closed.
 var errXgressClosed = errors.New("xgress closed")
 
+// xgReadQueueDepth is how many messages an xgress conn's read queue holds before WritePayload, having
+// queued one more, waits for the reader. While it waits, payloads stay in the xgress receive buffer,
+// which its acks report to the sender.
+const xgReadQueueDepth = 4
+
 type XgAdapter struct {
 	conn         *edgeConn
 	readC        chan []byte
@@ -191,7 +196,7 @@ func (self *XgAdapter) WritePayload(bytes []byte, headers map[uint8][]byte) (int
 		msg.Headers[k] = v
 	}
 
-	if err := self.conn.readQ.PutSequenced(msg); err != nil {
+	if err := self.conn.readQ.PutSequencedBounded(msg, xgReadQueueDepth); err != nil {
 		logrus.WithFields(edge.GetLoggerFields(msg)).WithError(err).
 			WithField("circuitId", self.conn.circuitId).
 			Error("error pushing edge message to sequencer")

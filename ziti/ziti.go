@@ -1980,7 +1980,9 @@ func (context *ContextImpl) connectEdgeRouter(routerName, ingressUrl string) *ed
 	dialer := channel.NewClassicDialer(dialerConfig)
 
 	start := time.Now().UnixNano()
-	edgeConn := network.NewRouterConn(routerName, ingressUrl, context, context.Inspect)
+	edgeConn := network.NewRouterConn(routerName, ingressUrl, context, context.Inspect, network.RouterConnOptions{
+		RxBufferSizeWithoutSdkFlowControl: context.options.RxBufferSizeWithoutSdkFlowControl,
+	})
 	options := channel.DefaultOptions()
 	options.ConnectTimeout = 15 * time.Second
 

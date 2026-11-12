@@ -37,7 +37,7 @@ func BenchmarkConnWrite(b *testing.B) {
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
-		readQ:       NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:       newConnReadQ(closeNotify, defaultLegacyRxBufferSize),
 		msgMux:      mux,
 		serviceName: "test",
 	}
@@ -57,12 +57,12 @@ func BenchmarkConnWrite(b *testing.B) {
 
 func BenchmarkConnRead(b *testing.B) {
 	closeNotify := make(chan struct{})
-	defer close(closeNotify)
 
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	// room for four messages keeps the producer just ahead of the reader
+	readQ := NewNoopSequencer(closeNotify, 4*(877+legacyMsgOverhead), legacyMsgSize)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,
@@ -70,26 +70,25 @@ func BenchmarkConnRead(b *testing.B) {
 		serviceName: "test",
 	}
 
-	var stop atomic.Bool
-	defer stop.Store(true)
-
-	go func() {
-		counter := uint32(0)
-		for !stop.Load() {
-			counter += 1
-			data := make([]byte, 877)
-			msg := edge.NewDataMsg(1, data)
-			err := readQ.PutSequenced(msg)
-			if err != nil {
-				panic(err)
-			}
-			// mux.HandleReceive(msg, testChannel)
-		}
+	producerDone := make(chan struct{})
+	defer func() {
+		close(closeNotify)
+		<-producerDone
 	}()
 
 	req := require.New(b)
 
 	req.NoError(mux.Add(conn))
+
+	go func() {
+		defer close(producerDone)
+		for {
+			data := make([]byte, 877)
+			if err := readQ.PutSequenced(edge.NewDataMsg(1, data)); err != nil {
+				return
+			}
+		}
+	}()
 
 	data := make([]byte, 1024)
 
@@ -139,7 +138,7 @@ func TestReadMultipart(t *testing.T) {
 	mux := edge.NewChannelConnMapMux[any](nil)
 	testChannel := edge.NewSingleSdkChannel(&NoopTestChannel{})
 
-	readQ := NewNoopSequencer[*channel.Message](closeNotify, 4)
+	readQ := newConnReadQ(closeNotify, defaultLegacyRxBufferSize)
 	conn := &edgeConn{
 		MsgChannel:  *edge.NewEdgeMsgChannel(testChannel, 1),
 		readQ:       readQ,

@@ -102,6 +102,7 @@ type edgeHostConn struct {
 	established  atomic.Bool
 	eventHandler edge.ListenerEventHandler
 	envF         func() xgress.Env
+	connOptions  RouterConnOptions
 
 	// confirmedHandler, if set, runs on its own goroutine each time the router confirms the bind.
 	confirmedHandler concurrenz.AtomicValue[func()]
@@ -311,7 +312,7 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message) {
 	edgeCh := &edgeConn{
 		closeNotify:    closeNotify,
 		MsgChannel:     *edge.NewEdgeMsgChannel(conn.SdkChannel, id),
-		readQ:          NewNoopSequencer[*channel.Message](closeNotify, 4),
+		readQ:          newConnReadQ(closeNotify, conn.connOptions.legacyRxBufferSize()),
 		msgMux:         conn.msgMux,
 		sourceIdentity: sourceIdentity,
 		crypto:         conn.crypto,

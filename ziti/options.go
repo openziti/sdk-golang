@@ -59,6 +59,12 @@ type Options struct {
 	// Defaults to 5 minutes.
 	AuthMaxElapsed time.Duration
 
+	// RxBufferSizeWithoutSdkFlowControl is how many bytes of received data a connection without SDK
+	// flow control queues for its application. Past it, data for every connection on the same router
+	// connection waits for that application to read. Each queued message counts 512 bytes beyond its
+	// data. Defaults to 4 MiB.
+	RxBufferSizeWithoutSdkFlowControl uint32
+
 	// Deprecated: OnContextReady is a callback that is invoked after the first successful authentication request. It
 	// does not delineate between fully and partially authenticated API Sessions. Use context.AddListener() with the events
 	// EventAuthenticationStateFull, EventAuthenticationStatePartial, EventAuthenticationStateUnAuthenticated instead.
@@ -92,10 +98,12 @@ type DialOptions struct {
 
 	// WARNING: Experimental setting, may be removed and/or defaults may change
 	//
-	// If set to true, flow-control will be managed from the SDK instead of the router. This prevents
-	// multiplexed circuits from interfering with each other. If the embedding application is only
-	// opening one circuit at a time, then it should not make much difference. Setting this to true
-	// may affect memory use and network traffic.
+	// If set to true, flow-control is managed per circuit from the SDK. This prevents multiplexed
+	// circuits from interfering with each other. Without it, the router can't slow an individual
+	// circuit: each connection queues up to Options.RxBufferSizeWithoutSdkFlowControl its
+	// application hasn't read, and past that, data for every circuit on the same router connection
+	// waits for that reader. If the embedding application is only opening one circuit at a time,
+	// then it should not make much difference. Setting this to true may affect network traffic.
 	//
 	// NOTES:
 	// 1. Currently defaults to false, but may change to true in the future.
@@ -147,10 +155,12 @@ type ListenOptions struct {
 
 	// NOTE: Experimental setting, may be removed and/or defaults may change
 	//
-	// If set to true, flow-control will be managed from the SDK instead of the router. This prevents
-	// multiplexed circuits from interfering with each other. If the embedding application is only
-	// opening one circuit at a time, then it should not make much difference. Setting this to true
-	// may affect memory use and network traffic.
+	// If set to true, flow-control is managed per circuit from the SDK. This prevents multiplexed
+	// circuits from interfering with each other. Without it, the router can't slow an individual
+	// circuit: each connection queues up to Options.RxBufferSizeWithoutSdkFlowControl its
+	// application hasn't read, and past that, data for every circuit on the same router connection
+	// waits for that reader. If the embedding application is only opening one circuit at a time,
+	// then it should not make much difference. Setting this to true may affect network traffic.
 	//
 	// Currently defaults to false, but may change to true in the future.
 	// Requires router side support
