@@ -1,3 +1,18 @@
+# Release notes 1.8.5
+
+## What's New
+
+* `edge_client.proto` carries the messages routers use to push service changes and posture state
+  to subscribed SDKs, and the `RouterCapability` bit positions routers advertise in the new
+  `RouterCapabilities` header. This SDK doesn't subscribe or read the capabilities; the definitions
+  are here so routers built against this line can offer them to SDKs that do.
+
+## Issues Fixed and Dependency Updates
+
+* github.com/openziti/sdk-golang: [v1.8.4 -> v1.8.5](https://github.com/openziti/sdk-golang/compare/v1.8.4...v1.8.5)
+    * [Issue #1086](https://github.com/openziti/sdk-golang/issues/1086) - [Backport-1.8] Expose service change subscriptions to external SDKs over protobuf
+
+
 # Release notes 1.8.4
 
 ## What's New
