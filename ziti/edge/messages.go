@@ -70,6 +70,17 @@ const (
 	ContentTypeServicePostureStateRequestType  = int32(edge_client_pb.ContentType_ServicePostureStateRequestType)
 	ContentTypeServicePostureStateResponseType = int32(edge_client_pb.ContentType_ServicePostureStateResponseType)
 
+	// ContentTypeSubscribeToServiceUpdates is sent by the SDK to opt in to service change push notifications.
+	ContentTypeSubscribeToServiceUpdates = int32(edge_client_pb.ContentType_SubscribeToServiceUpdatesType)
+	// ContentTypeUnsubscribeFromServiceUpdates is sent by the SDK to stop receiving service change push notifications.
+	ContentTypeUnsubscribeFromServiceUpdates = int32(edge_client_pb.ContentType_UnsubscribeFromServiceUpdatesType)
+	// ContentTypeResyncPostureState is sent by the SDK to request a full posture state retransmit after a seq gap.
+	ContentTypeResyncPostureState = int32(edge_client_pb.ContentType_ResyncPostureStateType)
+	// ContentTypeServiceChangeSet is sent by the router to deliver an atomic structural changeset.
+	ContentTypeServiceChangeSet = int32(edge_client_pb.ContentType_ServiceChangeSetType)
+	// ContentTypePostureStateChange is sent by the router to deliver current posture pass/fail state.
+	ContentTypePostureStateChange = int32(edge_client_pb.ContentType_PostureStateChangeType)
+
 	ContentTypeXgPayload         = int32(edge_client_pb.ContentType_XgPayloadType)
 	ContentTypeXgAcknowledgement = int32(edge_client_pb.ContentType_XgAcknowledgementType)
 	ContentTypeXgControl         = int32(edge_client_pb.ContentType_XgControlType)
@@ -116,6 +127,9 @@ const (
 	StructuredError                = int32(edge_client_pb.HeaderId_StructuredError)
 	DialerIdentityId               = int32(edge_client_pb.HeaderId_DialerIdentityId)
 	DialerIdentityName             = int32(edge_client_pb.HeaderId_DialerIdentityName)
+	// RouterCapabilitiesHeader carries the router's big-endian capability bitmask, with bit
+	// positions from edge_client_pb.RouterCapability. This SDK does not read it.
+	RouterCapabilitiesHeader = int32(edge_client_pb.HeaderId_RouterCapabilities)
 )
 
 const (
@@ -133,6 +147,7 @@ const (
 	ErrorCodeInvalidApiSessionType       = uint32(edge_client_pb.Error_InvalidApiSessionType)
 	ErrorCodeInvalidInstanceId           = uint32(edge_client_pb.Error_InvalidInstanceId)
 	ErrorCodeAccessDenied                = uint32(edge_client_pb.Error_AccessDenied)
+	ErrorCodePostureCheckFailed          = uint32(edge_client_pb.Error_PostureCheckFailed)
 )
 
 type RetryHint byte
