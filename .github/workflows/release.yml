@@ -5,7 +5,7 @@ on:
     tags:
       - 'v*'
       - '!v*-*'   # exclude pre-release qualifiers (e.g. v2.0.0-pre)
-      - '!v*+*'   # exclude build metadata (e.g. v2.0.0+build)
+      - '!v*\+*'   # exclude build metadata (e.g. v2.0.0+build)
 
 jobs:
   release:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Create Release Notes
         run: |
-          $(go env GOPATH)/bin/ziti-ci get-release-notes CHANGELOG.md > changelog.tmp
+          "$(go env GOPATH)/bin/ziti-ci" get-release-notes CHANGELOG.md > changelog.tmp
 
       - name: Create Release w/ Notes
         id: create_release

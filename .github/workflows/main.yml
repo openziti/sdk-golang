@@ -53,4 +53,4 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           ./license-check.sh
-          $(go env GOPATH)/bin/ziti-ci verify-version $($(go env GOPATH)/bin/sdk-version)
+          "$(go env GOPATH)/bin/ziti-ci" verify-version "$("$(go env GOPATH)/bin/sdk-version")"
