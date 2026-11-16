@@ -372,13 +372,17 @@ func (conn *edgeHostConn) newChildConnection(message *channel.Message, ch edge.S
 		clientKey := message.Headers[edge.PublicKeyHeader]
 		method, _ := message.GetByteHeader(edge.CryptoMethodHeader)
 
-		if clientKey != nil {
-			if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
-				cleanupAndReportError("failed to establish crypto session", err)
-				return
-			}
-		} else {
-			newConnLogger.Warnf("client did not send its key. connection is not end-to-end encrypted")
+		// conn.crypto is only set for services that require encryption, so a dial without the
+		// client's key is refused rather than accepted unencrypted.
+		if len(clientKey) == 0 {
+			cleanupAndReportError("failed to establish crypto session",
+				errors.New("service requires encryption, but the dial did not contain the client's public key"))
+			return
+		}
+
+		if txHeader, err = edgeCh.establishServerCrypto(conn.keyPair, clientKey, edge.CryptoMethod(method)); err != nil {
+			cleanupAndReportError("failed to establish crypto session", err)
+			return
 		}
 	}
 

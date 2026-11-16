@@ -115,6 +115,14 @@
   other connections on its router channel; past it, they wait for that reader as before. Closing
   a connection releases what it had queued.
 
+* A connection to a service that requires encryption now fails when the peer's public key is
+  missing, instead of logging a warning and continuing unencrypted. A dial fails if the reply
+  carries no host key, and a hosted listener refuses a dial that carries no client key with
+  `DialFailed`. This matches the C SDK and the router's tunneler. Services that do not require
+  encryption are unaffected. A service that requires encryption but is dialed or hosted by an
+  endpoint that cannot do end-to-end encryption, such as a router terminator with a non-edge
+  binding, no longer connects to a Go SDK peer; turn off `encryptionRequired` on such a service.
+
 * `edge_client.proto` now defines the xgress wire constants, so the C and JVM SDKs and other
   proto consumers can use them when they regenerate:
     * `HeaderId` gains the xgress payload headers `XgCircuitId` through `XgPayloadRaw`
