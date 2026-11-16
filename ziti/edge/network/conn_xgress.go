@@ -97,8 +97,29 @@ func (conn *edgeConnXgress) Write(data []byte) (int, error) {
 
 func (conn *edgeConnXgress) Close() error {
 	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn xgress")
+	conn.chunkReader.MarkLocalClose()
+	conn.writeFinalOnClose()
 	conn.close(true)
 	return nil
+}
+
+// writeFinalOnClose ends the encrypted stream ahead of a local close. It is
+// skipped when the chunk could not be delivered or would hold up the close:
+// the circuit has not started, or a Write is in progress, which close is about
+// to cancel. The peer then reports the stream as cut short, which it was.
+func (conn *edgeConnXgress) writeFinalOnClose() {
+	if conn.IsClosed() || conn.xg.Closed() || !conn.xg.IsCircuitStarted() {
+		return
+	}
+	if !conn.TryLock() {
+		return
+	}
+	err := conn.writeFinalLocked(conn.writeAdapter)
+	conn.Unlock()
+	if err != nil {
+		pfxlog.Logger().WithField("connId", conn.Id()).WithField("circuitId", conn.circuitId).
+			WithError(err).Error("failed to send end of encrypted stream")
+	}
 }
 
 // close marks the conn closed, cancels pending writes, and tells the xgress the
@@ -126,6 +147,14 @@ func (conn *edgeConnXgress) close(_ bool) {
 
 func (conn *edgeConnXgress) CloseWrite() error {
 	if !conn.flags.GetAndSet(flagSentFIN).IsSet(flagSentFIN) {
+		conn.Lock()
+		err := conn.writeFinalLocked(conn.writeAdapter)
+		conn.Unlock()
+		if err != nil {
+			pfxlog.Logger().WithField("connId", conn.Id()).WithField("circuitId", conn.circuitId).
+				WithError(err).Error("failed to send end of encrypted stream")
+		}
+
 		if conn.xg.PeerSupportsEOF() {
 			conn.xg.CloseRxTimeout()
 		} else {
