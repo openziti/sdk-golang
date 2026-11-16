@@ -29,7 +29,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/zitadel/oidc/v3 v3.52.0
 	go.mozilla.org/pkcs7 v0.10.0
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.12
