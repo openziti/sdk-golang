@@ -46,6 +46,7 @@ type chunkSource func() (data []byte, flags uint32, err error)
 //   - splitting of multipart (length-prefixed) chunks
 //   - buffering chunks or part-chunks that don't fit in the caller's buffer
 //   - tracking readFIN so further reads return io.EOF
+//   - telling an authenticated end of stream from a truncated one, see eofErr
 //
 // edgeChunkReader is not safe for concurrent Read calls (matching net.Conn
 // semantics). MarkFIN is safe to call from any goroutine.
@@ -62,6 +63,19 @@ type edgeChunkReader struct {
 	inBuffer [][]byte
 
 	readFIN atomic.Bool
+
+	// peerMarked is set once the peer has sent a chunk with a secretstream tag
+	// other than TagMessage. Such a peer ends its stream with a TagFinal chunk,
+	// so an end of stream without one is a truncation. Peers that only ever
+	// send TagMessage predate that convention and are not held to it.
+	peerMarked atomic.Bool
+
+	// finalSeen is set once the peer's TagFinal chunk has been decrypted.
+	finalSeen atomic.Bool
+
+	// localClose is set when this side closed the connection itself, which is
+	// not a truncation by the peer or the network.
+	localClose atomic.Bool
 
 	// logger is recomputed per Read call, so conns can include dynamic context
 	// (e.g. circuitId, marker) without the reader knowing what those are.
@@ -89,6 +103,25 @@ func (r *edgeChunkReader) MarkFIN() {
 	r.readFIN.Store(true)
 }
 
+// MarkLocalClose records that the application closed the connection, so the
+// end of stream that follows is reported as io.EOF.
+func (r *edgeChunkReader) MarkLocalClose() {
+	r.localClose.Store(true)
+}
+
+// eofErr returns the error that reports end of stream. The FIN flag, the
+// xgress EOF and a connection close are all signalled outside of the
+// end-to-end encryption, so anything on the path can produce them. A peer
+// that tags its chunks ends its stream with a TagFinal chunk, which only the
+// peer can produce. If such a peer's stream ends without one, the stream was
+// cut short and io.ErrUnexpectedEOF is returned instead of io.EOF.
+func (r *edgeChunkReader) eofErr() error {
+	if r.peerMarked.Load() && !r.finalSeen.Load() && !r.localClose.Load() {
+		return io.ErrUnexpectedEOF
+	}
+	return io.EOF
+}
+
 // ReadFIN reports whether the reader has seen or been forced to FIN.
 func (r *edgeChunkReader) ReadFIN() bool {
 	return r.readFIN.Load()
@@ -114,7 +147,7 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 	for {
 		if r.readFIN.Load() {
 			log.Trace("readFIN true, returning EOF")
-			return 0, io.EOF
+			return 0, r.eofErr()
 		}
 
 		data, flags, err := r.source()
@@ -122,7 +155,7 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 			if errors.Is(err, io.EOF) || errors.Is(err, ErrClosed) {
 				log.Debug("read exhausted, marking readFIN")
 				r.readFIN.Store(true)
-				return 0, io.EOF
+				return 0, r.eofErr()
 			}
 			return 0, err
 		}
@@ -133,7 +166,7 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 		}
 
 		if len(data) == 0 && r.readFIN.Load() {
-			return 0, io.EOF
+			return 0, r.eofErr()
 		}
 
 		// The first chunk on an encrypted stream carries the secretstream header.
@@ -151,10 +184,28 @@ func (r *edgeChunkReader) Read(p []byte) (int, error) {
 		}
 
 		if r.receiver != nil {
-			data, _, err = r.receiver.Pull(data)
+			if r.finalSeen.Load() {
+				return 0, errors.New("received data after the end of the encrypted stream")
+			}
+
+			var tag byte
+			data, tag, err = r.receiver.Pull(data)
 			if err != nil {
 				log.Errorf("crypto failed on chunk of size=%d err=(%v)", len(data), err)
 				return 0, err
+			}
+
+			if tag != secretstream.TagMessage {
+				r.peerMarked.Store(true)
+			}
+
+			if tag == secretstream.TagFinal {
+				log.Trace("got final chunk, marking readFIN")
+				r.finalSeen.Store(true)
+				r.readFIN.Store(true)
+				if len(data) == 0 {
+					return 0, io.EOF
+				}
 			}
 		}
 

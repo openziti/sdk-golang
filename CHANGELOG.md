@@ -85,6 +85,30 @@
 
 ## What's New
 
+* **An end-to-end encrypted connection now ends with an authenticated end of stream.** The edge
+  `FIN`, the xgress EOF and `StateClosed` are all signalled outside of the end-to-end
+  encryption, so a router on the path could drop the tail of a stream and end it early, and the
+  reader saw a clean `io.EOF`. The SDK now tags its data chunks with `secretstream.TagPush` and
+  sends an empty `secretstream.TagFinal` chunk when a connection is closed or half-closed. A
+  reader that has seen a tagged chunk from its peer expects that final chunk: if the stream ends
+  without it, `Read` returns `io.ErrUnexpectedEOF` instead of `io.EOF`.
+
+  That includes a peer that goes away without closing its connection, such as a killed process
+  or a circuit the network tears down, which also used to read as `io.EOF`. A connection closed
+  by the local application still reads `io.EOF`.
+
+  `Close` does not wait any longer than before to send the final chunk: it is skipped when a
+  `Write` is in progress, and on a connection without SDK flow control it shares the 5s that
+  `Close` already allowed for telling the router. The peer then reads `io.ErrUnexpectedEOF`.
+
+  Peers that do not tag their chunks (earlier SDK versions, `ziti-sdk-c`, routers hosting or
+  intercepting a service themselves) are not held to this, so a truncation remains undetectable
+  unless both ends carry this change, and also when the stream is cut before the first tagged
+  chunk arrives. Such peers ignore the tag, and receive the final chunk as a data message
+  with nothing in it: an earlier Go SDK returns one `Read` of `0, nil` before `io.EOF`, and a
+  router hosting the service passes a zero-length write on to the server, which is one empty
+  datagram if the service is UDP.
+
 * `CtrlClient.GetServiceEdgeRouters(serviceId)` — thin wrapper on the sessionless service-ER
   endpoint. Used internally by the new dial path.
 * `ContextImpl.serviceEdgeRouters` — per-service ER cache, refreshed on the same cadence as the

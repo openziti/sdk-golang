@@ -89,6 +89,12 @@ func (env *testXgressEnv) GetMetrics() xgress.Metrics {
 // way the dial path does, registers it and starts its xgress.
 func newXgressCloseTestConn(t *testing.T) (*edgeConnXgress, edge.ConnMux[any], edge.SdkChannel) {
 	t.Helper()
+	return newXgressCloseTestConnOn(t, newUnackedTestChannel())
+}
+
+// newXgressCloseTestConnOn is newXgressCloseTestConn with the conn wired to ch.
+func newXgressCloseTestConnOn(t *testing.T, ch channel.Channel) (*edgeConnXgress, edge.ConnMux[any], edge.SdkChannel) {
+	t.Helper()
 
 	envCloseNotify := make(chan struct{})
 	t.Cleanup(func() { close(envCloseNotify) })
@@ -100,7 +106,7 @@ func newXgressCloseTestConn(t *testing.T) (*edgeConnXgress, edge.ConnMux[any], e
 	}
 
 	mux := edge.NewChannelConnMapMux[any](nil)
-	testChannel := edge.NewSingleSdkChannel(newUnackedTestChannel())
+	testChannel := edge.NewSingleSdkChannel(ch)
 	conn := &edgeConnXgress{
 		edgeConnBase: edgeConnBase{
 			serviceName: "test",

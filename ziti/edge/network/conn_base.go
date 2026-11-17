@@ -100,6 +100,7 @@ type edgeConnBase struct {
 	crypto                bool
 	keyPair               *kx.KeyPair
 	sender                secretstream.Encryptor
+	sentFinal             bool // guarded by the embedded mutex
 	chunkReader           *edgeChunkReader
 	appData               []byte
 	sync.Mutex
@@ -293,7 +294,7 @@ func (base *edgeConnBase) establishServerCrypto(keypair *kx.KeyPair, peerKey []b
 // splitting.
 func (base *edgeConnBase) Read(p []byte) (int, error) {
 	if base.flags.IsSet(flagClosed) {
-		return 0, io.EOF
+		return 0, base.chunkReader.eofErr()
 	}
 	return base.chunkReader.Read(p)
 }
@@ -313,7 +314,13 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 		base.Lock()
 		defer base.Unlock()
 
-		cipherData, err := base.sender.Push(data, secretstream.TagMessage)
+		if base.sentFinal {
+			return 0, errors.New("connection closed for writes")
+		}
+
+		// TagPush rather than TagMessage tells the peer, under the protection of
+		// the stream's MAC, that this side ends its stream with a TagFinal chunk.
+		cipherData, err := base.sender.Push(data, secretstream.TagPush)
 		if err != nil {
 			return 0, err
 		}
@@ -325,6 +332,26 @@ func (base *edgeConnBase) writeTo(data []byte, w io.Writer) (int, error) {
 	copyBuf := make([]byte, len(data))
 	copy(copyBuf, data)
 	return w.Write(copyBuf)
+}
+
+// writeFinalLocked writes the chunk that ends the encrypted stream: an empty
+// chunk tagged TagFinal. Only this side can produce it, so the peer can tell
+// the end of the stream from a FIN or close injected on the path. It does
+// nothing if the connection is not encrypted or the chunk was already sent.
+// The caller must hold the base lock, which also orders the chunk after any
+// write in progress.
+func (base *edgeConnBase) writeFinalLocked(w io.Writer) error {
+	if base.sender == nil || base.sentFinal {
+		return nil
+	}
+	base.sentFinal = true
+
+	cipherData, err := base.sender.Push(nil, secretstream.TagFinal)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(cipherData)
+	return err
 }
 
 // beginClose performs the shared first stage of connection close: atomically

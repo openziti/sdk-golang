@@ -246,6 +246,23 @@ func (ec *MsgChannel) Write(data []byte) (n int, err error) {
 }
 
 func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte) (int, error) {
+	timeout := forever
+	if !ec.writeDeadline.IsZero() {
+		timeout = time.Until(ec.writeDeadline)
+	}
+	return ec.writeTraced(data, msgUUID, hdrs, timeout)
+}
+
+// WriteWithTimeout writes data like Write, but gives up once timeout has passed, even if no
+// write deadline is set. A write deadline that ends sooner still applies.
+func (ec *MsgChannel) WriteWithTimeout(data []byte, timeout time.Duration) (int, error) {
+	if !ec.writeDeadline.IsZero() {
+		timeout = min(timeout, time.Until(ec.writeDeadline))
+	}
+	return ec.writeTraced(data, nil, nil, timeout)
+}
+
+func (ec *MsgChannel) writeTraced(data []byte, msgUUID []byte, hdrs map[int32][]byte, timeout time.Duration) (int, error) {
 	msg := NewDataMsg(ec.id, data)
 	if msgUUID != nil {
 		msg.Headers[UUIDHeader] = msgUUID
@@ -268,24 +285,25 @@ func (ec *MsgChannel) WriteTraced(data []byte, msgUUID []byte, hdrs map[int32][]
 	// NOTE: We need to wait for the buffer to be on the wire before returning. The Writer contract
 	//       states that buffers are not allowed be retained, and if we have it queued asynchronously
 	//       it is retained, and we can cause data corruption
-	var err error
-	if ec.writeDeadline.IsZero() {
-		err = msg.WithTimeout(forever).SendAndWaitForWire(ec.GetDefaultSender())
-	} else {
-		err = msg.WithTimeout(time.Until(ec.writeDeadline)).SendAndWaitForWire(ec.GetDefaultSender())
-	}
-
-	if err != nil {
+	if err := msg.WithTimeout(timeout).SendAndWaitForWire(ec.GetDefaultSender()); err != nil {
 		return 0, err
 	}
 
 	return len(data), nil
 }
 
+// StateTimeout is how long SendState waits for a state message to reach the wire.
+const StateTimeout = 5 * time.Second
+
 func (ec *MsgChannel) SendState(msg *channel.Message) error {
+	return ec.SendStateWithTimeout(msg, StateTimeout)
+}
+
+// SendStateWithTimeout is SendState with the wait for the wire limited to timeout.
+func (ec *MsgChannel) SendStateWithTimeout(msg *channel.Message, timeout time.Duration) error {
 	msg.PutUint32Header(SeqHeader, ec.msgIdSeq.Next())
 	ec.TraceMsg("SendState", msg)
-	return msg.WithTimeout(5 * time.Second).SendAndWaitForWire(ec.GetDefaultSender())
+	return msg.WithTimeout(timeout).SendAndWaitForWire(ec.GetDefaultSender())
 }
 
 func (ec *MsgChannel) TraceMsg(source string, msg *channel.Message) {

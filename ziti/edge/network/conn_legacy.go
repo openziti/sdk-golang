@@ -119,10 +119,14 @@ func (conn *edgeConnLegacy) RemoteAddr() net.Addr {
 
 func (conn *edgeConnLegacy) CloseWrite() error {
 	if !conn.flags.GetAndSet(flagSentFIN).IsSet(flagSentFIN) {
+		conn.Lock()
+		finalErr := conn.writeFinalLocked(&conn.msgCh)
+		conn.Unlock()
+
 		headers := channel.Headers{}
 		headers.PutUint32Header(edge.FlagsHeader, edge.FIN)
 		_, err := conn.msgCh.WriteTraced(nil, nil, headers)
-		return err
+		return errors.Join(finalErr, err)
 	}
 	return nil
 }
@@ -196,7 +200,7 @@ func (conn *edgeConnLegacy) Write(data []byte) (int, error) {
 // StateClosed behind or after it is never dequeued and is applied from here instead.
 func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
 	n, err := conn.edgeConnBase.Read(p)
-	if err != nil && errors.Is(err, io.EOF) {
+	if err != nil && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 		if conn.flags.GetAndSet(flagFinRead).IsSet(flagStateClosedReceived) {
 			conn.closeOnStateClosed("read reached EOF with ConnState_CLOSED already received, closing connection")
 		}
@@ -204,10 +208,47 @@ func (conn *edgeConnLegacy) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// Close closes the conn. Ending the encrypted stream and telling the router together wait
+// edge.StateTimeout at most for the edge channel.
 func (conn *edgeConnLegacy) Close() error {
 	pfxlog.Logger().WithField("connId", strconv.Itoa(int(conn.Id()))).WithField("circuitId", conn.circuitId).Debug("closing edge conn")
-	conn.close(true)
+	conn.chunkReader.MarkLocalClose()
+	deadline := time.Now().Add(edge.StateTimeout)
+	conn.writeFinalOnClose(deadline)
+	conn.closeWithin(true, time.Until(deadline))
 	return nil
+}
+
+// legacyDeadlineWriter writes data messages to a legacy conn's edge channel, waiting no longer
+// than deadline for each to reach the wire.
+type legacyDeadlineWriter struct {
+	msgCh    *edge.MsgChannel
+	deadline time.Time
+}
+
+func (w legacyDeadlineWriter) Write(data []byte) (int, error) {
+	return w.msgCh.WriteWithTimeout(data, time.Until(w.deadline))
+}
+
+// writeFinalOnClose ends the encrypted stream ahead of a local close, waiting no longer than
+// deadline for the edge channel. It is skipped when the chunk could not be delivered or would
+// hold up the close: the router has reported the conn closed, or a Write is in progress, which
+// holds the lock for as long as the edge channel keeps it waiting. The peer then reports the
+// stream as cut short, which it was.
+func (conn *edgeConnLegacy) writeFinalOnClose(deadline time.Time) {
+	// once the router has reported the conn closed, nothing sent on it is delivered
+	if conn.IsClosed() || conn.flags.IsSet(flagStateClosedReceived) {
+		return
+	}
+	if !conn.TryLock() {
+		return
+	}
+	err := conn.writeFinalLocked(legacyDeadlineWriter{msgCh: &conn.msgCh, deadline: deadline})
+	conn.Unlock()
+	if err != nil {
+		pfxlog.Logger().WithField("connId", int(conn.Id())).WithField("circuitId", conn.circuitId).
+			WithError(err).Error("failed to send end of encrypted stream")
+	}
 }
 
 // close performs the full close sequence for a legacy conn: atomic close flip,
@@ -215,6 +256,12 @@ func (conn *edgeConnLegacy) Close() error {
 // router, and remove this sink from the mux. Safe to call multiple times; only
 // the first call does work.
 func (conn *edgeConnLegacy) close(notifyCtrl bool) {
+	conn.closeWithin(notifyCtrl, edge.StateTimeout)
+}
+
+// closeWithin is close with the wait for the router notification to reach the wire limited to
+// timeout.
+func (conn *edgeConnLegacy) closeWithin(notifyCtrl bool, timeout time.Duration) {
 	if !conn.beginClose() {
 		return
 	}
@@ -225,7 +272,7 @@ func (conn *edgeConnLegacy) close(notifyCtrl bool) {
 
 	if notifyCtrl {
 		msg := edge.NewStateClosedMsg(conn.Id(), "")
-		if err := conn.msgCh.SendState(msg); err != nil {
+		if err := conn.msgCh.SendStateWithTimeout(msg, timeout); err != nil {
 			log.WithError(err).Error("failed to send close message")
 		}
 	}
