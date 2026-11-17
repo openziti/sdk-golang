@@ -432,12 +432,19 @@ func getActiveQueryInfo(dialServices []*rest_model.ServiceDetail, bindServices [
 func getLowestTotpTimeout(postureQueryState *rest_model.PostureQueries, curTimeout int64) int64 {
 	for _, query := range postureQueryState.PostureQueries {
 
-		if *query.QueryType == rest_model.PostureCheckTypeMFA {
-			if curTimeout == TotpPostureCheckNoTimeout && query.Timeout != nil && *query.Timeout != TotpPostureCheckNoTimeout {
-				curTimeout = *query.Timeout
-			} else if query.Timeout != nil && *query.Timeout < curTimeout {
-				curTimeout = *query.Timeout
-			}
+		if *query.QueryType != rest_model.PostureCheckTypeMFA {
+			continue
+		}
+
+		// TotpPostureCheckNoTimeout is -1, so a check that never expires compares lower than any
+		// real timeout. Skip it rather than let it win, which is the same rule QueryInfo.merge
+		// applies when folding a router's requirements in.
+		if query.Timeout == nil || *query.Timeout == TotpPostureCheckNoTimeout {
+			continue
+		}
+
+		if curTimeout == TotpPostureCheckNoTimeout || *query.Timeout < curTimeout {
+			curTimeout = *query.Timeout
 		}
 	}
 
