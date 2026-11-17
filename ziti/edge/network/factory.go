@@ -215,7 +215,9 @@ func applyReplyState(base *edgeConnBase, replyMsg *channel.Message, circuitId st
 
 // establishClientCryptoFromReply reads the crypto method and host public key
 // from the dial reply and establishes the client side of the secretstream.
-// When the reply carries no host key, the connection is left unencrypted.
+// It is only called for services that require encryption, so a reply that
+// carries no host key fails the dial rather than leaving the connection
+// unencrypted.
 func establishClientCryptoFromReply(
 	logger *logrus.Entry,
 	replyMsg *channel.Message,
@@ -224,9 +226,10 @@ func establishClientCryptoFromReply(
 ) error {
 	method, _ := replyMsg.GetByteHeader(edge.CryptoMethodHeader)
 	hostPubKey := replyMsg.Headers[edge.PublicKeyHeader]
-	if hostPubKey == nil {
-		logger.Warn("connection is not end-to-end-encrypted")
-		return nil
+	if len(hostPubKey) == 0 {
+		err := errors.New("service requires encryption, but the dial reply did not contain the host's public key")
+		logger.WithError(err).Error("crypto failure")
+		return err
 	}
 	logger.Debug("setting up end-to-end encryption")
 	if err := establish(keyPair, hostPubKey, edge.CryptoMethod(method)); err != nil {
