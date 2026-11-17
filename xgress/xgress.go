@@ -49,6 +49,7 @@ const (
 	closedTxer            = 4
 	rxPushModeFlag        = 5 // false == pull, use rx(), 1 == push, use WriteAdapter
 	txPullModeFlag        = 6 // false == push via tx(), true == pull via ReadAdapter
+	endedByAbortFlag      = 7 // the tx path ended without a graceful end (EOF) from the peer
 
 	// bits 8-16 reserved for peer capabilities (same values used in wire format)
 	CapabilityEOFIndex = int(edge_client_pb.XgCapability_EOF)
@@ -58,6 +59,11 @@ const (
 
 var ErrWriteClosed = errors.New("write closed")
 var ErrPeerClosed = errors.New("peer closed")
+
+// ErrPeerAborted is what Connection.ReadPayload returns when the peer ended the connection abruptly,
+// without first signaling the end of its data. It wraps ErrPeerClosed, so a caller that only checks
+// for ErrPeerClosed still treats it as a close.
+var ErrPeerAborted = fmt.Errorf("%w (aborted)", ErrPeerClosed)
 
 type Address string
 
@@ -356,6 +362,16 @@ func (self *Xgress) CloseRxTimeout() {
 	self.CloseSendBufferWhenEmpty()
 }
 
+// CloseRxAbort ends the send half abruptly. Like CloseRxTimeout it queues the end marker behind the
+// data already written, so that data is still delivered and retransmitted if needed, but the marker
+// is a CircuitEnd with no EOF. Only a graceful end carries an EOF, so a peer that supports EOF takes a
+// CircuitEnd without one as an abort and closes its endpoint without signaling an end of data to it.
+// A peer that does not support EOF takes any CircuitEnd as the end of the data, as it always has.
+func (self *Xgress) CloseRxAbort() {
+	self.sendEndMarker(PayloadFlagCircuitEnd)
+	self.CloseSendBufferWhenEmpty()
+}
+
 // CloseSendBufferWhenEmpty closes this xgress's outbound send buffer once it
 // drains. Unlike CloseRxTimeout it does not emit a native EOF, so a caller that
 // signals half-close another way (an edge conn bridging to a peer that lacks
@@ -366,6 +382,10 @@ func (self *Xgress) CloseSendBufferWhenEmpty() {
 }
 
 func (self *Xgress) Unrouted() {
+	// The circuit was torn down underneath us. If the peer had ended its data gracefully, the tx path
+	// is already done; if not, it never will, so what is left is not a graceful end.
+	self.flags.Set(endedByAbortFlag, true)
+
 	// if we're unrouted no more data is inbound. this still allows already queued data to flow to the client
 	self.CloseXgToClient()
 
@@ -536,7 +556,12 @@ func (self *Xgress) tx() {
 }
 
 func (self *Xgress) txCleanup() {
-	if signalConn, ok := self.peer.(SignalConnection); ok {
+	if self.flags.IsSet(endedByAbortFlag) {
+		// The peer's data did not end gracefully, so there is no end of data to relay. Closing sends
+		// the peer connection a close with no end-of-data signal before it, which is how an abort
+		// has to look to the application behind it.
+		self.Close()
+	} else if signalConn, ok := self.peer.(SignalConnection); ok {
 		signalConn.FlowFromFabricToXgressClosed()
 	}
 	if !self.IsEndOfCircuitReceived() {
@@ -569,6 +594,9 @@ func (self *Xgress) processTxPayload(payload *Payload) ([]byte, map[uint8][]byte
 
 	if payload.IsCircuitEndFlagSet() || payload.IsFlagEOFSet() {
 		self.markCircuitEndReceived()
+		if payload.IsCircuitEndFlagSet() && !payload.IsFlagEOFSet() && self.PeerSupportsEOF() {
+			self.flags.Set(endedByAbortFlag, true)
+		}
 		self.CloseXgToClient()
 		log.Debug("circuit end payload received")
 		return nil, nil, io.EOF
@@ -753,18 +781,28 @@ func (self *Xgress) sendEOF() {
 	log := pfxlog.ContextLogger(self.Label())
 	log.Debug("sendEOF")
 
-	if self.payloadBuffer.closed.Load() {
-		// Avoid spurious 'failed to forward payload' error if the buffer is already closed
-		return
-	}
-
 	var flag Flag
 	if self.PeerSupportsEOF() {
 		flag = PayloadFlagEOF
 		log.Debug("peer supports EOF, sending EOF flag")
 	} else {
-		flag = PayloadFlagCircuitEnd
+		// A peer that does not support EOF only understands CircuitEnd, so send that. The EOF rides
+		// along because this end may just not have heard yet that its peer supports it, and a peer
+		// that does support it takes a CircuitEnd without an EOF for an abort. A peer that does not
+		// know the EOF flag ignores it.
+		flag = PayloadFlagCircuitEnd | PayloadFlagEOF
 		log.Debug("peer does not support EOF, falling back to CircuitEnd")
+	}
+
+	self.sendEndMarker(flag)
+}
+
+// sendEndMarker queues an empty payload carrying the given end flag behind the data already
+// written, so it reaches the peer in sequence.
+func (self *Xgress) sendEndMarker(flag Flag) {
+	if self.payloadBuffer.closed.Load() {
+		// Avoid spurious 'failed to forward payload' error if the buffer is already closed
+		return
 	}
 
 	payload := &Payload{
@@ -878,7 +916,16 @@ func (self *Xgress) rx() {
 		}
 	}()
 
-	defer self.CloseRxTimeout()
+	// how the send half ends depends on how the peer ended: a graceful end is signaled with an EOF
+	// to the far side, an abrupt one (ErrPeerAborted) must not be, see CloseRxAbort
+	aborted := false
+	defer func() {
+		if aborted {
+			self.CloseRxAbort()
+		} else {
+			self.CloseRxTimeout()
+		}
+	}()
 
 	for {
 		buffer, headers, err := self.peer.ReadPayload()
@@ -889,6 +936,7 @@ func (self *Xgress) rx() {
 		if err != nil && (n == 0 || err != io.EOF) {
 			if err == io.EOF || errors.Is(err, ErrPeerClosed) {
 				if errors.Is(err, ErrPeerClosed) { // if the peer closed, we need to close the txer as well
+					aborted = errors.Is(err, ErrPeerAborted)
 					self.CloseXgToClient()
 				}
 				log.Debugf("EOF, exiting xgress.rx loop")
