@@ -346,13 +346,9 @@ func (a *ApiSessionOidc) AuthenticateRequest(request runtime.ClientRequest, _ st
 
 	//multiple Authorization headers are allowed, obtain all auth header candidates
 	primaryAuthHeader, primaryAuthValue := a.GetAccessHeader()
-	altAuthValues := a.RequestHeaders.Get(primaryAuthHeader)
+	altAuthValues := a.RequestHeaders.Values(primaryAuthHeader)
 
-	authValues := []string{primaryAuthValue}
-
-	if len(altAuthValues) > 0 {
-		authValues = append(authValues, altAuthValues)
-	}
+	authValues := append([]string{primaryAuthValue}, altAuthValues...)
 
 	//set request headers
 	for h, v := range a.RequestHeaders {
